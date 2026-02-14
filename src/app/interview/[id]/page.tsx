@@ -1,5 +1,8 @@
 import Link from 'next/link';
+import { AppShell } from '@/components/AppShell';
+import { RequireAuth } from '@/components/RequireAuth';
 import { createClient } from '@/lib/supabase/server';
+import { InterviewClient } from '@/components/InterviewClient';
 
 export default async function InterviewPage(props: { params: Promise<{ id: string }> }) {
   const { id } = await props.params;
@@ -8,47 +11,47 @@ export default async function InterviewPage(props: { params: Promise<{ id: strin
   const { data: userData } = await supabase.auth.getUser();
   if (!userData.user) {
     return (
-      <main style={{ padding: 16 }}>
-        <p>
-          Not logged in. Go to <Link href="/auth">/auth</Link>.
-        </p>
-      </main>
+      <AppShell title="Interview">
+        <RequireAuth>
+          <div />
+        </RequireAuth>
+      </AppShell>
     );
   }
 
   const { data: session } = await supabase
     .from('interview_sessions')
-    .select('*')
+    .select('id,title,status,created_at')
     .eq('id', id)
     .single();
 
   const { data: messages } = await supabase
     .from('interview_session_messages')
-    .select('*')
+    .select('id,role,content,created_at')
     .eq('session_id', id)
     .order('created_at', { ascending: true });
 
+  const { data: feedback } = await supabase
+    .from('interview_session_feedback')
+    .select('id,score,notes,rubric,created_at')
+    .eq('session_id', id)
+    .order('created_at', { ascending: false })
+    .limit(10);
+
   return (
-    <main style={{ padding: 16, maxWidth: 800 }}>
-      <h1>{session?.title ?? 'Interview'}</h1>
-      <p>
-        <Link href="/dashboard">Back</Link>
-      </p>
+    <AppShell title={session?.title ?? 'Interview'}>
+      <RequireAuth>
+        <div className="stack">
+          <div className="row" style={{ justifyContent: 'space-between' }}>
+            <p className="help">
+              <Link href="/dashboard">← Back to dashboard</Link>
+            </p>
+            <span className="badge">{session?.status ?? 'unknown'}</span>
+          </div>
 
-      <h2>Messages</h2>
-      <ul>
-        {(messages ?? []).map((m) => (
-          <li key={m.id}>
-            <b>{m.role}:</b> {m.content}
-          </li>
-        ))}
-      </ul>
-
-      <p>
-        This page is SSR read-only. Use API:
-        <br />
-        POST <code>/api/interviews/{id}/messages</code>
-      </p>
-    </main>
+          <InterviewClient sessionId={id} initialMessages={(messages ?? []) as any} initialFeedback={(feedback ?? []) as any} />
+        </div>
+      </RequireAuth>
+    </AppShell>
   );
 }

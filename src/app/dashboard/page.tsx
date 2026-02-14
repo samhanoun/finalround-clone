@@ -1,56 +1,84 @@
 import Link from 'next/link';
+import { AppShell } from '@/components/AppShell';
+import { RequireAuth } from '@/components/RequireAuth';
 import { createClient } from '@/lib/supabase/server';
+import { DashboardClient } from '@/components/DashboardClient';
 
 export default async function DashboardPage() {
   const supabase = await createClient();
   const { data } = await supabase.auth.getUser();
-  const user = data.user;
-
-  if (!user) {
-    return (
-      <main style={{ padding: 16 }}>
-        <h1>/dashboard</h1>
-        <p>
-          Not logged in. Go to <Link href="/auth">/auth</Link>.
-        </p>
-      </main>
-    );
-  }
 
   const { data: sessions } = await supabase
     .from('interview_sessions')
     .select('id,title,status,created_at')
     .order('created_at', { ascending: false })
-    .limit(20);
+    .limit(10);
 
-  await supabase
+  const { data: docs } = await supabase
     .from('resume_documents')
     .select('id,filename,created_at')
     .order('created_at', { ascending: false })
-    .limit(20);
+    .limit(10);
 
   return (
-    <main style={{ padding: 16 }}>
-      <h1>/dashboard</h1>
-      <p>Logged in as {user.email}</p>
+    <AppShell title="Dashboard">
+      <RequireAuth>
+        <div className="stack">
+          <p className="help">Welcome{data.user?.email ? `, ${data.user.email}` : ''}.</p>
 
-      <ul>
-        <li>
-          <Link href="/resume">Resume</Link>
-        </li>
-        <li>
-          <Link href="/settings">Settings</Link>
-        </li>
-      </ul>
+          <DashboardClient />
 
-      <h2>Interview sessions</h2>
-      <ul>
-        {(sessions ?? []).map((s) => (
-          <li key={s.id}>
-            <Link href={`/interview/${s.id}`}>{s.title}</Link> ({s.status})
-          </li>
-        ))}
-      </ul>
-    </main>
+          <section id="sessions" className="card">
+            <div className="cardInner stack">
+              <div className="row" style={{ justifyContent: 'space-between' }}>
+                <h2 className="cardTitle">Recent interview sessions</h2>
+                <Link className="button" href="/dashboard">
+                  Refresh
+                </Link>
+              </div>
+
+              <ul className="stack" style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                {(sessions ?? []).length ? (
+                  (sessions ?? []).map((s) => (
+                    <li key={s.id} className="row" style={{ justifyContent: 'space-between' }}>
+                      <Link href={`/interview/${s.id}`}>{s.title}</Link>
+                      <span className="row" style={{ gap: 10 }}>
+                        <span className="badge">{s.status}</span>
+                        <span className="small mono">{new Date(s.created_at).toLocaleString()}</span>
+                      </span>
+                    </li>
+                  ))
+                ) : (
+                  <li className="small">No sessions yet.</li>
+                )}
+              </ul>
+            </div>
+          </section>
+
+          <section id="resume" className="card">
+            <div className="cardInner stack">
+              <div className="row" style={{ justifyContent: 'space-between' }}>
+                <h2 className="cardTitle">Recent resume uploads</h2>
+                <Link className="button buttonPrimary" href="/resume">
+                  Open Resume Builder
+                </Link>
+              </div>
+              <ul className="stack" style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                {(docs ?? []).length ? (
+                  (docs ?? []).map((d) => (
+                    <li key={d.id} className="row" style={{ justifyContent: 'space-between' }}>
+                      <span>{d.filename ?? d.id}</span>
+                      <span className="small mono">{new Date(d.created_at).toLocaleString()}</span>
+                    </li>
+                  ))
+                ) : (
+                  <li className="small">No documents yet.</li>
+                )}
+              </ul>
+            </div>
+          </section>
+        </div>
+      </RequireAuth>
+    </AppShell>
   );
 }

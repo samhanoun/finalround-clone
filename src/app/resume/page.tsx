@@ -1,4 +1,7 @@
 import Link from 'next/link';
+import { AppShell } from '@/components/AppShell';
+import { RequireAuth } from '@/components/RequireAuth';
+import { ResumeClient } from '@/components/ResumeClient';
 import { createClient } from '@/lib/supabase/server';
 
 export default async function ResumePage() {
@@ -7,11 +10,11 @@ export default async function ResumePage() {
 
   if (!userData.user) {
     return (
-      <main style={{ padding: 16 }}>
-        <p>
-          Not logged in. Go to <Link href="/auth">/auth</Link>.
-        </p>
-      </main>
+      <AppShell title="Resume Builder">
+        <RequireAuth>
+          <div />
+        </RequireAuth>
+      </AppShell>
     );
   }
 
@@ -19,27 +22,24 @@ export default async function ResumePage() {
     .from('resume_documents')
     .select('id,filename,created_at')
     .order('created_at', { ascending: false })
-    .limit(50);
+    .limit(30);
+
+  const { data: generations } = await supabase
+    .from('resume_generations')
+    .select('id,status,created_at,input,output,document_id')
+    .order('created_at', { ascending: false })
+    .limit(30);
 
   return (
-    <main style={{ padding: 16, maxWidth: 800 }}>
-      <h1>/resume</h1>
-      <p>
-        <Link href="/dashboard">Back</Link>
-      </p>
-
-      <p>
-        Upload via API: <code>POST /api/resume/upload</code> (multipart/form-data, field: <code>file</code>).
-      </p>
-
-      <h2>Documents</h2>
-      <ul>
-        {(docs ?? []).map((d) => (
-          <li key={d.id}>
-            {d.filename ?? d.id} ({new Date(d.created_at).toLocaleString()})
-          </li>
-        ))}
-      </ul>
-    </main>
+    <AppShell title="Resume Builder">
+      <RequireAuth>
+        <div className="stack">
+          <p className="help">
+            <Link href="/dashboard">← Back to dashboard</Link>
+          </p>
+          <ResumeClient initialDocs={(docs ?? []) as any} initialGenerations={(generations ?? []) as any} />
+        </div>
+      </RequireAuth>
+    </AppShell>
   );
 }

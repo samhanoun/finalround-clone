@@ -1,4 +1,7 @@
 import Link from 'next/link';
+import { AppShell } from '@/components/AppShell';
+import { RequireAuth } from '@/components/RequireAuth';
+import { SettingsClient } from '@/components/SettingsClient';
 import { createClient } from '@/lib/supabase/server';
 
 export default async function SettingsPage() {
@@ -7,30 +10,41 @@ export default async function SettingsPage() {
 
   if (!userData.user) {
     return (
-      <main style={{ padding: 16 }}>
-        <p>
-          Not logged in. Go to <Link href="/auth">/auth</Link>.
-        </p>
-      </main>
+      <AppShell title="Settings">
+        <RequireAuth>
+          <div />
+        </RequireAuth>
+      </AppShell>
     );
   }
 
   const { data: settings } = await supabase
     .from('llm_settings')
-    .select('*')
+    .select('provider,model,temperature,max_tokens')
     .eq('user_id', userData.user.id)
     .maybeSingle();
 
   return (
-    <main style={{ padding: 16, maxWidth: 800 }}>
-      <h1>/settings</h1>
-      <p>
-        <Link href="/dashboard">Back</Link>
-      </p>
+    <AppShell title="Settings">
+      <RequireAuth>
+        <div className="stack">
+          <p className="help">
+            <Link href="/dashboard">← Back to dashboard</Link>
+          </p>
+          <SettingsClient initial={(settings ?? null) as any} />
 
-      <h2>LLM settings</h2>
-      <pre style={{ whiteSpace: 'pre-wrap' }}>{JSON.stringify(settings, null, 2)}</pre>
-      <p>Update via API: PATCH /api/settings/llm</p>
-    </main>
+          <div className="card">
+            <div className="cardInner stack">
+              <h2 className="cardTitle">Security notes (MVP)</h2>
+              <ul className="stack" style={{ paddingLeft: 18, margin: 0 }}>
+                <li>API routes require auth and validate payloads with Zod.</li>
+                <li>RLS isolates per-user data; storage is private.</li>
+                <li>Provider API keys stay server-side (Vercel env vars).</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </RequireAuth>
+    </AppShell>
   );
 }
