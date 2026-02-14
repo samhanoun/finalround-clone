@@ -5,15 +5,19 @@ Next.js (App Router, TypeScript) + Supabase starter for a “FinalRound” style
 ## Features
 
 - Supabase (SSR auth via `@supabase/ssr`)
-- SQL migrations (schema + RLS) for:
+- SQL migrations (schema + RLS)
+  - `0001_init.sql` (initial tables)
+  - `0002_mvp_spec.sql` (MVP spec tables)
+- Tables (MVP):
   - `profiles`
-  - `interviews`, `interview_messages`, `interview_scores`
-  - `resume_runs`, `resume_assets`
+  - `llm_settings`
+  - `interview_sessions`, `interview_session_messages`, `interview_session_feedback`
+  - `resume_documents`, `resume_generations`
   - `jobs` (LLM execution tracking)
 - Server-only API endpoints:
   - `POST /api/llm` (provider abstraction; currently OpenAI)
-  - Minimal CRUD `GET/POST /api/interviews`, `GET/PATCH/DELETE /api/interviews/:id`
-  - Minimal CRUD `GET/POST /api/resume`, `GET/PATCH/DELETE /api/resume/:id` (resume_runs)
+  - Interviews: CRUD + messages + score + export
+  - Resume: upload + generate + history
 - Input validation: **zod**
 - Basic in-memory rate limit (per-IP)
 
@@ -42,7 +46,7 @@ Env vars:
 
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-- `SUPABASE_SERVICE_ROLE_KEY` (server-only; required for `/api/llm` job tracking)
+- `SUPABASE_SERVICE_ROLE_KEY` (server-only; required for `/api/resume/upload` storage upload)
 - `LLM_PROVIDER` (currently `openai`)
 - `OPENAI_API_KEY`
 

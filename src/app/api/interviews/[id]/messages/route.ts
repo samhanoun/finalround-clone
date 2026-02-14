@@ -5,34 +5,37 @@ import { jsonError } from '@/lib/api';
 import { rateLimit } from '@/lib/rateLimit';
 
 const CreateSchema = z.object({
-  title: z.string().min(1).max(200).optional(),
-  status: z.string().min(1).max(50).optional(),
-  meta: z.record(z.string(), z.any()).optional(),
+  role: z.enum(['system', 'user', 'assistant']),
+  content: z.string().min(1),
+  tokens: z.number().int().optional(),
 });
 
-export async function GET(req: NextRequest) {
+export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
-  const rl = rateLimit({ key: `interview_sessions:get:${ip}`, limit: 60, windowMs: 60_000 });
+  const rl = rateLimit({ key: `interview_msgs:get:${ip}`, limit: 120, windowMs: 60_000 });
   if (!rl.ok) return NextResponse.json({ error: 'rate_limited' }, { status: 429 });
 
+  const { id } = await ctx.params;
   const supabase = await createClient();
   const { data: userData } = await supabase.auth.getUser();
   if (!userData.user) return jsonError(401, 'unauthorized');
 
   const { data, error } = await supabase
-    .from('interview_sessions')
+    .from('interview_session_messages')
     .select('*')
-    .order('created_at', { ascending: false });
+    .eq('session_id', id)
+    .order('created_at', { ascending: true });
 
   if (error) return jsonError(500, 'db_error', error);
-  return NextResponse.json({ sessions: data });
+  return NextResponse.json({ messages: data });
 }
 
-export async function POST(req: NextRequest) {
+export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
-  const rl = rateLimit({ key: `interview_sessions:post:${ip}`, limit: 30, windowMs: 60_000 });
+  const rl = rateLimit({ key: `interview_msgs:post:${ip}`, limit: 60, windowMs: 60_000 });
   if (!rl.ok) return NextResponse.json({ error: 'rate_limited' }, { status: 429 });
 
+  const { id } = await ctx.params;
   const parse = CreateSchema.safeParse(await req.json().catch(() => null));
   if (!parse.success) return jsonError(400, 'invalid_body', parse.error.flatten());
 
@@ -41,16 +44,17 @@ export async function POST(req: NextRequest) {
   if (!userData.user) return jsonError(401, 'unauthorized');
 
   const { data, error } = await supabase
-    .from('interview_sessions')
+    .from('interview_session_messages')
     .insert({
+      session_id: id,
       user_id: userData.user.id,
-      title: parse.data.title ?? 'Interview',
-      status: parse.data.status ?? 'draft',
-      meta: parse.data.meta ?? {},
+      role: parse.data.role,
+      content: parse.data.content,
+      tokens: parse.data.tokens ?? null,
     })
     .select('*')
     .single();
 
   if (error) return jsonError(500, 'db_error', error);
-  return NextResponse.json({ session: data }, { status: 201 });
+  return NextResponse.json({ message: data }, { status: 201 });
 }

@@ -4,15 +4,16 @@ import { createClient } from '@/lib/supabase/server';
 import { jsonError } from '@/lib/api';
 import { rateLimit } from '@/lib/rateLimit';
 
-const CreateSchema = z.object({
-  title: z.string().min(1).max(200).optional(),
-  status: z.string().min(1).max(50).optional(),
-  meta: z.record(z.string(), z.any()).optional(),
+const PatchSchema = z.object({
+  provider: z.string().min(1).max(50).optional(),
+  model: z.string().min(1).max(100).optional(),
+  temperature: z.number().min(0).max(2).optional(),
+  max_tokens: z.number().int().positive().optional(),
 });
 
 export async function GET(req: NextRequest) {
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
-  const rl = rateLimit({ key: `interview_sessions:get:${ip}`, limit: 60, windowMs: 60_000 });
+  const rl = rateLimit({ key: `llm_settings:get:${ip}`, limit: 60, windowMs: 60_000 });
   if (!rl.ok) return NextResponse.json({ error: 'rate_limited' }, { status: 429 });
 
   const supabase = await createClient();
@@ -20,37 +21,36 @@ export async function GET(req: NextRequest) {
   if (!userData.user) return jsonError(401, 'unauthorized');
 
   const { data, error } = await supabase
-    .from('interview_sessions')
+    .from('llm_settings')
     .select('*')
-    .order('created_at', { ascending: false });
+    .eq('user_id', userData.user.id)
+    .maybeSingle();
 
   if (error) return jsonError(500, 'db_error', error);
-  return NextResponse.json({ sessions: data });
+  return NextResponse.json({ settings: data });
 }
 
-export async function POST(req: NextRequest) {
+export async function PATCH(req: NextRequest) {
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
-  const rl = rateLimit({ key: `interview_sessions:post:${ip}`, limit: 30, windowMs: 60_000 });
+  const rl = rateLimit({ key: `llm_settings:patch:${ip}`, limit: 30, windowMs: 60_000 });
   if (!rl.ok) return NextResponse.json({ error: 'rate_limited' }, { status: 429 });
 
-  const parse = CreateSchema.safeParse(await req.json().catch(() => null));
+  const parse = PatchSchema.safeParse(await req.json().catch(() => null));
   if (!parse.success) return jsonError(400, 'invalid_body', parse.error.flatten());
 
   const supabase = await createClient();
   const { data: userData } = await supabase.auth.getUser();
   if (!userData.user) return jsonError(401, 'unauthorized');
 
+  const patch = parse.data;
+
+  // upsert so first-time users can set settings
   const { data, error } = await supabase
-    .from('interview_sessions')
-    .insert({
-      user_id: userData.user.id,
-      title: parse.data.title ?? 'Interview',
-      status: parse.data.status ?? 'draft',
-      meta: parse.data.meta ?? {},
-    })
+    .from('llm_settings')
+    .upsert({ user_id: userData.user.id, ...patch }, { onConflict: 'user_id' })
     .select('*')
     .single();
 
   if (error) return jsonError(500, 'db_error', error);
-  return NextResponse.json({ session: data }, { status: 201 });
+  return NextResponse.json({ settings: data });
 }

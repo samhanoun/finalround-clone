@@ -12,7 +12,7 @@ const PatchSchema = z.object({
 
 export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
-  const rl = rateLimit({ key: `interviews:id:get:${ip}`, limit: 120, windowMs: 60_000 });
+  const rl = rateLimit({ key: `interview_sessions:id:get:${ip}`, limit: 120, windowMs: 60_000 });
   if (!rl.ok) return NextResponse.json({ error: 'rate_limited' }, { status: 429 });
 
   const { id } = await ctx.params;
@@ -21,18 +21,18 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
   if (!userData.user) return jsonError(401, 'unauthorized');
 
   const { data, error } = await supabase
-    .from('interviews')
+    .from('interview_sessions')
     .select('*')
     .eq('id', id)
     .single();
 
   if (error) return jsonError(404, 'not_found');
-  return NextResponse.json({ interview: data });
+  return NextResponse.json({ session: data });
 }
 
 export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
-  const rl = rateLimit({ key: `interviews:id:patch:${ip}`, limit: 60, windowMs: 60_000 });
+  const rl = rateLimit({ key: `interview_sessions:id:patch:${ip}`, limit: 60, windowMs: 60_000 });
   if (!rl.ok) return NextResponse.json({ error: 'rate_limited' }, { status: 429 });
 
   const { id } = await ctx.params;
@@ -44,19 +44,19 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   if (!userData.user) return jsonError(401, 'unauthorized');
 
   const { data, error } = await supabase
-    .from('interviews')
+    .from('interview_sessions')
     .update(parse.data)
     .eq('id', id)
     .select('*')
     .single();
 
   if (error) return jsonError(500, 'db_error', error);
-  return NextResponse.json({ interview: data });
+  return NextResponse.json({ session: data });
 }
 
 export async function DELETE(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
-  const rl = rateLimit({ key: `interviews:id:del:${ip}`, limit: 30, windowMs: 60_000 });
+  const rl = rateLimit({ key: `interview_sessions:id:del:${ip}`, limit: 30, windowMs: 60_000 });
   if (!rl.ok) return NextResponse.json({ error: 'rate_limited' }, { status: 429 });
 
   const { id } = await ctx.params;
@@ -64,7 +64,7 @@ export async function DELETE(req: NextRequest, ctx: { params: Promise<{ id: stri
   const { data: userData } = await supabase.auth.getUser();
   if (!userData.user) return jsonError(401, 'unauthorized');
 
-  const { error } = await supabase.from('interviews').delete().eq('id', id);
+  const { error } = await supabase.from('interview_sessions').delete().eq('id', id);
   if (error) return jsonError(500, 'db_error', error);
 
   return NextResponse.json({ ok: true });

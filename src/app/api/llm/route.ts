@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import OpenAI from 'openai';
 import { z } from 'zod';
-import { env, llmProvider, requireEnv } from '@/lib/env';
+import { llmProvider, requireEnv } from '@/lib/env';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { jsonError } from '@/lib/api';
