@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import OpenAI from 'openai';
 import { z } from 'zod';
-import { env } from '@/lib/env';
+import { env, llmProvider, requireEnv } from '@/lib/env';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { jsonError } from '@/lib/api';
@@ -17,7 +17,7 @@ const BodySchema = z.object({
     )
     .min(1),
   model: z.string().min(1).optional(),
-  metadata: z.record(z.any()).optional(),
+  metadata: z.record(z.string(), z.any()).optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -36,14 +36,13 @@ export async function POST(req: NextRequest) {
   const parse = BodySchema.safeParse(await req.json().catch(() => null));
   if (!parse.success) return jsonError(400, 'invalid_body', parse.error.flatten());
 
-  const supabase = createClient();
+  const supabase = await createClient();
   const { data: userData, error: userErr } = await supabase.auth.getUser();
   if (userErr || !userData.user) return jsonError(401, 'unauthorized');
   const user = userData.user;
 
-  const provider = env.LLM_PROVIDER;
+  const provider = llmProvider();
   if (provider !== 'openai') return jsonError(400, `unsupported_provider:${provider}`);
-  if (!env.OPENAI_API_KEY) return jsonError(500, 'OPENAI_API_KEY_missing');
 
   const admin = createAdminClient();
   const model = parse.data.model ?? 'gpt-4o-mini';
@@ -63,7 +62,7 @@ export async function POST(req: NextRequest) {
     .single();
 
   try {
-    const client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+    const client = new OpenAI({ apiKey: requireEnv('OPENAI_API_KEY') });
 
     const completion = await client.chat.completions.create({
       model,

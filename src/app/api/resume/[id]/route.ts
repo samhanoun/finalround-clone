@@ -6,7 +6,7 @@ import { rateLimit } from '@/lib/rateLimit';
 
 const PatchSchema = z.object({
   status: z.string().min(1).max(50).optional(),
-  output: z.record(z.any()).optional(),
+  output: z.record(z.string(), z.any()).optional(),
 });
 
 export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
@@ -15,7 +15,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
   if (!rl.ok) return NextResponse.json({ error: 'rate_limited' }, { status: 429 });
 
   const { id } = await ctx.params;
-  const supabase = createClient();
+  const supabase = await createClient();
   const { data: userData } = await supabase.auth.getUser();
   if (!userData.user) return jsonError(401, 'unauthorized');
 
@@ -34,7 +34,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   const parse = PatchSchema.safeParse(await req.json().catch(() => null));
   if (!parse.success) return jsonError(400, 'invalid_body', parse.error.flatten());
 
-  const supabase = createClient();
+  const supabase = await createClient();
   const { data: userData } = await supabase.auth.getUser();
   if (!userData.user) return jsonError(401, 'unauthorized');
 
@@ -55,7 +55,7 @@ export async function DELETE(req: NextRequest, ctx: { params: Promise<{ id: stri
   if (!rl.ok) return NextResponse.json({ error: 'rate_limited' }, { status: 429 });
 
   const { id } = await ctx.params;
-  const supabase = createClient();
+  const supabase = await createClient();
   const { data: userData } = await supabase.auth.getUser();
   if (!userData.user) return jsonError(401, 'unauthorized');
 

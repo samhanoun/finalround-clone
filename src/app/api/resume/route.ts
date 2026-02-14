@@ -6,7 +6,7 @@ import { rateLimit } from '@/lib/rateLimit';
 
 const CreateRunSchema = z.object({
   assetId: z.string().uuid().optional(),
-  input: z.record(z.any()).default({}),
+  input: z.record(z.string(), z.any()).default({}),
 });
 
 export async function GET(req: NextRequest) {
@@ -14,7 +14,7 @@ export async function GET(req: NextRequest) {
   const rl = rateLimit({ key: `resume:get:${ip}`, limit: 60, windowMs: 60_000 });
   if (!rl.ok) return NextResponse.json({ error: 'rate_limited' }, { status: 429 });
 
-  const supabase = createClient();
+  const supabase = await createClient();
   const { data: userData } = await supabase.auth.getUser();
   if (!userData.user) return jsonError(401, 'unauthorized');
 
@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
   const parse = CreateRunSchema.safeParse(await req.json().catch(() => null));
   if (!parse.success) return jsonError(400, 'invalid_body', parse.error.flatten());
 
-  const supabase = createClient();
+  const supabase = await createClient();
   const { data: userData } = await supabase.auth.getUser();
   if (!userData.user) return jsonError(401, 'unauthorized');
 
