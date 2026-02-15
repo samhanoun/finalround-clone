@@ -203,6 +203,55 @@ code {
   color: var(--muted);
 }
 
+.badgePro {
+  background: rgba(124, 92, 255, 0.2);
+  border-color: var(--brand);
+  color: #a88fff;
+}
+
+.badgeFree {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: var(--border);
+  color: var(--muted);
+}
+
+.usage-row {
+  display: grid;
+  grid-template-columns: 140px 1fr 80px;
+  gap: 12px;
+  align-items: center;
+}
+
+.usage-label {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.usage-bar-container {
+  height: 6px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.usage-bar {
+  height: 100%;
+  background: var(--brand);
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+.usage-bar.near-limit {
+  background: var(--danger);
+}
+
+.usage-value {
+  font-size: 0.8rem;
+  color: var(--muted);
+  text-align: right;
+  font-family: var(--font-geist-mono, ui-monospace);
+}
+
 .grid2 {
   display: grid;
   grid-template-columns: 1fr;

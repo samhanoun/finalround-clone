@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { jsonError } from '@/lib/api';
 import { rateLimit } from '@/lib/rateLimit';
+import { checkQuota, recordUsage } from '@/lib/quota';
 
 const BodySchema = z.object({
   messages: z
@@ -41,6 +42,19 @@ export async function POST(req: NextRequest) {
   if (userErr || !userData.user) return jsonError(401, 'unauthorized');
   const user = userData.user;
 
+  // Check quota - smart mode or regular copilot minutes
+  const isSmartMode = parse.data.metadata?.smart_mode === true;
+  const counterType = isSmartMode ? 'smart_mode_minutes' : 'copilot_minutes';
+  const quota = await checkQuota(user.id, counterType);
+  if (!quota.allowed) {
+    return jsonError(403, 'quota_exceeded', {
+      type: counterType,
+      used: quota.used,
+      limit: quota.limit,
+      message: `Monthly ${counterType} quota exceeded`,
+    });
+  }
+
   const provider = llmProvider();
   if (provider !== 'openai') return jsonError(400, `unsupported_provider:${provider}`);
 
@@ -70,6 +84,10 @@ export async function POST(req: NextRequest) {
     });
 
     const text = completion.choices[0]?.message?.content ?? '';
+
+    // Estimate minutes used (rough: 1 min per 100k tokens, assume ~4 tokens/word, avg 500 words/request)
+    const estimatedMinutes = 1;
+    await recordUsage(user.id, counterType, estimatedMinutes);
 
     if (job?.id) {
       await admin

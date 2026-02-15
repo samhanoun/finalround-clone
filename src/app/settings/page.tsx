@@ -3,6 +3,7 @@ import { AppShell } from '@/components/AppShell';
 import { RequireAuth } from '@/components/RequireAuth';
 import { SettingsClient } from '@/components/SettingsClient';
 import { createClient } from '@/lib/supabase/server';
+import { UsageWidget } from '@/components/UsageWidget';
 
 export default async function SettingsPage() {
   const supabase = await createClient();
@@ -31,6 +32,9 @@ export default async function SettingsPage() {
           <p className="help">
             <Link href="/dashboard">← Back to dashboard</Link>
           </p>
+          
+          <UsageWidget />
+          
           <SettingsClient initial={(settings ?? null) as any} />
 
           <div className="card">

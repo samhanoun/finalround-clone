@@ -3,6 +3,7 @@ import { AppShell } from '@/components/AppShell';
 import { RequireAuth } from '@/components/RequireAuth';
 import { createClient } from '@/lib/supabase/server';
 import { DashboardClient } from '@/components/DashboardClient';
+import { UsageWidget } from '@/components/UsageWidget';
 
 export default async function DashboardPage() {
   const supabase = await createClient();
@@ -25,6 +26,8 @@ export default async function DashboardPage() {
       <RequireAuth>
         <div className="stack">
           <p className="help">Welcome{data.user?.email ? `, ${data.user.email}` : ''}.</p>
+
+          <UsageWidget />
 
           <DashboardClient />
 
