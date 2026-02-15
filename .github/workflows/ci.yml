@@ -30,9 +30,8 @@ jobs:
 
       - name: Typecheck
         run: npx tsc -p tsconfig.json --noEmit
-
       - name: Unit tests
-        run: npm test --if-present
+        run: npm test
 
       - name: Build
         env:
