@@ -87,18 +87,19 @@ async function upsertSubscription(sub: Stripe.Subscription) {
   const userId = customerRow?.user_id;
   if (!userId) {
     // We don't know who this belongs to yet (e.g., mapping not created).
-    // Keep silent; Stripe will send more events later.
     return;
   }
 
   const price = sub.items.data[0]?.price;
+  const priceId = price?.id ?? null;
 
+  // 1) Always sync raw Stripe subscription snapshot
   await admin.from('stripe_subscriptions').upsert(
     {
       user_id: userId,
       stripe_subscription_id: sub.id,
       stripe_customer_id: String(sub.customer),
-      stripe_price_id: price?.id ?? null,
+      stripe_price_id: priceId,
       status: sub.status,
       currency: (price?.currency ?? sub.currency ?? null) as string | null,
       current_period_start: sub.current_period_start
@@ -112,6 +113,41 @@ async function upsertSubscription(sub: Stripe.Subscription) {
     { onConflict: 'stripe_subscription_id' }
   );
 
-  // Optional: also sync app plan subscription table (plans/subscriptions) here.
-  // We'll wire this after we decide mapping rules (e.g., active/trialing => pro).
+  // 2) Map Stripe subscription -> app plan (Pro)
+  // Only map known Pro price ids.
+  const isProPrice =
+    !!priceId && (priceId === env.PRICE_ID_PRO_EUR || priceId === env.PRICE_ID_PRO_USD);
+
+  if (!isProPrice) return;
+
+  const isActive = sub.status === 'active' || sub.status === 'trialing';
+
+  if (isActive) {
+    await admin.from('subscriptions').upsert(
+      {
+        user_id: userId,
+        plan_id: 'pro',
+        status: 'active',
+        current_period_start: sub.current_period_start
+          ? new Date(sub.current_period_start * 1000).toISOString()
+          : null,
+        current_period_end: sub.current_period_end
+          ? new Date(sub.current_period_end * 1000).toISOString()
+          : null,
+      },
+      { onConflict: 'user_id,plan_id' }
+    );
+  } else {
+    // Mark any existing Pro row inactive; user falls back to Free by default.
+    await admin
+      .from('subscriptions')
+      .update({
+        status: 'canceled',
+        current_period_end: sub.current_period_end
+          ? new Date(sub.current_period_end * 1000).toISOString()
+          : null,
+      })
+      .eq('user_id', userId)
+      .eq('plan_id', 'pro');
+  }
 }
