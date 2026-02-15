@@ -69,3 +69,17 @@ jobs:
         env:
           GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
         continue-on-error: true
+
+      # GitGuardian (ggshield): warn on PRs, block on pushes to master
+      - name: Secret scan (GitGuardian) — warn on PR
+        if: github.event_name == 'pull_request'
+        uses: GitGuardian/ggshield/actions/secret@v1.29.0
+        env:
+          GITGUARDIAN_API_KEY: ${{ secrets.GITGUARDIAN_API_KEY }}
+        continue-on-error: true
+
+      - name: Secret scan (GitGuardian) — block on master
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        uses: GitGuardian/ggshield/actions/secret@v1.29.0
+        env:
+          GITGUARDIAN_API_KEY: ${{ secrets.GITGUARDIAN_API_KEY }}
