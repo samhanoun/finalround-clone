@@ -1,6 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin';
 import { jsonError } from '@/lib/api';
-import { NextRequest } from 'next/server';
 
 function admin() {
   // IMPORTANT: don't initialize at module-eval time (Next build imports API routes).
@@ -84,8 +83,7 @@ export async function recordUsage(
 // Quota enforcement middleware for API routes
 export async function enforceQuota(
   userId: string,
-  counterType: CounterType,
-  req: NextRequest
+  counterType: CounterType
 ) {
   const quota = await checkQuota(userId, counterType);
   

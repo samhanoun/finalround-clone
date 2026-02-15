@@ -3,7 +3,14 @@
 import { useMemo, useState } from 'react';
 
 type Doc = { id: string; filename: string | null; created_at: string };
-type Gen = { id: string; status: string; created_at: string; input: any; output: any; document_id: string | null };
+type Gen = {
+  id: string;
+  status: string;
+  created_at: string;
+  input: Record<string, unknown>;
+  output: Record<string, unknown>;
+  document_id: string | null;
+};
 
 export function ResumeClient(props: { initialDocs: Doc[]; initialGenerations: Gen[] }) {
   const [docs, setDocs] = useState<Doc[]>(props.initialDocs ?? []);

@@ -13,7 +13,7 @@ type Feedback = {
   id: string;
   score: number | null;
   notes: string | null;
-  rubric: Record<string, any>;
+  rubric: Record<string, unknown>;
   created_at: string;
 };
 
@@ -70,7 +70,7 @@ export function InterviewClient(props: {
     setFeedbackSaved(null);
     setSavingFeedback(true);
 
-    let rubricObj: any = {};
+    let rubricObj: Record<string, unknown> = {};
     try {
       rubricObj = rubric.trim() ? JSON.parse(rubric) : {};
     } catch {
@@ -79,7 +79,7 @@ export function InterviewClient(props: {
       return;
     }
 
-    const payload: any = {
+    const payload: { notes?: string; rubric: Record<string, unknown>; score?: number } = {
       notes: notes.trim() || undefined,
       rubric: rubricObj,
     };

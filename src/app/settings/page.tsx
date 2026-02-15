@@ -35,7 +35,7 @@ export default async function SettingsPage() {
           
           <UsageWidget />
           
-          <SettingsClient initial={(settings ?? null) as any} />
+          <SettingsClient initial={settings ?? null} />
 
           <div className="card">
             <div className="cardInner stack">

@@ -37,7 +37,10 @@ export default async function ResumePage() {
           <p className="help">
             <Link href="/dashboard">← Back to dashboard</Link>
           </p>
-          <ResumeClient initialDocs={(docs ?? []) as any} initialGenerations={(generations ?? []) as any} />
+          <ResumeClient
+            initialDocs={(docs ?? []) as unknown as Parameters<typeof ResumeClient>[0]['initialDocs']}
+            initialGenerations={(generations ?? []) as unknown as Parameters<typeof ResumeClient>[0]['initialGenerations']}
+          />
         </div>
       </RequireAuth>
     </AppShell>

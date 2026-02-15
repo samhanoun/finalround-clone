@@ -49,7 +49,11 @@ export default async function InterviewPage(props: { params: Promise<{ id: strin
             <span className="badge">{session?.status ?? 'unknown'}</span>
           </div>
 
-          <InterviewClient sessionId={id} initialMessages={(messages ?? []) as any} initialFeedback={(feedback ?? []) as any} />
+          <InterviewClient
+            sessionId={id}
+            initialMessages={(messages ?? []) as unknown as Parameters<typeof InterviewClient>[0]['initialMessages']}
+            initialFeedback={(feedback ?? []) as unknown as Parameters<typeof InterviewClient>[0]['initialFeedback']}
+          />
         </div>
       </RequireAuth>
     </AppShell>
