@@ -88,6 +88,25 @@ export function ResumeClient(props: { initialDocs: Doc[]; initialGenerations: Ge
     }
   }
 
+  async function download(docId: string) {
+    setError(null);
+    setOk(null);
+
+    try {
+      const res = await fetch(`/api/resume/${docId}/download`);
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error ?? 'Download failed');
+
+      const url = String(json.url || '');
+      if (!url) throw new Error('Missing signed URL');
+
+      // Trigger download in a new tab.
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Download failed');
+    }
+  }
+
   return (
     <div className="grid2" style={{ alignItems: 'start' }}>
       <section className="card" aria-label="Upload and generate">
@@ -159,9 +178,16 @@ export function ResumeClient(props: { initialDocs: Doc[]; initialGenerations: Ge
           <ul className="stack" style={{ listStyle: 'none', padding: 0, margin: 0 }}>
             {docs.length ? (
               docs.map((d) => (
-                <li key={d.id} className="row" style={{ justifyContent: 'space-between' }}>
-                  <span>{d.filename ?? d.id}</span>
-                  <span className="small mono">{new Date(d.created_at).toLocaleString()}</span>
+                <li key={d.id} className="row" style={{ justifyContent: 'space-between', gap: 12 }}>
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {d.filename ?? d.id}
+                  </span>
+                  <span className="row" style={{ gap: 8 }}>
+                    <button className="button" type="button" onClick={() => void download(d.id)}>
+                      Download
+                    </button>
+                    <span className="small mono">{new Date(d.created_at).toLocaleString()}</span>
+                  </span>
                 </li>
               ))
             ) : (
