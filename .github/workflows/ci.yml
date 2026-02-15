@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint_typecheck_test_build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npx tsc -p tsconfig.json --noEmit
+
+      - name: Unit tests
+        run: npm test --if-present
+
+      - name: Build
+        env:
+          # Minimal env needed to avoid build-time failures when API routes import server code.
+          NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: dummy
+          SUPABASE_SERVICE_ROLE_KEY: dummy
+          OPENAI_API_KEY: dummy
+          STRIPE_SECRET_KEY: dummy
+          STRIPE_WEBHOOK_SECRET: dummy
+          PRICE_ID_PRO_EUR: dummy
+          PRICE_ID_PRO_USD: dummy
+          NEXT_PUBLIC_APP_URL: https://example.com
+        run: npm run build
+
+  security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Dependency audit (npm)
+        run: npm audit --audit-level=high
+
+      - name: Secret scan (gitleaks)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+        continue-on-error: true
