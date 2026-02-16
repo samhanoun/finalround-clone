@@ -1,3 +1,5 @@
+import type { NextRequest } from 'next/server';
+
 jest.mock('next/server', () => ({
   NextResponse: {
     json: (body: unknown, init?: { status?: number }) => ({
@@ -120,9 +122,9 @@ describe('copilot session delete route security responses', () => {
       headers: new Headers({
         'x-request-id': 'req-delete-ownership',
       }),
-    } as unknown as Request;
+    } as unknown as NextRequest;
 
-    const response = await DELETE(req as never, {
+    const response = await DELETE(req, {
       params: Promise.resolve({ id: '11111111-1111-1111-1111-111111111111' }),
     });
 
@@ -148,9 +150,9 @@ describe('copilot session delete route security responses', () => {
       headers: new Headers({
         'x-request-id': 'req-delete-500',
       }),
-    } as unknown as Request;
+    } as unknown as NextRequest;
 
-    const response = await DELETE(req as never, {
+    const response = await DELETE(req, {
       params: Promise.resolve({ id: '11111111-1111-1111-1111-111111111111' }),
     });
 

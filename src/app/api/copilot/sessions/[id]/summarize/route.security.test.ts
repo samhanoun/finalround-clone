@@ -1,3 +1,5 @@
+import type { NextRequest } from 'next/server';
+
 jest.mock('next/server', () => ({
   NextResponse: {
     json: (body: unknown, init?: { status?: number }) => ({
@@ -101,7 +103,7 @@ describe('copilot summarize route security responses', () => {
       headers: new Headers({
         'x-request-id': 'req-summary-123',
       }),
-    } as unknown as Request;
+    } as unknown as NextRequest;
 
     const response = await POST(req, {
       params: Promise.resolve({ id: '22222222-2222-2222-2222-222222222222' }),
@@ -128,7 +130,7 @@ describe('copilot summarize route security responses', () => {
 
     const req = {
       headers: new Headers(),
-    } as unknown as Request;
+    } as unknown as NextRequest;
 
     const response = await POST(req, {
       params: Promise.resolve({ id: '22222222-2222-2222-2222-222222222222' }),
