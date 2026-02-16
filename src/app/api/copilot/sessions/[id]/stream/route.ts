@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { jsonError } from '@/lib/api';
 import { createClient } from '@/lib/supabase/server';
 import { rateLimit } from '@/lib/rateLimit';
+import { isSessionHeartbeatExpired, withHeartbeatMetadata } from '@/lib/copilotSession';
 
 interface Params {
   params: Promise<{ id: string }>;
@@ -31,12 +32,23 @@ type EventRow = {
 
 const POLL_MS = 1500;
 
-function sse(event: string, payload: unknown) {
-  return `event: ${event}\ndata: ${JSON.stringify({ type: event, payload })}\n\n`;
+function sse(event: string, payload: unknown, id?: string) {
+  const prefix = id ? `id: ${id}\n` : '';
+  return `${prefix}event: ${event}\ndata: ${JSON.stringify({ type: event, payload })}\n\n`;
 }
 
 function sleep(ms: number) {
   return new Promise<void>((resolve) => setTimeout(resolve, ms));
+}
+
+function parseEventCursor(raw: string | null): { createdAt: string } | null {
+  if (!raw) return null;
+  const parts = raw.split('::');
+  if (parts.length !== 2) return null;
+  const [createdAt, id] = parts;
+  if (!createdAt || !id) return null;
+  if (Number.isNaN(new Date(createdAt).getTime())) return null;
+  return { createdAt };
 }
 
 export const runtime = 'nodejs';
@@ -63,52 +75,83 @@ export async function GET(req: NextRequest, { params }: Params) {
   if (session.user_id !== userData.user.id) return jsonError(403, 'forbidden');
 
   const encoder = new TextEncoder();
+  const resumeCursor = parseEventCursor(req.headers.get('last-event-id'));
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       controller.enqueue(encoder.encode(sse('connected', { sessionId: id })));
 
-      const sent = new Set<string>();
       let keepRunning = true;
+      let cursor = resumeCursor;
 
       req.signal.addEventListener('abort', () => {
         keepRunning = false;
       });
 
       while (keepRunning) {
-        const [{ data: currentSession }, { data: events }] = await Promise.all([
-          supabase
-            .from('copilot_sessions')
-            .select('id, status, title, started_at, stopped_at, consumed_minutes')
-            .eq('id', id)
-            .maybeSingle<Pick<SessionRow, 'id' | 'status' | 'title' | 'started_at' | 'stopped_at' | 'consumed_minutes'>>(),
-          supabase
-            .from('copilot_events')
-            .select('id, event_type, payload, created_at')
-            .eq('session_id', id)
-            .order('created_at', { ascending: true })
-            .limit(300)
-            .returns<EventRow[]>(),
-        ]);
+        const { data: currentSession } = await supabase
+          .from('copilot_sessions')
+          .select('id, status, title, started_at, stopped_at, consumed_minutes, metadata')
+          .eq('id', id)
+          .maybeSingle<Pick<SessionRow, 'id' | 'status' | 'title' | 'started_at' | 'stopped_at' | 'consumed_minutes' | 'metadata'>>();
 
         if (!currentSession) {
           controller.enqueue(encoder.encode(sse('session', { ...session, status: 'expired' })));
           break;
         }
 
-        controller.enqueue(
-          encoder.encode(
-            sse('snapshot', {
-              session: currentSession,
-              events: events ?? [],
-            }),
-          ),
-        );
+        if (isSessionHeartbeatExpired(currentSession)) {
+          const nowIso = new Date().toISOString();
+
+          const { data: expiredSession } = await supabase
+            .from('copilot_sessions')
+            .update({
+              status: 'expired',
+              stopped_at: nowIso,
+              metadata: {
+                ...withHeartbeatMetadata(currentSession.metadata, nowIso),
+                expired_reason: 'heartbeat_timeout',
+              },
+            })
+            .eq('id', id)
+            .eq('user_id', userData.user.id)
+            .eq('status', 'active')
+            .select('id, status, title, started_at, stopped_at, consumed_minutes, metadata')
+            .maybeSingle<Pick<SessionRow, 'id' | 'status' | 'title' | 'started_at' | 'stopped_at' | 'consumed_minutes' | 'metadata'>>();
+
+          const payload = expiredSession ?? { ...currentSession, status: 'expired', stopped_at: nowIso };
+          controller.enqueue(encoder.encode(sse('session', payload)));
+          break;
+        }
+
+        let eventQuery = supabase
+          .from('copilot_events')
+          .select('id, event_type, payload, created_at')
+          .eq('session_id', id)
+          .order('created_at', { ascending: true })
+          .limit(300);
+
+        if (cursor) {
+          eventQuery = eventQuery.gt('created_at', cursor.createdAt);
+        }
+
+        const { data: events } = await eventQuery.returns<EventRow[]>();
+
+        if (!cursor) {
+          controller.enqueue(
+            encoder.encode(
+              sse('snapshot', {
+                session: currentSession,
+                events: events ?? [],
+              }),
+            ),
+          );
+        }
 
         for (const row of events ?? []) {
-          if (sent.has(row.id)) continue;
-          sent.add(row.id);
-          controller.enqueue(encoder.encode(sse('copilot_event', row)));
+          const eventCursor = `${row.created_at}::${row.id}`;
+          cursor = { createdAt: row.created_at };
+          controller.enqueue(encoder.encode(sse('copilot_event', row, eventCursor)));
         }
 
         controller.enqueue(encoder.encode(sse('session', currentSession)));

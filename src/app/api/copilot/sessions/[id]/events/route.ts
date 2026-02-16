@@ -6,6 +6,7 @@ import { llmProvider, requireEnv } from '@/lib/env';
 import { createClient } from '@/lib/supabase/server';
 import { rateLimit } from '@/lib/rateLimit';
 import { sanitizeCopilotText } from '@/lib/copilotSecurity';
+import { isSessionHeartbeatExpired, withHeartbeatMetadata } from '@/lib/copilotSession';
 
 interface Params {
   params: Promise<{ id: string }>;
@@ -64,12 +65,32 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   const { data: session, error: sessionError } = await supabase
     .from('copilot_sessions')
-    .select('id, user_id, status, metadata')
+    .select('id, user_id, status, started_at, metadata')
     .eq('id', id)
-    .single<{ id: string; user_id: string; status: string; metadata: Record<string, unknown> | null }>();
+    .single<{ id: string; user_id: string; status: string; started_at: string; metadata: Record<string, unknown> | null }>();
 
   if (sessionError || !session) return jsonError(404, 'session_not_found');
   if (session.user_id !== userData.user.id) return jsonError(403, 'forbidden');
+
+  if (isSessionHeartbeatExpired(session)) {
+    const nowIso = new Date().toISOString();
+    await supabase
+      .from('copilot_sessions')
+      .update({
+        status: 'expired',
+        stopped_at: nowIso,
+        metadata: {
+          ...withHeartbeatMetadata(session.metadata, nowIso),
+          expired_reason: 'heartbeat_timeout',
+        },
+      })
+      .eq('id', id)
+      .eq('user_id', userData.user.id)
+      .eq('status', 'active');
+
+    return jsonError(409, 'session_expired');
+  }
+
   if (session.status !== 'active') return jsonError(409, 'session_not_active');
 
   const cleanedInput = sanitizeCopilotText(parse.data.text);

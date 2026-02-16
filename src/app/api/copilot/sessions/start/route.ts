@@ -4,6 +4,7 @@ import { jsonError } from '@/lib/api';
 import { createClient } from '@/lib/supabase/server';
 import { rateLimit } from '@/lib/rateLimit';
 import { getCopilotQuotaSnapshot } from '@/lib/copilot';
+import { withHeartbeatMetadata } from '@/lib/copilotSession';
 
 const BodySchema = z.object({
   title: z.string().min(1).max(200).optional(),
@@ -34,15 +35,17 @@ export async function POST(req: NextRequest) {
     });
   }
 
+  const nowIso = new Date().toISOString();
+
   const { data, error } = await supabase
     .from('copilot_sessions')
     .insert({
       user_id: userId,
       interview_session_id: parse.data.interviewSessionId ?? null,
       title: parse.data.title ?? null,
-      metadata: parse.data.metadata ?? {},
+      metadata: withHeartbeatMetadata(parse.data.metadata ?? {}, nowIso),
       status: 'active',
-      started_at: new Date().toISOString(),
+      started_at: nowIso,
     })
     .select('id, user_id, interview_session_id, title, metadata, status, started_at, stopped_at, duration_seconds, consumed_minutes, created_at, updated_at')
     .single();
