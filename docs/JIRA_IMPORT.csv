@@ -1,0 +1,39 @@
+Issue Type,Summary,Description,Epic Name,Epic Link,Labels,Priority
+Epic,M0 Platform Foundation,"Production-capable base: auth, schema, telemetry, CI/CD, test harness",M0 Platform Foundation,,m0;foundation,Highest
+Story,FE-001 App shell + auth flows + onboarding scaffolding,"Implement app shell, auth pages, onboarding scaffolding and guarded routes",,M0 Platform Foundation,frontend;auth;m0,High
+Story,FE-002 Design system primitives + accessibility baseline,"Create shared UI primitives, tokens, a11y checklist and keyboard navigation",,M0 Platform Foundation,frontend;design-system;a11y;m0,Medium
+Story,BE-001 API gateway + auth service + RBAC,"Add gateway conventions, auth middleware, RBAC checks",,M0 Platform Foundation,backend;auth;rbac;m0,Highest
+Story,BE-002 PostgreSQL migrations for profiles/sessions/jobs/resumes,"Create core schema and indexes per PRD",,M0 Platform Foundation,backend;db;migrations;m0,Highest
+Story,BE-003 Event ingestion pipeline + analytics contract,"Define event schema and ingestion endpoint",,M0 Platform Foundation,backend;analytics;events;m0,High
+Story,DEV-001 CI/CD + environments + IaC baseline + secrets management,"Harden build, env separation, and secret handling",,M0 Platform Foundation,devops;security;m0,High
+Story,QA-001 Test harness skeleton,"Unit/integration/e2e skeleton and quality gates",,M0 Platform Foundation,qa;testing;m0,Medium
+Epic,M1 Live Copilot + Mock MVP,"End-to-end interview prep loop with realtime hints and scoring",M1 Live Copilot + Mock MVP,,m1;copilot;mock,Highest
+Story,FE-010 Realtime interview UI + suggestion card stack,"Build copilot screen with transcript and suggestion cards",,M1 Live Copilot + Mock MVP,frontend;realtime;copilot;m1,Highest
+Story,FE-011 Session controls (hotkeys/hide/mute/timer),"Implement fast controls for interview-time usage",,M1 Live Copilot + Mock MVP,frontend;ux;copilot;m1,High
+Story,FE-012 Mock interview flow + score report page,"Create mock session flow and post-session report",,M1 Live Copilot + Mock MVP,frontend;mock;m1,High
+Story,BE-010 Streaming session endpoint + WebSocket transport,"Implement realtime channel and session lifecycle",,M1 Live Copilot + Mock MVP,backend;realtime;ws;m1,Highest
+Story,BE-011 STT adapter + transcript persistence,"Integrate streaming transcription and store partial/final chunks",,M1 Live Copilot + Mock MVP,backend;stt;db;m1,Highest
+Story,BE-012 Copilot orchestration (prompts + role packs),"Context builder and response generation templates",,M1 Live Copilot + Mock MVP,backend;llm;copilot;m1,Highest
+Story,BE-013 Mock scoring engine + rubric service,"Compute rubric scores and improvement plan",,M1 Live Copilot + Mock MVP,backend;scoring;mock;m1,High
+Story,QA-010 Latency/load tests for realtime,"Define SLO tests and benchmark p75/p95 latency",,M1 Live Copilot + Mock MVP,qa;performance;m1,High
+Epic,M2 Resume + Job Hunter,"Convert prep into applications with ATS and tracking",M2 Resume + Job Hunter,,m2;resume;jobs,High
+Story,FE-020 Resume upload/analyze/rewrite UI,"UI for parser results, JD match, rewrite iterations",,M2 Resume + Job Hunter,frontend;resume;m2,High
+Story,FE-021 Job board Kanban + reminders UI,"Pipeline board and follow-up controls",,M2 Resume + Job Hunter,frontend;jobs;m2,Medium
+Story,BE-020 Resume parsing + ATS scoring service,"Extract sections and compute ATS score",,M2 Resume + Job Hunter,backend;resume;ats;m2,High
+Story,BE-021 JD match engine + recommendations,"Compute match score and missing keywords",,M2 Resume + Job Hunter,backend;matching;m2,High
+Story,BE-022 Job import adapters + deduplication,"Import from URL/APIs and dedupe records",,M2 Resume + Job Hunter,backend;jobs;ingestion;m2,Medium
+Story,BE-023 Application pipeline APIs + reminders scheduler,"CRUD stages and scheduled reminders",,M2 Resume + Job Hunter,backend;api;scheduler;m2,Medium
+Story,DATA-020 Funnel and conversion datasets,"Materialized views/queries for dashboard KPIs",,M2 Resume + Job Hunter,data;analytics;m2,Medium
+Epic,M3 Coding Copilot + Advanced Analytics,"Technical interview differentiation and deeper insights",M3 Coding Copilot + Advanced Analytics,,m3;coding;analytics,High
+Story,FE-030 Coding session workspace + hint ladder UI,"Dedicated coding view and progressive hints",,M3 Coding Copilot + Advanced Analytics,frontend;coding;m3,High
+Story,FE-031 Post-coding report + edge-case explorer,"Detailed report with weaknesses and missed tests",,M3 Coding Copilot + Advanced Analytics,frontend;coding;reports;m3,Medium
+Story,BE-030 Coding evaluator service (complexity + quality),"Assess solution reasoning and complexity",,M3 Coding Copilot + Advanced Analytics,backend;coding;evaluation;m3,High
+Story,BE-031 Test-case generator + execution sandbox,"Generate tests and safely run candidate code",,M3 Coding Copilot + Advanced Analytics,backend;sandbox;testing;m3,High
+Story,BE-032 Personalized weakness model + coaching insights,"Longitudinal insight model from session history",,M3 Coding Copilot + Advanced Analytics,backend;ml;analytics;m3,Medium
+Story,DATA-030 Cohort retention + model cost analytics,"Track retention and COGS by cohort",,M3 Coding Copilot + Advanced Analytics,data;finance;analytics;m3,Medium
+Epic,M4 Compliance + GA,"Enterprise trust controls and launch readiness",M4 Compliance + GA,,m4;compliance;ga,Highest
+Story,SEC-040 Audit logs + consent records + access reviews,"Immutable logs and evidence for audits",,M4 Compliance + GA,security;compliance;m4,Highest
+Story,SEC-041 Data export/delete workflows,"DSAR-compliant export/delete flows",,M4 Compliance + GA,security;privacy;m4,High
+Story,OPS-040 Multi-region failover + SLO dashboards,"Operational resilience and incident visibility",,M4 Compliance + GA,ops;reliability;m4,High
+Story,GTM-040 Pricing packaging + plan enforcement,"Finalize SKUs/limits and production billing checks",,M4 Compliance + GA,product;billing;m4,High
+Story,QA-040 Full regression + chaos + DR drills,"Final quality gates before GA",,M4 Compliance + GA,qa;resilience;m4,High
