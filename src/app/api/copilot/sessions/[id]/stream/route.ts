@@ -3,6 +3,7 @@ import { jsonError } from '@/lib/api';
 import { createClient } from '@/lib/supabase/server';
 import { rateLimit } from '@/lib/rateLimit';
 import { isSessionHeartbeatExpired, withHeartbeatMetadata } from '@/lib/copilotSession';
+import { buildEventCursor, filterEventsAfterCursor, parseEventCursor } from '@/lib/copilotStreamCursor';
 
 interface Params {
   params: Promise<{ id: string }>;
@@ -39,16 +40,6 @@ function sse(event: string, payload: unknown, id?: string) {
 
 function sleep(ms: number) {
   return new Promise<void>((resolve) => setTimeout(resolve, ms));
-}
-
-function parseEventCursor(raw: string | null): { createdAt: string } | null {
-  if (!raw) return null;
-  const parts = raw.split('::');
-  if (parts.length !== 2) return null;
-  const [createdAt, id] = parts;
-  if (!createdAt || !id) return null;
-  if (Number.isNaN(new Date(createdAt).getTime())) return null;
-  return { createdAt };
 }
 
 export const runtime = 'nodejs';
@@ -129,13 +120,15 @@ export async function GET(req: NextRequest, { params }: Params) {
           .select('id, event_type, payload, created_at')
           .eq('session_id', id)
           .order('created_at', { ascending: true })
+          .order('id', { ascending: true })
           .limit(300);
 
         if (cursor) {
-          eventQuery = eventQuery.gt('created_at', cursor.createdAt);
+          eventQuery = eventQuery.gte('created_at', cursor.createdAt);
         }
 
         const { data: events } = await eventQuery.returns<EventRow[]>();
+        const nextEvents = filterEventsAfterCursor(events ?? [], cursor);
 
         if (!cursor) {
           controller.enqueue(
@@ -148,9 +141,9 @@ export async function GET(req: NextRequest, { params }: Params) {
           );
         }
 
-        for (const row of events ?? []) {
-          const eventCursor = `${row.created_at}::${row.id}`;
-          cursor = { createdAt: row.created_at };
+        for (const row of nextEvents) {
+          const eventCursor = buildEventCursor(row.created_at, row.id);
+          cursor = { createdAt: row.created_at, id: row.id };
           controller.enqueue(encoder.encode(sse('copilot_event', row, eventCursor)));
         }
 

@@ -108,15 +108,32 @@ export function LiveCopilotClient() {
     }
   }
 
+  function markSessionExpired(message?: string, stoppedAt?: string | null) {
+    stopHeartbeat();
+    setSession((prev) =>
+      prev
+        ? {
+            ...prev,
+            status: 'expired',
+            stopped_at: stoppedAt ?? prev.stopped_at,
+          }
+        : prev,
+    );
+    setError(message ?? 'Session expired due to inactivity. Start a new session to continue.');
+  }
+
   function startHeartbeat(sessionId: string) {
     stopHeartbeat();
 
     const ping = async () => {
       try {
         const res = await fetch(`/api/copilot/sessions/${sessionId}/heartbeat`, { method: 'POST' });
-        if (res.status === 409) {
-          stopHeartbeat();
-          setError('Session expired due to inactivity. Start a new session to continue.');
+        const json = (await res.json().catch(() => null)) as
+          | { state?: string; message?: string; session?: { stopped_at?: string | null } }
+          | null;
+
+        if (res.status === 409 || json?.state === 'expired') {
+          markSessionExpired(json?.message, json?.session?.stopped_at ?? null);
         }
       } catch {
         // Ignore transient heartbeat errors; stream can still recover on reconnect.
@@ -167,7 +184,9 @@ export function LiveCopilotClient() {
       const parsed = parseEnvelope<CopilotSession>((event as MessageEvent<string>).data);
       if (!parsed) return;
       setSession(parsed.payload);
-      if (parsed.payload.status !== 'active') {
+      if (parsed.payload.status === 'expired') {
+        markSessionExpired(undefined, parsed.payload.stopped_at);
+      } else if (parsed.payload.status !== 'active') {
         stopHeartbeat();
       }
     });

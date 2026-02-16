@@ -8,6 +8,7 @@ import { rateLimit } from '@/lib/rateLimit';
 import { sanitizeCopilotText } from '@/lib/copilotSecurity';
 import { isSessionHeartbeatExpired, withHeartbeatMetadata } from '@/lib/copilotSession';
 import { buildSuggestionPrompt, parseSuggestionContent } from '@/lib/copilotSuggestion';
+import { sessionExpiredResponse } from '@/lib/copilotApiResponse';
 
 interface Params {
   params: Promise<{ id: string }>;
@@ -75,7 +76,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       .eq('user_id', userData.user.id)
       .eq('status', 'active');
 
-    return jsonError(409, 'session_expired');
+    return sessionExpiredResponse(session, nowIso);
   }
 
   if (session.status !== 'active') return jsonError(409, 'session_not_active');

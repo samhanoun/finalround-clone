@@ -3,6 +3,7 @@ import { jsonError } from '@/lib/api';
 import { createClient } from '@/lib/supabase/server';
 import { rateLimit } from '@/lib/rateLimit';
 import { isSessionHeartbeatExpired, withHeartbeatMetadata } from '@/lib/copilotSession';
+import { sessionExpiredResponse } from '@/lib/copilotApiResponse';
 
 interface Params {
   params: Promise<{ id: string }>;
@@ -56,7 +57,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       .eq('status', 'active');
 
     if (expireError) return jsonError(500, 'db_error', expireError);
-    return NextResponse.json({ ok: false, state: 'expired' }, { status: 409 });
+    return sessionExpiredResponse(session, nowIso);
   }
 
   const { error: heartbeatError } = await supabase
