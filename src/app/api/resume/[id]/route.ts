@@ -11,7 +11,7 @@ const PatchSchema = z.object({
 
 export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
-  const rl = rateLimit({ key: `resume:id:get:${ip}`, limit: 120, windowMs: 60_000 });
+  const rl = await rateLimit({ key: `resume:id:get:${ip}`, limit: 120, windowMs: 60_000 });
   if (!rl.ok) return NextResponse.json({ error: 'rate_limited' }, { status: 429 });
 
   const { id } = await ctx.params;
@@ -27,7 +27,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
 
 export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
-  const rl = rateLimit({ key: `resume:id:patch:${ip}`, limit: 60, windowMs: 60_000 });
+  const rl = await rateLimit({ key: `resume:id:patch:${ip}`, limit: 60, windowMs: 60_000 });
   if (!rl.ok) return NextResponse.json({ error: 'rate_limited' }, { status: 429 });
 
   const { id } = await ctx.params;
@@ -51,7 +51,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
 
 export async function DELETE(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
-  const rl = rateLimit({ key: `resume:id:del:${ip}`, limit: 30, windowMs: 60_000 });
+  const rl = await rateLimit({ key: `resume:id:del:${ip}`, limit: 30, windowMs: 60_000 });
   if (!rl.ok) return NextResponse.json({ error: 'rate_limited' }, { status: 429 });
 
   const { id } = await ctx.params;

@@ -12,7 +12,7 @@ const BodySchema = z.object({
 
 export async function POST(req: NextRequest) {
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
-  const rl = rateLimit({ key: `resume_generate:post:${ip}`, limit: 20, windowMs: 60_000 });
+  const rl = await rateLimit({ key: `resume_generate:post:${ip}`, limit: 20, windowMs: 60_000 });
   if (!rl.ok) return NextResponse.json({ error: 'rate_limited' }, { status: 429 });
 
   const parse = BodySchema.safeParse(await req.json().catch(() => null));

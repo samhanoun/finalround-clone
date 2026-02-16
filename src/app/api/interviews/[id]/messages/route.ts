@@ -13,7 +13,7 @@ const CreateSchema = z.object({
 
 export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
-  const rl = rateLimit({ key: `interview_msgs:get:${ip}`, limit: 120, windowMs: 60_000 });
+  const rl = await rateLimit({ key: `interview_msgs:get:${ip}`, limit: 120, windowMs: 60_000 });
   if (!rl.ok) return NextResponse.json({ error: 'rate_limited' }, { status: 429 });
 
   const { id } = await ctx.params;
@@ -33,7 +33,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
 
 export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
-  const rl = rateLimit({ key: `interview_msgs:post:${ip}`, limit: 60, windowMs: 60_000 });
+  const rl = await rateLimit({ key: `interview_msgs:post:${ip}`, limit: 60, windowMs: 60_000 });
   if (!rl.ok) return NextResponse.json({ error: 'rate_limited' }, { status: 429 });
 
   const { id } = await ctx.params;

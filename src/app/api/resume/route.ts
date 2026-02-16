@@ -12,7 +12,7 @@ const CreateRunSchema = z.object({
 
 export async function GET(req: NextRequest) {
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
-  const rl = rateLimit({ key: `resume:get:${ip}`, limit: 60, windowMs: 60_000 });
+  const rl = await rateLimit({ key: `resume:get:${ip}`, limit: 60, windowMs: 60_000 });
   if (!rl.ok) return NextResponse.json({ error: 'rate_limited' }, { status: 429 });
 
   const supabase = await createClient();
@@ -30,7 +30,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
-  const rl = rateLimit({ key: `resume:post:${ip}`, limit: 30, windowMs: 60_000 });
+  const rl = await rateLimit({ key: `resume:post:${ip}`, limit: 30, windowMs: 60_000 });
   if (!rl.ok) return NextResponse.json({ error: 'rate_limited' }, { status: 429 });
 
   const parse = CreateRunSchema.safeParse(await req.json().catch(() => null));

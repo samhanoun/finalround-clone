@@ -21,6 +21,10 @@ const RawEnvSchema = z.object({
 
   // App base URL (used for Stripe redirects)
   NEXT_PUBLIC_APP_URL: z.string().url().optional(),
+
+  // Rate limiting (Upstash Redis)
+  UPSTASH_REDIS_REST_URL: z.string().url().optional(),
+  UPSTASH_REDIS_REST_TOKEN: z.string().min(1).optional(),
 });
 
 export const env = RawEnvSchema.parse({
@@ -35,6 +39,9 @@ export const env = RawEnvSchema.parse({
   PRICE_ID_PRO_EUR: process.env.PRICE_ID_PRO_EUR,
   PRICE_ID_PRO_USD: process.env.PRICE_ID_PRO_USD,
   NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
+
+  UPSTASH_REDIS_REST_URL: process.env.UPSTASH_REDIS_REST_URL,
+  UPSTASH_REDIS_REST_TOKEN: process.env.UPSTASH_REDIS_REST_TOKEN,
 });
 
 export function requireEnv(name: keyof typeof env): string {

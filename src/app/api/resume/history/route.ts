@@ -5,7 +5,7 @@ import { rateLimit } from '@/lib/rateLimit';
 
 export async function GET(req: NextRequest) {
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
-  const rl = rateLimit({ key: `resume_history:get:${ip}`, limit: 60, windowMs: 60_000 });
+  const rl = await rateLimit({ key: `resume_history:get:${ip}`, limit: 60, windowMs: 60_000 });
   if (!rl.ok) return NextResponse.json({ error: 'rate_limited' }, { status: 429 });
 
   const supabase = await createClient();
