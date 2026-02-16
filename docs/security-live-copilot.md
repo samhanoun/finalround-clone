@@ -81,3 +81,14 @@ Transcript text is scanned for model-control and exfiltration patterns (e.g., "i
 - Add retention jobs (scheduled purge) for events/summaries.
 - Add unit tests for sanitizer edge-cases and prompt-injection pattern tuning.
 - Add DSAR/admin delete endpoint coverage tests.
+
+## 9) Verification Checklist (Request-ID + Safe 5xx Payloads)
+
+Use this checklist for regressions on `events` and `summarize` routes:
+
+- [ ] Route-level Jest tests assert `500` failures return exactly `{"error":"internal_error","extra":{"requestId":"..."}}` shape.
+- [ ] Tests verify `x-request-id` is propagated when present.
+- [ ] Tests verify `crypto.randomUUID()` generated request IDs are used when header is absent.
+- [ ] Tests verify DB/provider/internal fields are **not** present in client payload (`code`, `message`, `details`, `hint`, stack traces).
+- [ ] Route logs still include coarse error classes + request ID for operator debugging (`db_*_failed`, `llm_*_failed`) without raw transcript/prompt content.
+- [ ] `npm test` passes with security route tests in CI.
