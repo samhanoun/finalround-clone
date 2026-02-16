@@ -1,0 +1,114 @@
+.badgeActive {
+  border-color: rgba(26, 194, 115, 0.45);
+  background: rgba(26, 194, 115, 0.14);
+  color: rgba(225, 255, 238, 0.95);
+}
+
+.controlGrid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+  align-items: center;
+}
+
+@media (min-width: 760px) {
+  .controlGrid {
+    grid-template-columns: auto auto 1fr;
+  }
+}
+
+.inlineMeta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.composerCard {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.composerHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.composerControls {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+@media (min-width: 900px) {
+  .composerControls {
+    grid-template-columns: minmax(120px, 180px) repeat(3, auto);
+  }
+}
+
+.sectionTitle {
+  margin: 0 0 8px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.panelHeader {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.feedList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 460px;
+  overflow: auto;
+  display: grid;
+  gap: 10px;
+}
+
+.feedCard {
+  display: grid;
+  gap: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.feedMeta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.feedText {
+  margin: 0;
+  white-space: pre-wrap;
+  line-height: 1.45;
+}
+
+.emptyState {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px dashed rgba(255, 255, 255, 0.2);
+  border-radius: 10px;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.pointsList {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 4px;
+}

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import styles from './LiveCopilotClient.module.css';
 
 interface SpeechRecognitionAlternativeLite {
   transcript: string;
@@ -27,7 +28,6 @@ interface SpeechRecognitionLite extends EventTarget {
 }
 
 type SpeechRecognitionCtor = new () => SpeechRecognitionLite;
-
 
 type CopilotMode = 'general' | 'coding' | 'phone' | 'video';
 
@@ -79,10 +79,12 @@ export function LiveCopilotClient() {
   const [draftSpeaker, setDraftSpeaker] = useState<'interviewer' | 'candidate'>('interviewer');
   const [listening, setListening] = useState(false);
   const [summary, setSummary] = useState<{ content: string; strengths: string[]; weaknesses: string[]; next_steps: string[] } | null>(null);
+  const [summaryLoading, setSummaryLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const streamRef = useRef<EventSource | null>(null);
   const recognitionRef = useRef<SpeechRecognitionLite | null>(null);
+  const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const isActive = session?.status === 'active';
 
@@ -90,10 +92,42 @@ export function LiveCopilotClient() {
     return () => {
       streamRef.current?.close();
       streamRef.current = null;
+      if (heartbeatRef.current) {
+        clearInterval(heartbeatRef.current);
+        heartbeatRef.current = null;
+      }
       recognitionRef.current?.stop();
       recognitionRef.current = null;
     };
   }, []);
+
+  function stopHeartbeat() {
+    if (heartbeatRef.current) {
+      clearInterval(heartbeatRef.current);
+      heartbeatRef.current = null;
+    }
+  }
+
+  function startHeartbeat(sessionId: string) {
+    stopHeartbeat();
+
+    const ping = async () => {
+      try {
+        const res = await fetch(`/api/copilot/sessions/${sessionId}/heartbeat`, { method: 'POST' });
+        if (res.status === 409) {
+          stopHeartbeat();
+          setError('Session expired due to inactivity. Start a new session to continue.');
+        }
+      } catch {
+        // Ignore transient heartbeat errors; stream can still recover on reconnect.
+      }
+    };
+
+    void ping();
+    heartbeatRef.current = setInterval(() => {
+      void ping();
+    }, 20_000);
+  }
 
   function connectStream(sessionId: string) {
     streamRef.current?.close();
@@ -104,6 +138,7 @@ export function LiveCopilotClient() {
 
     es.addEventListener('connected', () => {
       setConnecting(false);
+      startHeartbeat(sessionId);
     });
 
     es.addEventListener('snapshot', (event) => {
@@ -132,11 +167,14 @@ export function LiveCopilotClient() {
       const parsed = parseEnvelope<CopilotSession>((event as MessageEvent<string>).data);
       if (!parsed) return;
       setSession(parsed.payload);
+      if (parsed.payload.status !== 'active') {
+        stopHeartbeat();
+      }
     });
 
     es.onerror = () => {
       setConnecting(false);
-      setError('Live stream disconnected. You can stop and restart the session.');
+      setError('Live stream disconnected. Stop and restart the session to reconnect.');
     };
   }
 
@@ -191,6 +229,7 @@ export function LiveCopilotClient() {
       setSession(json.session);
       streamRef.current?.close();
       streamRef.current = null;
+      stopHeartbeat();
       setConnecting(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to stop session');
@@ -290,10 +329,10 @@ export function LiveCopilotClient() {
   }
 
   async function generateSummary() {
-    if (!session?.id || submitting) return;
+    if (!session?.id || submitting || summaryLoading) return;
 
     setError(null);
-    setSubmitting(true);
+    setSummaryLoading(true);
 
     try {
       const res = await fetch(`/api/copilot/sessions/${session.id}/summarize`, {
@@ -316,46 +355,53 @@ export function LiveCopilotClient() {
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to generate summary');
     } finally {
-      setSubmitting(false);
+      setSummaryLoading(false);
     }
   }
 
   const transcriptRows = useMemo(
-    () => transcript.map((item) => ({
-      id: item.id,
-      text: asText(item.payload.text, asText(item.payload.content, '')),
-      speaker: asText(item.payload.speaker, 'speaker'),
-      created_at: item.created_at,
-    })),
+    () =>
+      transcript.map((item) => ({
+        id: item.id,
+        text: asText(item.payload.text, asText(item.payload.content, '')).trim(),
+        speaker: asText(item.payload.speaker, 'speaker'),
+        created_at: item.created_at,
+      })),
     [transcript],
   );
 
   const suggestionRows = useMemo(
-    () => suggestions.map((item) => ({
-      id: item.id,
-      text: asText(item.payload.text, asText(item.payload.content, '')),
-      category: asText(item.payload.category, 'suggestion'),
-      followUp: asText(item.payload.follow_up, ''),
-      talkingPoints: Array.isArray(item.payload.talking_points)
-        ? item.payload.talking_points.filter((x): x is string => typeof x === 'string')
-        : [],
-      created_at: item.created_at,
-    })),
+    () =>
+      suggestions.map((item) => ({
+        id: item.id,
+        text: asText(item.payload.text, asText(item.payload.content, '')).trim(),
+        category: asText(item.payload.category, 'suggestion'),
+        followUp: asText(item.payload.follow_up, '').trim(),
+        talkingPoints: Array.isArray(item.payload.talking_points)
+          ? item.payload.talking_points.filter((x): x is string => typeof x === 'string')
+          : [],
+        created_at: item.created_at,
+      })),
     [suggestions],
   );
 
+  const streamState = connecting ? 'Connecting…' : streamRef.current ? 'Connected' : 'Disconnected';
+
   return (
-    <div className="stack">
+    <div className="stack" style={{ gap: 16 }}>
       <section className="card">
-        <div className="cardInner stack">
+        <div className="cardInner stack" style={{ gap: 14 }}>
           <div className="row" style={{ justifyContent: 'space-between' }}>
-            <h2 className="cardTitle">Live session controls</h2>
-            <span className="badge">{isActive ? 'Running' : 'Idle'}</span>
+            <div className="stack" style={{ gap: 4 }}>
+              <h2 className="cardTitle">Live session controls</h2>
+              <p className="small" style={{ margin: 0 }}>Start a focused session, then stream questions to get real-time guidance.</p>
+            </div>
+            <span className={`badge ${isActive ? styles.badgeActive : ''}`}>{isActive ? 'Running' : 'Idle'}</span>
           </div>
 
           <div className="grid2">
             <label className="label">
-              Mode
+              Interview mode
               <select
                 className="select"
                 value={mode}
@@ -370,35 +416,44 @@ export function LiveCopilotClient() {
             </label>
 
             <label className="label">
-              Session title (optional)
+              Session title
               <input
                 className="input"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                placeholder="Senior SWE @ Acme"
+                placeholder="e.g. Senior SWE at Acme"
                 disabled={isActive || submitting}
               />
             </label>
           </div>
 
-          <div className="row">
+          <div className={styles.controlGrid}>
             <button className="button buttonPrimary" onClick={startSession} disabled={isActive || submitting} type="button">
               {submitting && !isActive ? 'Starting…' : 'Start session'}
             </button>
             <button className="button buttonDanger" onClick={stopSession} disabled={!isActive || submitting} type="button">
               {submitting && isActive ? 'Stopping…' : 'Stop session'}
             </button>
-            <span className="small">SSE: {connecting ? 'connecting…' : streamRef.current ? 'connected' : 'disconnected'}</span>
+            <div className={styles.inlineMeta}>
+              <span className="small">Stream</span>
+              <span className="badge">{streamState}</span>
+            </div>
           </div>
 
           {session ? (
             <p className="small mono" style={{ margin: 0 }}>
-              Session {session.id} · status={session.status} · started={new Date(session.started_at).toLocaleString()}
+              Session {session.id.slice(0, 8)} · {session.status} · {new Date(session.started_at).toLocaleString()}
             </p>
-          ) : null}
+          ) : (
+            <p className="small" style={{ margin: 0 }}>No active session yet.</p>
+          )}
 
-          <div className="stack" style={{ gap: 10 }}>
-            <div className="row">
+          <div className={styles.composerCard}>
+            <div className={styles.composerHeader}>
+              <h3 className={styles.sectionTitle}>Transcript composer</h3>
+              <span className="small">Mic {listening ? 'on' : 'off'}</span>
+            </div>
+            <div className={styles.composerControls}>
               <select
                 className="select"
                 value={draftSpeaker}
@@ -415,24 +470,23 @@ export function LiveCopilotClient() {
                 onClick={submitTranscriptEvent}
                 disabled={!isActive || !draftText.trim() || submitting}
               >
-                Send transcript line
+                {submitting && isActive ? 'Sending…' : 'Send line'}
               </button>
               <button className="button" type="button" onClick={listening ? stopListening : startListening} disabled={!isActive || submitting}>
                 {listening ? 'Stop mic' : 'Start mic'}
               </button>
-              <button className="button" type="button" onClick={generateSummary} disabled={!session || submitting}>
-                Generate summary
+              <button className="button" type="button" onClick={generateSummary} disabled={!session || summaryLoading || submitting}>
+                {summaryLoading ? 'Generating…' : 'Generate summary'}
               </button>
             </div>
             <textarea
               className="input"
               value={draftText}
               onChange={(e) => setDraftText(e.target.value)}
-              placeholder="Paste interviewer question or transcript line here..."
+              placeholder="Paste the latest question or answer here"
               rows={3}
               disabled={!isActive || submitting}
             />
-            <span className="small">Mic: {listening ? 'listening… (finalized speech fills textbox)' : 'off'}</span>
           </div>
 
           {error ? <div className="error">{error}</div> : null}
@@ -441,86 +495,136 @@ export function LiveCopilotClient() {
 
       <div className="grid2" style={{ alignItems: 'start' }}>
         <section className="card" aria-label="Live transcript panel">
-          <div className="cardInner stack">
-            <h2 className="cardTitle">Transcript</h2>
-            <ol className="stack" style={{ listStyle: 'none', margin: 0, padding: 0, maxHeight: 420, overflow: 'auto' }}>
-              {transcriptRows.length ? transcriptRows.map((row) => (
-                <li key={row.id} className="card" style={{ background: 'rgba(255,255,255,0.03)', boxShadow: 'none' }}>
-                  <div className="cardInner stack" style={{ gap: 6 }}>
-                    <div className="row" style={{ justifyContent: 'space-between' }}>
-                      <span className="badge">{row.speaker}</span>
-                      <span className="small mono">{new Date(row.created_at).toLocaleTimeString()}</span>
-                    </div>
-                    <p style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{row.text || '—'}</p>
+          <div className="cardInner stack" style={{ gap: 12 }}>
+            <div className={styles.panelHeader}>
+              <h2 className="cardTitle">Transcript</h2>
+              <span className="small">{transcriptRows.length} lines</span>
+            </div>
+            {!isActive && transcriptRows.length === 0 ? (
+              <p className={styles.emptyState}>Start a session to capture transcript lines.</p>
+            ) : null}
+            {isActive && transcriptRows.length === 0 ? (
+              <p className={styles.emptyState}>Waiting for transcript input…</p>
+            ) : null}
+            <ol className={styles.feedList}>
+              {transcriptRows.map((row) => (
+                <li key={row.id} className={styles.feedCard}>
+                  <div className={styles.feedMeta}>
+                    <span className="badge">{row.speaker}</span>
+                    <span className="small mono">{new Date(row.created_at).toLocaleTimeString()}</span>
                   </div>
+                  <p className={styles.feedText}>{row.text}</p>
                 </li>
-              )) : <li className="small">No transcript events yet.</li>}
+              ))}
             </ol>
           </div>
         </section>
 
         <section className="card" aria-label="Live suggestions panel">
-          <div className="cardInner stack">
-            <h2 className="cardTitle">Suggestions</h2>
-            <ol className="stack" style={{ listStyle: 'none', margin: 0, padding: 0, maxHeight: 420, overflow: 'auto' }}>
-              {suggestionRows.length ? suggestionRows.map((row) => (
-                <li key={row.id} className="card" style={{ background: 'rgba(255,255,255,0.03)', boxShadow: 'none' }}>
-                  <div className="cardInner stack" style={{ gap: 6 }}>
-                    <div className="row" style={{ justifyContent: 'space-between' }}>
-                      <span className="badge">{row.category}</span>
-                      <span className="small mono">{new Date(row.created_at).toLocaleTimeString()}</span>
-                    </div>
-                    <p style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{row.text || '—'}</p>
-                    {row.talkingPoints.length ? (
-                      <ul style={{ margin: 0, paddingLeft: 18 }}>
-                        {row.talkingPoints.map((point, idx) => (
-                          <li key={`${row.id}-point-${idx}`} className="small">{point}</li>
-                        ))}
-                      </ul>
-                    ) : null}
-                    {row.followUp ? <p className="small" style={{ margin: 0 }}><strong>Follow-up:</strong> {row.followUp}</p> : null}
+          <div className="cardInner stack" style={{ gap: 12 }}>
+            <div className={styles.panelHeader}>
+              <h2 className="cardTitle">Suggestions</h2>
+              <span className="small">{suggestionRows.length} tips</span>
+            </div>
+            {!isActive && suggestionRows.length === 0 ? (
+              <p className={styles.emptyState}>Start a session and send transcript lines to get suggestions.</p>
+            ) : null}
+            {isActive && suggestionRows.length === 0 ? (
+              <p className={styles.emptyState}>Suggestions will appear after transcript lines are sent.</p>
+            ) : null}
+            <ol className={styles.feedList}>
+              {suggestionRows.map((row) => (
+                <li key={row.id} className={styles.feedCard}>
+                  <div className={styles.feedMeta}>
+                    <span className="badge">{row.category}</span>
+                    <span className="small mono">{new Date(row.created_at).toLocaleTimeString()}</span>
                   </div>
+                  <p className={styles.feedText}>{row.text}</p>
+                  {row.talkingPoints.length ? (
+                    <ul className={styles.pointsList}>
+                      {row.talkingPoints.map((point, idx) => (
+                        <li key={`${row.id}-point-${idx}`} className="small">
+                          {point}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                  {row.followUp ? (
+                    <p className="small" style={{ margin: 0 }}>
+                      <strong>Follow-up:</strong> {row.followUp}
+                    </p>
+                  ) : null}
                 </li>
-              )) : <li className="small">No suggestion events yet.</li>}
+              ))}
             </ol>
           </div>
         </section>
       </div>
 
-      {summary ? (
-        <section className="card" aria-label="Session summary">
-          <div className="cardInner stack">
+      <section className="card" aria-label="Session summary">
+        <div className="cardInner stack" style={{ gap: 12 }}>
+          <div className={styles.panelHeader}>
             <h2 className="cardTitle">Session summary</h2>
-            <p style={{ margin: 0 }}>{summary.content || '—'}</p>
-            <div className="grid2" style={{ alignItems: 'start' }}>
-              <div>
-                <h3 className="small" style={{ marginTop: 0 }}>Strengths</h3>
-                <ul style={{ margin: 0, paddingLeft: 18 }}>
-                  {summary.strengths.length ? summary.strengths.map((item, idx) => (
-                    <li key={`strength-${idx}`} className="small">{item}</li>
-                  )) : <li className="small">No strengths recorded yet.</li>}
-                </ul>
-              </div>
-              <div>
-                <h3 className="small" style={{ marginTop: 0 }}>Weaknesses</h3>
-                <ul style={{ margin: 0, paddingLeft: 18 }}>
-                  {summary.weaknesses.length ? summary.weaknesses.map((item, idx) => (
-                    <li key={`weakness-${idx}`} className="small">{item}</li>
-                  )) : <li className="small">No weaknesses recorded yet.</li>}
-                </ul>
-              </div>
-            </div>
-            <div>
-              <h3 className="small" style={{ marginTop: 0 }}>Next steps</h3>
-              <ul style={{ margin: 0, paddingLeft: 18 }}>
-                {summary.next_steps.length ? summary.next_steps.map((item, idx) => (
-                  <li key={`next-${idx}`} className="small">{item}</li>
-                )) : <li className="small">No next steps recorded yet.</li>}
-              </ul>
-            </div>
+            {summaryLoading ? <span className="small">Generating…</span> : null}
           </div>
-        </section>
-      ) : null}
+
+          {!summary && !summaryLoading ? (
+            <p className={styles.emptyState}>Generate a summary once you have enough transcript context.</p>
+          ) : null}
+
+          {summaryLoading ? <p className={styles.emptyState}>Building strengths, weaknesses, and next steps…</p> : null}
+
+          {summary ? (
+            <>
+              {summary.content ? <p style={{ margin: 0 }}>{summary.content}</p> : null}
+              <div className="grid2" style={{ alignItems: 'start' }}>
+                <div>
+                  <h3 className={styles.sectionTitle}>Strengths</h3>
+                  <ul className={styles.pointsList}>
+                    {summary.strengths.length ? (
+                      summary.strengths.map((item, idx) => (
+                        <li key={`strength-${idx}`} className="small">
+                          {item}
+                        </li>
+                      ))
+                    ) : (
+                      <li className="small">No strengths identified yet.</li>
+                    )}
+                  </ul>
+                </div>
+                <div>
+                  <h3 className={styles.sectionTitle}>Weaknesses</h3>
+                  <ul className={styles.pointsList}>
+                    {summary.weaknesses.length ? (
+                      summary.weaknesses.map((item, idx) => (
+                        <li key={`weakness-${idx}`} className="small">
+                          {item}
+                        </li>
+                      ))
+                    ) : (
+                      <li className="small">No weaknesses identified yet.</li>
+                    )}
+                  </ul>
+                </div>
+              </div>
+              <div>
+                <h3 className={styles.sectionTitle}>Next steps</h3>
+                <ul className={styles.pointsList}>
+                  {summary.next_steps.length ? (
+                    summary.next_steps.map((item, idx) => (
+                      <li key={`next-${idx}`} className="small">
+                        {item}
+                      </li>
+                    ))
+                  ) : (
+                    <li className="small">No next steps identified yet.</li>
+                  )}
+                </ul>
+              </div>
+            </>
+          ) : null}
+        </div>
+      </section>
     </div>
   );
 }
