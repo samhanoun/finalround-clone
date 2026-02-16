@@ -22,7 +22,20 @@ const BodySchema = z.object({
 
 type EventPayload = Record<string, unknown>;
 
+function getRequestId(req: NextRequest) {
+  return req.headers.get('x-request-id') || crypto.randomUUID();
+}
+
+function logCopilotRouteError(route: string, requestId: string, errorClass: string, meta?: Record<string, unknown>) {
+  console.error('[copilot]', { route, requestId, errorClass, ...(meta ?? {}) });
+}
+
+function internalError(requestId: string) {
+  return jsonError(500, 'internal_error', { requestId });
+}
+
 export async function POST(req: NextRequest, { params }: Params) {
+  const requestId = getRequestId(req);
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
   const rl = await rateLimit({ key: `copilot:events:${ip}`, limit: 90, windowMs: 60_000 });
   if (!rl.ok) {
@@ -90,7 +103,13 @@ export async function POST(req: NextRequest, { params }: Params) {
     .select('id, event_type, payload, created_at')
     .single();
 
-  if (insertError || !createdEvent) return jsonError(500, 'db_error', insertError);
+  if (insertError || !createdEvent) {
+    logCopilotRouteError('/api/copilot/sessions/[id]/events', requestId, 'db_insert_event_failed', {
+      sessionId: id,
+      code: insertError?.code ?? null,
+    });
+    return internalError(requestId);
+  }
 
   const shouldSuggest =
     parse.data.autoSuggest !== false &&
@@ -128,7 +147,10 @@ export async function POST(req: NextRequest, { params }: Params) {
   const mode = typeof payload.mode === 'string' ? payload.mode : 'general';
 
   try {
-    if (llmProvider() !== 'openai') return jsonError(400, 'unsupported_provider');
+    if (llmProvider() !== 'openai') {
+      logCopilotRouteError('/api/copilot/sessions/[id]/events', requestId, 'unsupported_provider');
+      return jsonError(400, 'unsupported_provider');
+    }
 
     const client = new OpenAI({ apiKey: requireEnv('OPENAI_API_KEY') });
     const completion = await client.chat.completions.create({
@@ -184,12 +206,22 @@ export async function POST(req: NextRequest, { params }: Params) {
       .select('id, event_type, payload, created_at')
       .single();
 
-    if (suggestionError) return jsonError(500, 'db_error', suggestionError);
+    if (suggestionError) {
+      logCopilotRouteError('/api/copilot/sessions/[id]/events', requestId, 'db_insert_suggestion_failed', {
+        sessionId: id,
+        code: suggestionError.code ?? null,
+      });
+      return internalError(requestId);
+    }
 
     return NextResponse.json({ event: createdEvent, suggestion: suggestionEvent }, { status: 201 });
   } catch (e) {
-    const msg = e instanceof Error ? e.message : 'llm_failed';
-    const { data: fallbackSuggestion } = await supabase
+    logCopilotRouteError('/api/copilot/sessions/[id]/events', requestId, 'llm_suggestion_failed', {
+      sessionId: id,
+      errorType: e instanceof Error ? e.name : 'unknown',
+    });
+
+    const { data: fallbackSuggestion, error: fallbackError } = await supabase
       .from('copilot_events')
       .insert({
         session_id: id,
@@ -200,16 +232,24 @@ export async function POST(req: NextRequest, { params }: Params) {
           text: 'Suggestion generation is temporarily unavailable. Try rephrasing the question in one short sentence.',
           based_on_event_id: createdEvent.id,
           mode,
-          error: msg,
+          error: 'provider_unavailable',
         },
       })
       .select('id, event_type, payload, created_at')
       .single();
 
+    if (fallbackError) {
+      logCopilotRouteError('/api/copilot/sessions/[id]/events', requestId, 'db_insert_fallback_suggestion_failed', {
+        sessionId: id,
+        code: fallbackError.code ?? null,
+      });
+    }
+
     return NextResponse.json(
       {
         event: createdEvent,
         suggestion: fallbackSuggestion ?? null,
+        requestId,
       },
       { status: 201 },
     );

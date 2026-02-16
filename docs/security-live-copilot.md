@@ -67,7 +67,15 @@ Transcript text is scanned for model-control and exfiltration patterns (e.g., "i
 - Quota enforcement for copilot usage budgets.
 - Sanitization + prompt-injection guard integrated in events and summarize handlers.
 
-## 7) Recommended Next Hardening
+## 7) Secure Defaults (Route Behavior)
+
+- **Request correlation IDs**: copilot routes should attach/use a request ID (`x-request-id` when available, generated otherwise) for operational debugging.
+- **Client-safe 5xx errors**: internal failures should return `internal_error` + request ID and avoid exposing provider/DB internals.
+- **Coarse error classes in logs**: log short stable classes (e.g., `db_insert_event_failed`, `llm_summary_failed`) plus non-sensitive metadata only.
+- **No raw transcript or prompt logging**: never log event text, compiled transcript windows, or model prompt bodies.
+- **Provider fallback safety**: fallback suggestions/summaries may be emitted, but must not embed raw upstream exception strings.
+
+## 8) Recommended Next Hardening
 
 - Add explicit security event metric counters (redaction count, injection-detected count).
 - Add retention jobs (scheduled purge) for events/summaries.

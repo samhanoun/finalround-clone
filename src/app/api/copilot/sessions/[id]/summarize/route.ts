@@ -16,6 +16,18 @@ type EventRow = {
   created_at: string;
 };
 
+function getRequestId(req: NextRequest) {
+  return req.headers.get('x-request-id') || crypto.randomUUID();
+}
+
+function logCopilotRouteError(route: string, requestId: string, errorClass: string, meta?: Record<string, unknown>) {
+  console.error('[copilot]', { route, requestId, errorClass, ...(meta ?? {}) });
+}
+
+function internalError(requestId: string) {
+  return jsonError(500, 'internal_error', { requestId });
+}
+
 function compactSession(events: EventRow[]) {
   return events
     .map((row) => {
@@ -29,6 +41,7 @@ function compactSession(events: EventRow[]) {
 }
 
 export async function POST(req: NextRequest, { params }: Params) {
+  const requestId = getRequestId(req);
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
   const rl = await rateLimit({ key: `copilot:summary:${ip}`, limit: 20, windowMs: 60_000 });
   if (!rl.ok) return NextResponse.json({ error: 'rate_limited' }, { status: 429 });
@@ -56,7 +69,13 @@ export async function POST(req: NextRequest, { params }: Params) {
     .limit(250)
     .returns<EventRow[]>();
 
-  if (eventsError) return jsonError(500, 'db_error', eventsError);
+  if (eventsError) {
+    logCopilotRouteError('/api/copilot/sessions/[id]/summarize', requestId, 'db_fetch_events_failed', {
+      sessionId: id,
+      code: eventsError.code ?? null,
+    });
+    return internalError(requestId);
+  }
 
   if (!events?.length) {
     return jsonError(400, 'no_events', { message: 'No session events to summarize' });
@@ -69,7 +88,10 @@ export async function POST(req: NextRequest, { params }: Params) {
   let payload: Record<string, unknown> = { mode };
 
   try {
-    if (llmProvider() !== 'openai') return jsonError(400, 'unsupported_provider');
+    if (llmProvider() !== 'openai') {
+      logCopilotRouteError('/api/copilot/sessions/[id]/summarize', requestId, 'unsupported_provider');
+      return jsonError(400, 'unsupported_provider');
+    }
 
     const client = new OpenAI({ apiKey: requireEnv('OPENAI_API_KEY') });
     const completion = await client.chat.completions.create({
@@ -105,7 +127,12 @@ export async function POST(req: NextRequest, { params }: Params) {
       weaknesses: Array.isArray(parsed.weaknesses) ? parsed.weaknesses : [],
       next_steps: Array.isArray(parsed.next_steps) ? parsed.next_steps : [],
     };
-  } catch {
+  } catch (e) {
+    logCopilotRouteError('/api/copilot/sessions/[id]/summarize', requestId, 'llm_summary_failed', {
+      sessionId: id,
+      errorType: e instanceof Error ? e.name : 'unknown',
+    });
+
     content = 'Summary generated with fallback template.';
     payload = {
       mode,
@@ -130,7 +157,13 @@ export async function POST(req: NextRequest, { params }: Params) {
     .select('id, summary_type, content, payload, created_at, updated_at')
     .single();
 
-  if (summaryError) return jsonError(500, 'db_error', summaryError);
+  if (summaryError) {
+    logCopilotRouteError('/api/copilot/sessions/[id]/summarize', requestId, 'db_upsert_summary_failed', {
+      sessionId: id,
+      code: summaryError.code ?? null,
+    });
+    return internalError(requestId);
+  }
 
   return NextResponse.json({ summary: savedSummary });
 }
