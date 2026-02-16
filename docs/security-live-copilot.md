@@ -17,8 +17,23 @@ This document defines minimum enforceable security controls for the live copilot
   - `copilot_summaries`: 90 days
   - `copilot_sessions` metadata: 90 days (excluding billing-required aggregates)
 - **Data minimization**: keep only fields needed for coaching and quota enforcement.
-- **User deletion**: delete session-scoped records (`events`, `summaries`) when a user deletes a session/account, except legally required billing records.
 - **Operational logs**: avoid raw transcript content in infrastructure logs; retain only minimal operational metadata.
+
+### Session Delete Workflow (implemented)
+
+- Endpoint: `DELETE /api/copilot/sessions/:id`
+- **Ownership privacy guard**: when a session exists but belongs to a different user, API responds with `404 session_not_found` (not `403`) to avoid cross-tenant resource enumeration.
+- **Active-session guard**: active sessions cannot be deleted directly; caller must stop first (`409 session_active`).
+- **Deletion order**:
+  1. delete `copilot_events` for `(session_id, user_id)`
+  2. delete `copilot_summaries` for `(session_id, user_id)`
+  3. delete `copilot_sessions` for `(id, user_id)`
+- **Safe internal failures**: database deletion failures return `500 internal_error` with request correlation only (`extra.requestId`), never raw DB error internals.
+
+### Account / DSAR deletion expectations
+
+- Account deletion flows must call the same session-scoped cleanup logic and apply identical response safety guarantees.
+- Billing-required aggregate data (usage totals/minutes) may be retained when legally required, but transcript/event payloads should be removed.
 
 ## 3) PII Redaction Controls
 
@@ -84,11 +99,12 @@ Transcript text is scanned for model-control and exfiltration patterns (e.g., "i
 
 ## 9) Verification Checklist (Request-ID + Safe 5xx Payloads)
 
-Use this checklist for regressions on `events` and `summarize` routes:
+Use this checklist for regressions on `events`, `summarize`, and session `delete` routes:
 
 - [ ] Route-level Jest tests assert `500` failures return exactly `{"error":"internal_error","extra":{"requestId":"..."}}` shape.
 - [ ] Tests verify `x-request-id` is propagated when present.
 - [ ] Tests verify `crypto.randomUUID()` generated request IDs are used when header is absent.
 - [ ] Tests verify DB/provider/internal fields are **not** present in client payload (`code`, `message`, `details`, `hint`, stack traces).
+- [ ] Delete-route tests verify non-owner access returns `404 session_not_found` (privacy-preserving ownership guard).
 - [ ] Route logs still include coarse error classes + request ID for operator debugging (`db_*_failed`, `llm_*_failed`) without raw transcript/prompt content.
 - [ ] `npm test` passes with security route tests in CI.

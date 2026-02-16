@@ -1,6 +1,6 @@
 # Execution Status — FinalRound Clone
 
-_Last updated: 2026-02-16 (post-shipped review)_
+_Last updated: 2026-02-16 (post-shipped review + privacy delete hardening in progress)_
 
 ## 1) Latest shipped delta (master)
 
@@ -14,6 +14,7 @@ _Last updated: 2026-02-16 (post-shipped review)_
 - **M1 Live Copilot:** remains 🟡 (core UX stronger; controls + STT + scoring gaps remain)
 - **M3 Analytics/Coding:** moves from early scaffold to **🟡 active delivery** (history retrieval, drill-down, aggregates now shipped)
 - **Security quality bar:** improved via added route-level security tests and safer error handling
+- **Privacy controls (current branch):** `DELETE /api/copilot/sessions/:id` ownership-enumeration guard + safe `internal_error` response tests added; retention/delete workflow docs updated.
 
 ---
 
@@ -36,8 +37,8 @@ Legend: ✅ met · 🟡 partial/evidence pending · ⬜ not met
 - ⬜ Dashboard reconciliation (±1%) and p95/<2s performance evidence
 
 ### Security / Compliance
-- 🟡 Error hygiene + route security tests improved
-- ⬜ DSAR export/delete workflow and retention automation completion
+- 🟡 Error hygiene + route security tests improved (including delete-route safe-response and ownership privacy guard coverage)
+- 🟡 DSAR/export-delete workflow documentation advanced; retention automation still pending implementation
 
 ---
 
