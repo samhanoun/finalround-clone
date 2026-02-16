@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import styles from './LiveCopilotClient.module.css';
 
 interface SpeechRecognitionAlternativeLite {
@@ -81,6 +81,7 @@ export function LiveCopilotClient() {
   const [summary, setSummary] = useState<{ content: string; strengths: string[]; weaknesses: string[]; next_steps: string[] } | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [activePanel, setActivePanel] = useState<'live' | 'analytics'>('live');
 
   const streamRef = useRef<EventSource | null>(null);
   const recognitionRef = useRef<SpeechRecognitionLite | null>(null);
@@ -101,50 +102,65 @@ export function LiveCopilotClient() {
     };
   }, []);
 
-  function stopHeartbeat() {
+  const stopHeartbeat = useCallback(() => {
     if (heartbeatRef.current) {
       clearInterval(heartbeatRef.current);
       heartbeatRef.current = null;
     }
-  }
+  }, []);
 
-  function markSessionExpired(message?: string, stoppedAt?: string | null) {
-    stopHeartbeat();
-    setSession((prev) =>
-      prev
-        ? {
-            ...prev,
-            status: 'expired',
-            stopped_at: stoppedAt ?? prev.stopped_at,
+  const markSessionExpired = useCallback(
+    (message?: string, stoppedAt?: string | null) => {
+      stopHeartbeat();
+      setSession((prev) =>
+        prev
+          ? {
+              ...prev,
+              status: 'expired',
+              stopped_at: stoppedAt ?? prev.stopped_at,
+            }
+          : prev,
+      );
+      setError(message ?? 'Session expired due to inactivity. Start a new session to continue.');
+    },
+    [stopHeartbeat],
+  );
+
+  const startHeartbeat = useCallback(
+    (sessionId: string) => {
+      stopHeartbeat();
+
+      const ping = async () => {
+        try {
+          const res = await fetch(`/api/copilot/sessions/${sessionId}/heartbeat`, { method: 'POST' });
+          const json = (await res.json().catch(() => null)) as
+            | { state?: string; message?: string; session?: { stopped_at?: string | null } }
+            | null;
+
+          if (res.status === 409 || json?.state === 'expired') {
+            markSessionExpired(json?.message, json?.session?.stopped_at ?? null);
           }
-        : prev,
-    );
-    setError(message ?? 'Session expired due to inactivity. Start a new session to continue.');
-  }
-
-  function startHeartbeat(sessionId: string) {
-    stopHeartbeat();
-
-    const ping = async () => {
-      try {
-        const res = await fetch(`/api/copilot/sessions/${sessionId}/heartbeat`, { method: 'POST' });
-        const json = (await res.json().catch(() => null)) as
-          | { state?: string; message?: string; session?: { stopped_at?: string | null } }
-          | null;
-
-        if (res.status === 409 || json?.state === 'expired') {
-          markSessionExpired(json?.message, json?.session?.stopped_at ?? null);
+        } catch {
+          // Ignore transient heartbeat errors; stream can still recover on reconnect.
         }
-      } catch {
-        // Ignore transient heartbeat errors; stream can still recover on reconnect.
-      }
-    };
+      };
 
-    void ping();
-    heartbeatRef.current = setInterval(() => {
       void ping();
-    }, 20_000);
-  }
+      heartbeatRef.current = setInterval(() => {
+        void ping();
+      }, 20_000);
+    },
+    [markSessionExpired, stopHeartbeat],
+  );
+
+  useEffect(() => {
+    if (isActive && session?.id) {
+      startHeartbeat(session.id);
+      return;
+    }
+
+    stopHeartbeat();
+  }, [isActive, session?.id, startHeartbeat, stopHeartbeat]);
 
   function connectStream(sessionId: string) {
     streamRef.current?.close();
@@ -155,7 +171,6 @@ export function LiveCopilotClient() {
 
     es.addEventListener('connected', () => {
       setConnecting(false);
-      startHeartbeat(sessionId);
     });
 
     es.addEventListener('snapshot', (event) => {
@@ -396,6 +411,13 @@ export function LiveCopilotClient() {
         text: asText(item.payload.text, asText(item.payload.content, '')).trim(),
         category: asText(item.payload.category, 'suggestion'),
         followUp: asText(item.payload.follow_up, '').trim(),
+        complexity: asText(item.payload.complexity, '').trim(),
+        edgeCases: Array.isArray(item.payload.edge_cases)
+          ? item.payload.edge_cases.filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
+          : [],
+        checklist: Array.isArray(item.payload.checklist)
+          ? item.payload.checklist.filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
+          : [],
         talkingPoints: Array.isArray(item.payload.talking_points)
           ? item.payload.talking_points.filter((x): x is string => typeof x === 'string')
           : [],
@@ -403,6 +425,18 @@ export function LiveCopilotClient() {
       })),
     [suggestions],
   );
+
+  const analyticsSummary = useMemo(() => {
+    const codingStructuredTips = suggestionRows.filter((row) => row.complexity || row.edgeCases.length > 0 || row.checklist.length > 0).length;
+    const withFollowUps = suggestionRows.filter((row) => row.followUp).length;
+
+    return {
+      transcriptLines: transcriptRows.length,
+      suggestions: suggestionRows.length,
+      codingStructuredTips,
+      withFollowUps,
+    };
+  }, [suggestionRows, transcriptRows.length]);
 
   const streamState = connecting ? 'Connecting…' : streamRef.current ? 'Connected' : 'Disconnected';
 
@@ -512,138 +546,216 @@ export function LiveCopilotClient() {
         </div>
       </section>
 
-      <div className="grid2" style={{ alignItems: 'start' }}>
-        <section className="card" aria-label="Live transcript panel">
-          <div className="cardInner stack" style={{ gap: 12 }}>
-            <div className={styles.panelHeader}>
-              <h2 className="cardTitle">Transcript</h2>
-              <span className="small">{transcriptRows.length} lines</span>
-            </div>
-            {!isActive && transcriptRows.length === 0 ? (
-              <p className={styles.emptyState}>Start a session to capture transcript lines.</p>
-            ) : null}
-            {isActive && transcriptRows.length === 0 ? (
-              <p className={styles.emptyState}>Waiting for transcript input…</p>
-            ) : null}
-            <ol className={styles.feedList}>
-              {transcriptRows.map((row) => (
-                <li key={row.id} className={styles.feedCard}>
-                  <div className={styles.feedMeta}>
-                    <span className="badge">{row.speaker}</span>
-                    <span className="small mono">{new Date(row.created_at).toLocaleTimeString()}</span>
-                  </div>
-                  <p className={styles.feedText}>{row.text}</p>
-                </li>
-              ))}
-            </ol>
+      <section className="card" aria-label="Copilot view tabs">
+        <div className="cardInner stack" style={{ gap: 10 }}>
+          <div className={styles.tabRow} role="tablist" aria-label="Copilot views">
+            <button
+              className={`button ${activePanel === 'live' ? 'buttonPrimary' : ''}`}
+              type="button"
+              role="tab"
+              aria-selected={activePanel === 'live'}
+              onClick={() => setActivePanel('live')}
+            >
+              Live feed
+            </button>
+            <button
+              className={`button ${activePanel === 'analytics' ? 'buttonPrimary' : ''}`}
+              type="button"
+              role="tab"
+              aria-selected={activePanel === 'analytics'}
+              onClick={() => setActivePanel('analytics')}
+            >
+              Analytics
+            </button>
           </div>
-        </section>
-
-        <section className="card" aria-label="Live suggestions panel">
-          <div className="cardInner stack" style={{ gap: 12 }}>
-            <div className={styles.panelHeader}>
-              <h2 className="cardTitle">Suggestions</h2>
-              <span className="small">{suggestionRows.length} tips</span>
-            </div>
-            {!isActive && suggestionRows.length === 0 ? (
-              <p className={styles.emptyState}>Start a session and send transcript lines to get suggestions.</p>
-            ) : null}
-            {isActive && suggestionRows.length === 0 ? (
-              <p className={styles.emptyState}>Suggestions will appear after transcript lines are sent.</p>
-            ) : null}
-            <ol className={styles.feedList}>
-              {suggestionRows.map((row) => (
-                <li key={row.id} className={styles.feedCard}>
-                  <div className={styles.feedMeta}>
-                    <span className="badge">{row.category}</span>
-                    <span className="small mono">{new Date(row.created_at).toLocaleTimeString()}</span>
-                  </div>
-                  <p className={styles.feedText}>{row.text}</p>
-                  {row.talkingPoints.length ? (
-                    <ul className={styles.pointsList}>
-                      {row.talkingPoints.map((point, idx) => (
-                        <li key={`${row.id}-point-${idx}`} className="small">
-                          {point}
-                        </li>
-                      ))}
-                    </ul>
-                  ) : null}
-                  {row.followUp ? (
-                    <p className="small" style={{ margin: 0 }}>
-                      <strong>Follow-up:</strong> {row.followUp}
-                    </p>
-                  ) : null}
-                </li>
-              ))}
-            </ol>
-          </div>
-        </section>
-      </div>
-
-      <section className="card" aria-label="Session summary">
-        <div className="cardInner stack" style={{ gap: 12 }}>
-          <div className={styles.panelHeader}>
-            <h2 className="cardTitle">Session summary</h2>
-            {summaryLoading ? <span className="small">Generating…</span> : null}
-          </div>
-
-          {!summary && !summaryLoading ? (
-            <p className={styles.emptyState}>Generate a summary once you have enough transcript context.</p>
-          ) : null}
-
-          {summaryLoading ? <p className={styles.emptyState}>Building strengths, weaknesses, and next steps…</p> : null}
-
-          {summary ? (
-            <>
-              {summary.content ? <p style={{ margin: 0 }}>{summary.content}</p> : null}
-              <div className="grid2" style={{ alignItems: 'start' }}>
-                <div>
-                  <h3 className={styles.sectionTitle}>Strengths</h3>
-                  <ul className={styles.pointsList}>
-                    {summary.strengths.length ? (
-                      summary.strengths.map((item, idx) => (
-                        <li key={`strength-${idx}`} className="small">
-                          {item}
-                        </li>
-                      ))
-                    ) : (
-                      <li className="small">No strengths identified yet.</li>
-                    )}
-                  </ul>
-                </div>
-                <div>
-                  <h3 className={styles.sectionTitle}>Weaknesses</h3>
-                  <ul className={styles.pointsList}>
-                    {summary.weaknesses.length ? (
-                      summary.weaknesses.map((item, idx) => (
-                        <li key={`weakness-${idx}`} className="small">
-                          {item}
-                        </li>
-                      ))
-                    ) : (
-                      <li className="small">No weaknesses identified yet.</li>
-                    )}
-                  </ul>
-                </div>
-              </div>
-              <div>
-                <h3 className={styles.sectionTitle}>Next steps</h3>
-                <ul className={styles.pointsList}>
-                  {summary.next_steps.length ? (
-                    summary.next_steps.map((item, idx) => (
-                      <li key={`next-${idx}`} className="small">
-                        {item}
-                      </li>
-                    ))
-                  ) : (
-                    <li className="small">No next steps identified yet.</li>
-                  )}
-                </ul>
-              </div>
-            </>
-          ) : null}
+          <p className="small" style={{ margin: 0 }}>
+            {activePanel === 'live'
+              ? 'Real-time transcript and suggestion stream.'
+              : 'Scaffolded analytics view for copilot history and trends.'}
+          </p>
         </div>
       </section>
+
+      {activePanel === 'live' ? (
+        <>
+          <div className="grid2" style={{ alignItems: 'start' }}>
+            <section className="card" aria-label="Live transcript panel">
+              <div className="cardInner stack" style={{ gap: 12 }}>
+                <div className={styles.panelHeader}>
+                  <h2 className="cardTitle">Transcript</h2>
+                  <span className="small">{transcriptRows.length} lines</span>
+                </div>
+                {!isActive && transcriptRows.length === 0 ? <p className={styles.emptyState}>Start a session to capture transcript lines.</p> : null}
+                {isActive && transcriptRows.length === 0 ? <p className={styles.emptyState}>Waiting for transcript input…</p> : null}
+                <ol className={styles.feedList}>
+                  {transcriptRows.map((row) => (
+                    <li key={row.id} className={styles.feedCard}>
+                      <div className={styles.feedMeta}>
+                        <span className="badge">{row.speaker}</span>
+                        <span className="small mono">{new Date(row.created_at).toLocaleTimeString()}</span>
+                      </div>
+                      <p className={styles.feedText}>{row.text}</p>
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            </section>
+
+            <section className="card" aria-label="Live suggestions panel">
+              <div className="cardInner stack" style={{ gap: 12 }}>
+                <div className={styles.panelHeader}>
+                  <h2 className="cardTitle">Suggestions</h2>
+                  <span className="small">{suggestionRows.length} tips</span>
+                </div>
+                {!isActive && suggestionRows.length === 0 ? (
+                  <p className={styles.emptyState}>Start a session and send transcript lines to get suggestions.</p>
+                ) : null}
+                {isActive && suggestionRows.length === 0 ? (
+                  <p className={styles.emptyState}>Suggestions will appear after transcript lines are sent.</p>
+                ) : null}
+                <ol className={styles.feedList}>
+                  {suggestionRows.map((row) => (
+                    <li key={row.id} className={styles.feedCard}>
+                      <div className={styles.feedMeta}>
+                        <span className="badge">{row.category}</span>
+                        <span className="small mono">{new Date(row.created_at).toLocaleTimeString()}</span>
+                      </div>
+                      <p className={styles.feedText}>{row.text}</p>
+                      {row.complexity ? (
+                        <p className="small" style={{ margin: 0 }}>
+                          <strong>Complexity:</strong> {row.complexity}
+                        </p>
+                      ) : null}
+                      {row.edgeCases.length ? (
+                        <div>
+                          <p className="small" style={{ margin: '0 0 4px' }}>
+                            <strong>Edge cases</strong>
+                          </p>
+                          <ul className={styles.pointsList}>
+                            {row.edgeCases.map((edgeCase, idx) => (
+                              <li key={`${row.id}-edge-${idx}`} className="small">
+                                {edgeCase}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ) : null}
+                      {row.checklist.length ? (
+                        <div>
+                          <p className="small" style={{ margin: '0 0 4px' }}>
+                            <strong>Checklist</strong>
+                          </p>
+                          <ul className={styles.pointsList}>
+                            {row.checklist.map((item, idx) => (
+                              <li key={`${row.id}-check-${idx}`} className="small">
+                                {item}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ) : null}
+                      {row.talkingPoints.length ? (
+                        <ul className={styles.pointsList}>
+                          {row.talkingPoints.map((point, idx) => (
+                            <li key={`${row.id}-point-${idx}`} className="small">
+                              {point}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
+                      {row.followUp ? (
+                        <p className="small" style={{ margin: 0 }}>
+                          <strong>Follow-up:</strong> {row.followUp}
+                        </p>
+                      ) : null}
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            </section>
+          </div>
+
+          <section className="card" aria-label="Session summary">
+            <div className="cardInner stack" style={{ gap: 12 }}>
+              <div className={styles.panelHeader}>
+                <h2 className="cardTitle">Session summary</h2>
+                {summaryLoading ? <span className="small">Generating…</span> : null}
+              </div>
+
+              {!summary && !summaryLoading ? (
+                <p className={styles.emptyState}>Generate a summary once you have enough transcript context.</p>
+              ) : null}
+
+              {summaryLoading ? <p className={styles.emptyState}>Building strengths, weaknesses, and next steps…</p> : null}
+
+              {summary ? (
+                <>
+                  {summary.content ? <p style={{ margin: 0 }}>{summary.content}</p> : null}
+                  <div className="grid2" style={{ alignItems: 'start' }}>
+                    <div>
+                      <h3 className={styles.sectionTitle}>Strengths</h3>
+                      <ul className={styles.pointsList}>
+                        {summary.strengths.length ? (
+                          summary.strengths.map((item, idx) => (
+                            <li key={`strength-${idx}`} className="small">
+                              {item}
+                            </li>
+                          ))
+                        ) : (
+                          <li className="small">No strengths identified yet.</li>
+                        )}
+                      </ul>
+                    </div>
+                    <div>
+                      <h3 className={styles.sectionTitle}>Weaknesses</h3>
+                      <ul className={styles.pointsList}>
+                        {summary.weaknesses.length ? (
+                          summary.weaknesses.map((item, idx) => (
+                            <li key={`weakness-${idx}`} className="small">
+                              {item}
+                            </li>
+                          ))
+                        ) : (
+                          <li className="small">No weaknesses identified yet.</li>
+                        )}
+                      </ul>
+                    </div>
+                  </div>
+                  <div>
+                    <h3 className={styles.sectionTitle}>Next steps</h3>
+                    <ul className={styles.pointsList}>
+                      {summary.next_steps.length ? (
+                        summary.next_steps.map((item, idx) => (
+                          <li key={`next-${idx}`} className="small">
+                            {item}
+                          </li>
+                        ))
+                      ) : (
+                        <li className="small">No next steps identified yet.</li>
+                      )}
+                    </ul>
+                  </div>
+                </>
+              ) : null}
+            </div>
+          </section>
+        </>
+      ) : (
+        <section className="card" aria-label="Analytics history scaffold">
+          <div className="cardInner stack" style={{ gap: 12 }}>
+            <h2 className="cardTitle">Copilot analytics (scaffold)</h2>
+            <div className={styles.metricGrid}>
+              <div className={styles.metricCard}><span className="small">Transcript lines</span><strong>{analyticsSummary.transcriptLines}</strong></div>
+              <div className={styles.metricCard}><span className="small">Suggestions</span><strong>{analyticsSummary.suggestions}</strong></div>
+              <div className={styles.metricCard}><span className="small">Coding structured tips</span><strong>{analyticsSummary.codingStructuredTips}</strong></div>
+              <div className={styles.metricCard}><span className="small">Follow-ups</span><strong>{analyticsSummary.withFollowUps}</strong></div>
+            </div>
+            <p className={styles.emptyState}>
+              History drill-down scaffold is in place. Next step: add time-range filters and compare prior sessions from copilot history.
+            </p>
+          </div>
+        </section>
+      )}
     </div>
   );
 }
