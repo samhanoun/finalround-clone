@@ -40,11 +40,38 @@ type CopilotSession = {
   consumed_minutes: number;
 };
 
+type CopilotHistorySession = {
+  id: string;
+  title: string | null;
+  metadata: Record<string, unknown> | null;
+  status: string;
+  started_at: string;
+  stopped_at: string | null;
+  consumed_minutes: number | null;
+  created_at: string;
+};
+
+type CopilotSummary = {
+  id: string;
+  summary_type: string;
+  content: string | null;
+  payload: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
+};
+
 type CopilotEvent = {
   id: string;
   event_type: 'transcript' | 'suggestion' | 'system' | string;
   payload: Record<string, unknown>;
   created_at: string;
+};
+
+type CopilotSessionDetail = CopilotSession & {
+  metadata?: Record<string, unknown> | null;
+  duration_seconds?: number | null;
+  created_at?: string;
+  updated_at?: string;
 };
 
 type StreamEnvelope<T> = {
@@ -67,6 +94,25 @@ function parseEnvelope<T>(raw: string): StreamEnvelope<T> | null {
   }
 }
 
+function listOfStrings(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0);
+}
+
+function formatModeLabel(mode: string): string {
+  const raw = mode.trim();
+  if (!raw) return 'General';
+  return `${raw[0].toUpperCase()}${raw.slice(1)}`;
+}
+
+function calculateDurationMinutes(startedAt?: string | null, stoppedAt?: string | null): number {
+  if (!startedAt) return 0;
+  const start = new Date(startedAt).getTime();
+  const end = new Date(stoppedAt ?? Date.now()).getTime();
+  if (Number.isNaN(start) || Number.isNaN(end)) return 0;
+  return Math.max(0, Math.round((end - start) / 60_000));
+}
+
 export function LiveCopilotClient() {
   const [mode, setMode] = useState<CopilotMode>('general');
   const [title, setTitle] = useState('');
@@ -82,6 +128,14 @@ export function LiveCopilotClient() {
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activePanel, setActivePanel] = useState<'live' | 'analytics'>('live');
+
+  const [historySessions, setHistorySessions] = useState<CopilotHistorySession[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(null);
+  const [historyDetail, setHistoryDetail] = useState<{ session: CopilotSessionDetail; events: CopilotEvent[]; summaries: CopilotSummary[] } | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
 
   const streamRef = useRef<EventSource | null>(null);
   const recognitionRef = useRef<SpeechRecognitionLite | null>(null);
@@ -161,6 +215,74 @@ export function LiveCopilotClient() {
 
     stopHeartbeat();
   }, [isActive, session?.id, startHeartbeat, stopHeartbeat]);
+
+  const loadHistory = useCallback(async () => {
+    setHistoryLoading(true);
+    setHistoryError(null);
+
+    try {
+      const res = await fetch('/api/copilot/sessions/history');
+      const json = (await res.json().catch(() => ({}))) as { sessions?: CopilotHistorySession[]; error?: string };
+      if (!res.ok) throw new Error(json.error ?? 'Failed to load session history');
+
+      const nextSessions = Array.isArray(json.sessions) ? json.sessions : [];
+      setHistorySessions(nextSessions);
+
+      setSelectedHistoryId((prev) => {
+        if (prev && nextSessions.some((item) => item.id === prev)) return prev;
+        return nextSessions[0]?.id ?? null;
+      });
+
+      if (nextSessions.length === 0) {
+        setHistoryDetail(null);
+        setDetailError(null);
+      }
+    } catch (e) {
+      setHistoryError(e instanceof Error ? e.message : 'Failed to load session history');
+      setHistorySessions([]);
+      setSelectedHistoryId(null);
+      setHistoryDetail(null);
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, []);
+
+  const loadHistoryDetail = useCallback(async (sessionId: string) => {
+    setDetailLoading(true);
+    setDetailError(null);
+
+    try {
+      const res = await fetch(`/api/copilot/sessions/${sessionId}`);
+      const json = (await res.json().catch(() => ({}))) as {
+        session?: CopilotSessionDetail;
+        events?: CopilotEvent[];
+        summaries?: CopilotSummary[];
+        error?: string;
+      };
+      if (!res.ok || !json.session) throw new Error(json.error ?? 'Failed to load session details');
+
+      setHistoryDetail({
+        session: json.session,
+        events: Array.isArray(json.events) ? json.events : [],
+        summaries: Array.isArray(json.summaries) ? json.summaries : [],
+      });
+    } catch (e) {
+      setDetailError(e instanceof Error ? e.message : 'Failed to load session details');
+      setHistoryDetail(null);
+    } finally {
+      setDetailLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activePanel !== 'analytics') return;
+    void loadHistory();
+  }, [activePanel, loadHistory]);
+
+  useEffect(() => {
+    if (activePanel !== 'analytics' || !selectedHistoryId) return;
+    void loadHistoryDetail(selectedHistoryId);
+  }, [activePanel, selectedHistoryId, loadHistoryDetail]);
 
   function connectStream(sessionId: string) {
     streamRef.current?.close();
@@ -438,6 +560,56 @@ export function LiveCopilotClient() {
     };
   }, [suggestionRows, transcriptRows.length]);
 
+  const selectedHistorySession = useMemo(
+    () => historySessions.find((item) => item.id === selectedHistoryId) ?? null,
+    [historySessions, selectedHistoryId],
+  );
+
+  const historyInsights = useMemo(() => {
+    if (!historyDetail) {
+      return {
+        transcriptLines: 0,
+        suggestions: 0,
+        mode: 'General',
+        durationMinutes: selectedHistorySession?.consumed_minutes ?? 0,
+      };
+    }
+
+    const transcriptLines = historyDetail.events.filter((item) => item.event_type === 'transcript').length;
+    const suggestionCount = historyDetail.events.filter((item) => item.event_type === 'suggestion').length;
+    const modeValue = asText(historyDetail.session.metadata?.mode, asText(selectedHistorySession?.metadata?.mode, 'general'));
+
+    const explicitMinutes = historyDetail.session.consumed_minutes;
+    const durationFromSeconds = historyDetail.session.duration_seconds;
+
+    const durationMinutes =
+      typeof explicitMinutes === 'number' && explicitMinutes >= 0
+        ? explicitMinutes
+        : typeof durationFromSeconds === 'number' && durationFromSeconds >= 0
+          ? Math.round(durationFromSeconds / 60)
+          : calculateDurationMinutes(historyDetail.session.started_at, historyDetail.session.stopped_at);
+
+    return {
+      transcriptLines,
+      suggestions: suggestionCount,
+      mode: formatModeLabel(modeValue),
+      durationMinutes,
+    };
+  }, [historyDetail, selectedHistorySession]);
+
+  const latestSummary = useMemo(() => {
+    if (!historyDetail?.summaries?.length) return null;
+    return historyDetail.summaries[0];
+  }, [historyDetail]);
+
+  const latestSummaryPayload = useMemo(() => {
+    return {
+      strengths: listOfStrings(latestSummary?.payload?.strengths),
+      weaknesses: listOfStrings(latestSummary?.payload?.weaknesses),
+      nextSteps: listOfStrings(latestSummary?.payload?.next_steps),
+    };
+  }, [latestSummary]);
+
   const streamState = connecting ? 'Connecting…' : streamRef.current ? 'Connected' : 'Disconnected';
 
   return (
@@ -571,7 +743,7 @@ export function LiveCopilotClient() {
           <p className="small" style={{ margin: 0 }}>
             {activePanel === 'live'
               ? 'Real-time transcript and suggestion stream.'
-              : 'Scaffolded analytics view for copilot history and trends.'}
+              : 'Review prior sessions, key metrics, and generated summaries.'}
           </p>
         </div>
       </section>
@@ -741,18 +913,138 @@ export function LiveCopilotClient() {
           </section>
         </>
       ) : (
-        <section className="card" aria-label="Analytics history scaffold">
-          <div className="cardInner stack" style={{ gap: 12 }}>
-            <h2 className="cardTitle">Copilot analytics (scaffold)</h2>
+        <section className="card" aria-label="Analytics history view">
+          <div className="cardInner stack" style={{ gap: 14 }}>
+            <h2 className="cardTitle">Copilot history</h2>
+
             <div className={styles.metricGrid}>
-              <div className={styles.metricCard}><span className="small">Transcript lines</span><strong>{analyticsSummary.transcriptLines}</strong></div>
-              <div className={styles.metricCard}><span className="small">Suggestions</span><strong>{analyticsSummary.suggestions}</strong></div>
-              <div className={styles.metricCard}><span className="small">Coding structured tips</span><strong>{analyticsSummary.codingStructuredTips}</strong></div>
-              <div className={styles.metricCard}><span className="small">Follow-ups</span><strong>{analyticsSummary.withFollowUps}</strong></div>
+              <div className={styles.metricCard}><span className="small">Current transcript lines</span><strong>{analyticsSummary.transcriptLines}</strong></div>
+              <div className={styles.metricCard}><span className="small">Current suggestions</span><strong>{analyticsSummary.suggestions}</strong></div>
+              <div className={styles.metricCard}><span className="small">Selected session lines</span><strong>{historyInsights.transcriptLines}</strong></div>
+              <div className={styles.metricCard}><span className="small">Selected session tips</span><strong>{historyInsights.suggestions}</strong></div>
             </div>
-            <p className={styles.emptyState}>
-              History drill-down scaffold is in place. Next step: add time-range filters and compare prior sessions from copilot history.
-            </p>
+
+            <div className={styles.historyScaffold}>
+              <aside className={styles.historyList} aria-label="Session history list">
+                <div className={styles.panelHeader}>
+                  <h3 className={styles.sectionTitle}>Recent sessions</h3>
+                  <button className="button" type="button" onClick={() => void loadHistory()} disabled={historyLoading}>
+                    {historyLoading ? 'Refreshing…' : 'Refresh'}
+                  </button>
+                </div>
+
+                {historyLoading ? <p className={styles.emptyState}>Loading session history…</p> : null}
+                {historyError ? <div className="error">{historyError}</div> : null}
+                {!historyLoading && !historyError && historySessions.length === 0 ? (
+                  <p className={styles.emptyState}>No copilot sessions yet. Run a live session to build analytics history.</p>
+                ) : null}
+
+                {historySessions.length > 0 ? (
+                  <ol className={styles.sessionList}>
+                    {historySessions.map((item) => {
+                      const modeValue = formatModeLabel(asText(item.metadata?.mode, 'general'));
+                      const duration = typeof item.consumed_minutes === 'number'
+                        ? item.consumed_minutes
+                        : calculateDurationMinutes(item.started_at, item.stopped_at);
+
+                      return (
+                        <li key={item.id}>
+                          <button
+                            className={`${styles.sessionItemButton} ${selectedHistoryId === item.id ? styles.sessionItemButtonActive : ''}`}
+                            type="button"
+                            onClick={() => setSelectedHistoryId(item.id)}
+                          >
+                            <div className={styles.sessionItemTopRow}>
+                              <strong className={styles.sessionItemTitle}>{item.title?.trim() || 'Untitled session'}</strong>
+                              <span className="small mono">{new Date(item.created_at).toLocaleDateString()}</span>
+                            </div>
+                            <div className={styles.chipRow}>
+                              <span className="badge">{item.status}</span>
+                              <span className="badge">{modeValue}</span>
+                              <span className="badge">{duration} min</span>
+                            </div>
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ol>
+                ) : null}
+              </aside>
+
+              <section className={styles.historyDetail} aria-label="Session detail view">
+                {!selectedHistoryId ? <p className={styles.emptyState}>Select a session to inspect detailed analytics.</p> : null}
+                {selectedHistoryId && detailLoading ? <p className={styles.emptyState}>Loading session details…</p> : null}
+                {selectedHistoryId && detailError ? (
+                  <div className="stack" style={{ gap: 10 }}>
+                    <div className="error">{detailError}</div>
+                    <button className="button" type="button" onClick={() => void loadHistoryDetail(selectedHistoryId)}>
+                      Retry loading details
+                    </button>
+                  </div>
+                ) : null}
+
+                {selectedHistorySession && historyDetail && !detailLoading && !detailError ? (
+                  <div className="stack" style={{ gap: 12 }}>
+                    <div className={styles.panelHeader}>
+                      <h3 className={styles.sectionTitle} style={{ margin: 0 }}>{selectedHistorySession.title?.trim() || 'Untitled session'}</h3>
+                      <span className="small mono">{new Date(selectedHistorySession.started_at).toLocaleString()}</span>
+                    </div>
+
+                    <div className={styles.chipRow}>
+                      <span className="badge">{historyDetail.session.status}</span>
+                      <span className="badge">{historyInsights.mode}</span>
+                      <span className="badge">{historyInsights.durationMinutes} min</span>
+                    </div>
+
+                    <div className={styles.metricGrid}>
+                      <div className={styles.metricCard}><span className="small">Transcript lines</span><strong>{historyInsights.transcriptLines}</strong></div>
+                      <div className={styles.metricCard}><span className="small">Suggestions</span><strong>{historyInsights.suggestions}</strong></div>
+                    </div>
+
+                    <div className={styles.summaryCard}>
+                      <div className={styles.panelHeader}>
+                        <h4 className={styles.sectionTitle} style={{ margin: 0 }}>Latest summary</h4>
+                        {latestSummary ? <span className="small mono">{new Date(latestSummary.updated_at).toLocaleString()}</span> : null}
+                      </div>
+
+                      {!latestSummary ? <p className={styles.emptyState}>No generated summary for this session yet.</p> : null}
+
+                      {latestSummary ? (
+                        <>
+                          {latestSummary.content ? <p style={{ margin: 0 }}>{latestSummary.content}</p> : null}
+                          <div className={styles.summaryColumns}>
+                            <div>
+                              <h5 className={styles.subSectionTitle}>Strengths</h5>
+                              <ul className={styles.pointsList}>
+                                {latestSummaryPayload.strengths.length > 0
+                                  ? latestSummaryPayload.strengths.map((point, idx) => <li key={`hist-strength-${idx}`} className="small">{point}</li>)
+                                  : <li className="small">No strengths captured.</li>}
+                              </ul>
+                            </div>
+                            <div>
+                              <h5 className={styles.subSectionTitle}>Weaknesses</h5>
+                              <ul className={styles.pointsList}>
+                                {latestSummaryPayload.weaknesses.length > 0
+                                  ? latestSummaryPayload.weaknesses.map((point, idx) => <li key={`hist-weakness-${idx}`} className="small">{point}</li>)
+                                  : <li className="small">No weaknesses captured.</li>}
+                              </ul>
+                            </div>
+                          </div>
+                          <div>
+                            <h5 className={styles.subSectionTitle}>Next steps</h5>
+                            <ul className={styles.pointsList}>
+                              {latestSummaryPayload.nextSteps.length > 0
+                                ? latestSummaryPayload.nextSteps.map((point, idx) => <li key={`hist-next-${idx}`} className="small">{point}</li>)
+                                : <li className="small">No next steps captured.</li>}
+                            </ul>
+                          </div>
+                        </>
+                      ) : null}
+                    </div>
+                  </div>
+                ) : null}
+              </section>
+            </div>
           </div>
         </section>
       )}
