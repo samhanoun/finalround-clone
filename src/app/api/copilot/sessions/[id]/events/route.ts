@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/server';
 import { rateLimit } from '@/lib/rateLimit';
 import { sanitizeCopilotText } from '@/lib/copilotSecurity';
 import { isSessionHeartbeatExpired, withHeartbeatMetadata } from '@/lib/copilotSession';
+import { buildSuggestionPrompt, parseSuggestionContent } from '@/lib/copilotSuggestion';
 
 interface Params {
   params: Promise<{ id: string }>;
@@ -20,33 +21,6 @@ const BodySchema = z.object({
 });
 
 type EventPayload = Record<string, unknown>;
-
-function buildSuggestionPrompt(args: {
-  mode: string;
-  transcriptText: string;
-  latestQuestion: string;
-}) {
-  const modeHint =
-    args.mode === 'coding'
-      ? 'Focus on technical reasoning, constraints, edge cases, and complexity.'
-      : args.mode === 'phone'
-        ? 'Focus on concise and clear phone-screen style responses.'
-        : args.mode === 'video'
-          ? 'Focus on structured, confident video-interview responses.'
-          : 'Focus on behavioral interview responses.';
-
-  return [
-    {
-      role: 'system' as const,
-      content:
-        'You are an interview copilot. Return practical interview guidance only. Never invent user experience details not in context. Keep output concise and immediately usable.',
-    },
-    {
-      role: 'user' as const,
-      content: `Interview mode: ${args.mode}\n${modeHint}\n\nRecent transcript:\n${args.transcriptText}\n\nLatest interviewer question:\n${args.latestQuestion}\n\nReturn JSON with this exact shape:\n{\n  "short_answer": "<= 90 words",\n  "talking_points": ["bullet1", "bullet2", "bullet3"],\n  "follow_up": "one short clarifying follow-up user can ask if needed"\n}`,
-    },
-  ];
-}
 
 export async function POST(req: NextRequest, { params }: Params) {
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
@@ -169,27 +143,34 @@ export async function POST(req: NextRequest, { params }: Params) {
     });
 
     const content = completion.choices[0]?.message?.content ?? '{}';
-
-    let parsedSuggestion: { short_answer?: string; talking_points?: string[]; follow_up?: string } = {};
-    try {
-      parsedSuggestion = JSON.parse(content) as { short_answer?: string; talking_points?: string[]; follow_up?: string };
-    } catch {
-      parsedSuggestion = { short_answer: content };
-    }
+    const parsedSuggestion = parseSuggestionContent(content, mode);
 
     const suggestionPayload: EventPayload = {
       category: 'answer',
-      text: parsedSuggestion.short_answer ?? 'No suggestion generated.',
+      text: parsedSuggestion.shortAnswer,
       based_on_event_id: createdEvent.id,
       mode,
+      structured: parsedSuggestion.structured,
     };
 
-    if (Array.isArray(parsedSuggestion.talking_points)) {
-      suggestionPayload.talking_points = parsedSuggestion.talking_points.slice(0, 6);
+    if (parsedSuggestion.talkingPoints.length > 0) {
+      suggestionPayload.talking_points = parsedSuggestion.talkingPoints;
     }
 
-    if (typeof parsedSuggestion.follow_up === 'string') {
-      suggestionPayload.follow_up = parsedSuggestion.follow_up;
+    if (parsedSuggestion.followUp) {
+      suggestionPayload.follow_up = parsedSuggestion.followUp;
+    }
+
+    if (parsedSuggestion.complexity) {
+      suggestionPayload.complexity = parsedSuggestion.complexity;
+    }
+
+    if (parsedSuggestion.edgeCases && parsedSuggestion.edgeCases.length > 0) {
+      suggestionPayload.edge_cases = parsedSuggestion.edgeCases;
+    }
+
+    if (parsedSuggestion.checklist && parsedSuggestion.checklist.length > 0) {
+      suggestionPayload.checklist = parsedSuggestion.checklist;
     }
 
     const { data: suggestionEvent, error: suggestionError } = await supabase
