@@ -291,6 +291,11 @@ export function LiveCopilotClient() {
   const [deletingHistoryId, setDeletingHistoryId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [deleteSuccess, setDeleteSuccess] = useState<string | null>(null);
+  const [exportingAllData, setExportingAllData] = useState(false);
+  const [deleteAllPending, setDeleteAllPending] = useState(false);
+  const [deleteAllConfirmation, setDeleteAllConfirmation] = useState('');
+  const [settingsError, setSettingsError] = useState<string | null>(null);
+  const [settingsSuccess, setSettingsSuccess] = useState<string | null>(null);
 
   const streamRef = useRef<EventSource | null>(null);
   const recognitionRef = useRef<SpeechRecognitionLite | null>(null);
@@ -451,6 +456,11 @@ export function LiveCopilotClient() {
     setDeleteError(null);
     setDeleteSuccess(null);
   }, [selectedHistoryId]);
+
+  useEffect(() => {
+    setSettingsError(null);
+    setSettingsSuccess(null);
+  }, [activePanel]);
 
   useEffect(() => {
     if (activePanel !== 'analytics' || !selectedHistoryId) {
@@ -870,6 +880,86 @@ export function LiveCopilotClient() {
     }
   }
 
+  async function exportAllCopilotData() {
+    if (exportingAllData || deleteAllPending) return;
+
+    setSettingsError(null);
+    setSettingsSuccess(null);
+    setExportingAllData(true);
+
+    try {
+      const res = await fetch('/api/copilot/sessions/export');
+      if (!res.ok) {
+        const json = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(json.error ?? 'Failed to export data');
+      }
+
+      const blob = await res.blob();
+      const contentDisposition = res.headers.get('content-disposition') ?? '';
+      const fileNameMatch = contentDisposition.match(/filename="?([^";]+)"?/i);
+      const filename = fileNameMatch?.[1] ?? `copilot-data-export-${new Date().toISOString().slice(0, 10)}.json`;
+
+      const objectUrl = window.URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = objectUrl;
+      anchor.download = filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.URL.revokeObjectURL(objectUrl);
+
+      setSettingsSuccess('Copilot data export is ready and downloaded.');
+    } catch (e) {
+      setSettingsError(e instanceof Error ? e.message : 'Failed to export data');
+    } finally {
+      setExportingAllData(false);
+    }
+  }
+
+  async function deleteAllCopilotData() {
+    if (deleteAllPending || exportingAllData) return;
+
+    if (deleteAllConfirmation !== 'DELETE ALL COPILOT DATA') {
+      setSettingsError('Type DELETE ALL COPILOT DATA to confirm.');
+      return;
+    }
+
+    setSettingsError(null);
+    setSettingsSuccess(null);
+    setDeleteAllPending(true);
+
+    try {
+      const res = await fetch('/api/copilot/sessions/purge', {
+        method: 'DELETE',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ confirmation: deleteAllConfirmation }),
+      });
+      const json = (await res.json().catch(() => ({}))) as { ok?: boolean; deleted?: { sessions?: number; events?: number; summaries?: number }; error?: string };
+      if (!res.ok || !json.ok) throw new Error(json.error ?? 'Failed to delete all copilot data');
+
+      setSession(null);
+      setTranscript([]);
+      setSuggestions([]);
+      setSummary(null);
+      setHistorySessions([]);
+      setSelectedHistoryId(null);
+      setHistoryDetail(null);
+      setHistoryReport(null);
+      setHistoryReportError(null);
+      setDeleteAllConfirmation('');
+
+      setSettingsSuccess(
+        `Deleted all copilot data (${json.deleted?.sessions ?? 0} sessions, ${json.deleted?.events ?? 0} events, ${json.deleted?.summaries ?? 0} summaries).`,
+      );
+
+      await loadHistory();
+    } catch (e) {
+      setSettingsError(e instanceof Error ? e.message : 'Failed to delete all copilot data');
+    } finally {
+      setDeleteAllPending(false);
+    }
+  }
+
   const transcriptRows = useMemo(
     () =>
       transcript.map((item) => ({
@@ -1275,6 +1365,58 @@ export function LiveCopilotClient() {
               <div className={styles.metricCard}><span className="small">Selected session lines</span><strong>{historyInsights.transcriptLines}</strong></div>
               <div className={styles.metricCard}><span className="small">Selected session tips</span><strong>{historyInsights.suggestions}</strong></div>
             </div>
+
+            <section className={styles.settingsCard} aria-label="Live copilot analytics settings">
+              <div className={styles.panelHeader}>
+                <h3 className={styles.sectionTitle} style={{ margin: 0 }}>Analytics settings</h3>
+                <span className="small">Export or permanently remove all copilot data</span>
+              </div>
+
+              <div className={styles.settingsGrid}>
+                <article className={styles.actionCard}>
+                  <h4 className={styles.subSectionTitle}>Data export</h4>
+                  <p className="small" style={{ margin: 0 }}>
+                    Download a JSON export of all your copilot sessions, transcript events, and generated summaries.
+                  </p>
+                  <button
+                    className="button"
+                    type="button"
+                    onClick={() => void exportAllCopilotData()}
+                    disabled={exportingAllData || deleteAllPending}
+                  >
+                    {exportingAllData ? 'Exporting…' : 'Export all copilot data'}
+                  </button>
+                </article>
+
+                <article className={`${styles.actionCard} ${styles.dangerCard}`}>
+                  <h4 className={styles.subSectionTitle}>Delete all copilot data</h4>
+                  <p className="small" style={{ margin: 0 }}>
+                    <strong>Warning:</strong> this permanently deletes every copilot session, transcript event, and summary for your account. This cannot be undone.
+                  </p>
+                  <label className="label" style={{ margin: 0 }}>
+                    Type <code>DELETE ALL COPILOT DATA</code> to confirm
+                    <input
+                      className="input"
+                      value={deleteAllConfirmation}
+                      onChange={(e) => setDeleteAllConfirmation(e.target.value)}
+                      placeholder="DELETE ALL COPILOT DATA"
+                      disabled={deleteAllPending || exportingAllData}
+                    />
+                  </label>
+                  <button
+                    className="button buttonDanger"
+                    type="button"
+                    onClick={() => void deleteAllCopilotData()}
+                    disabled={deleteAllPending || exportingAllData || deleteAllConfirmation !== 'DELETE ALL COPILOT DATA'}
+                  >
+                    {deleteAllPending ? 'Deleting all data…' : 'Delete all copilot data'}
+                  </button>
+                </article>
+              </div>
+
+              {settingsError ? <div className="error">{settingsError}</div> : null}
+              {settingsSuccess ? <div className="success">{settingsSuccess}</div> : null}
+            </section>
 
             <div className={styles.historyScaffold}>
               <aside className={styles.historyList} aria-label="Session history list">
