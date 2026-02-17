@@ -119,6 +119,23 @@
   flex-wrap: wrap;
 }
 
+.panelStage {
+  display: grid;
+  gap: 14px;
+  animation: panelFadeIn 220ms ease;
+}
+
+@keyframes panelFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .metricGrid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -132,6 +149,52 @@
   padding: 10px;
   display: grid;
   gap: 4px;
+}
+
+.reportMetricCard {
+  gap: 6px;
+}
+
+.progressTrack {
+  width: 100%;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.09);
+  overflow: hidden;
+}
+
+.progressFill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  transition: width 180ms ease;
+}
+
+.progressFillhigh {
+  background: linear-gradient(90deg, rgba(26, 194, 115, 0.95), rgba(114, 235, 169, 0.95));
+}
+
+.progressFillmedium {
+  background: linear-gradient(90deg, rgba(255, 191, 91, 0.95), rgba(255, 143, 59, 0.95));
+}
+
+.progressFilllow {
+  background: linear-gradient(90deg, rgba(255, 92, 138, 0.95), rgba(255, 128, 168, 0.95));
+}
+
+.scoreBadgehigh {
+  border-color: rgba(26, 194, 115, 0.5);
+  color: rgba(208, 255, 226, 0.94);
+}
+
+.scoreBadgemedium {
+  border-color: rgba(255, 191, 91, 0.5);
+  color: rgba(255, 223, 166, 0.94);
+}
+
+.scoreBadgelow {
+  border-color: rgba(255, 92, 138, 0.5);
+  color: rgba(255, 210, 225, 0.94);
 }
 
 .historyScaffold {
@@ -203,6 +266,14 @@
   min-height: 280px;
 }
 
+.detailHeaderActions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .summaryCard {
   border: 1px solid rgba(255, 255, 255, 0.09);
   background: rgba(255, 255, 255, 0.02);
@@ -250,4 +321,14 @@
   padding: 10px;
   display: grid;
   gap: 8px;
+}
+
+@media (max-width: 640px) {
+  .metricGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .detailHeaderActions {
+    justify-content: flex-start;
+  }
 }

@@ -181,6 +181,19 @@ function formatHiringSignal(value: HiringSignal | null): string {
   return value.split('_').map((part) => `${part[0]?.toUpperCase() ?? ''}${part.slice(1)}`).join(' ');
 }
 
+function asPercent(value: number | null, max: number): number {
+  if (value === null || max <= 0) return 0;
+  return Math.max(0, Math.min(100, Math.round((value / max) * 100)));
+}
+
+function scoreTone(value: number | null, max: number): 'high' | 'medium' | 'low' {
+  if (value === null) return 'low';
+  const ratio = value / max;
+  if (ratio >= 0.75) return 'high';
+  if (ratio >= 0.5) return 'medium';
+  return 'low';
+}
+
 function parseReportPayload(payload: unknown): Omit<ReportViewModel, 'source'> | null {
   const root = asObject(payload);
   const nested = asObject(root.report);
@@ -275,6 +288,9 @@ export function LiveCopilotClient() {
   const [historyReport, setHistoryReport] = useState<ReportViewModel | null>(null);
   const [historyReportLoading, setHistoryReportLoading] = useState(false);
   const [historyReportError, setHistoryReportError] = useState<string | null>(null);
+  const [deletingHistoryId, setDeletingHistoryId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deleteSuccess, setDeleteSuccess] = useState<string | null>(null);
 
   const streamRef = useRef<EventSource | null>(null);
   const recognitionRef = useRef<SpeechRecognitionLite | null>(null);
@@ -430,6 +446,11 @@ export function LiveCopilotClient() {
     if (activePanel !== 'analytics' || !selectedHistoryId) return;
     void loadHistoryDetail(selectedHistoryId);
   }, [activePanel, selectedHistoryId, loadHistoryDetail]);
+
+  useEffect(() => {
+    setDeleteError(null);
+    setDeleteSuccess(null);
+  }, [selectedHistoryId]);
 
   useEffect(() => {
     if (activePanel !== 'analytics' || !selectedHistoryId) {
@@ -819,6 +840,36 @@ export function LiveCopilotClient() {
     }
   }
 
+  async function deleteSelectedHistorySession() {
+    if (!selectedHistorySession || deletingHistoryId) return;
+
+    const displayName = selectedHistorySession.title?.trim() || 'Untitled session';
+    const confirmation = window.prompt(`Type DELETE to remove "${displayName}" permanently.`);
+    if (confirmation !== 'DELETE') return;
+
+    setDeleteError(null);
+    setDeleteSuccess(null);
+    setDeletingHistoryId(selectedHistorySession.id);
+
+    try {
+      const res = await fetch(`/api/copilot/sessions/${selectedHistorySession.id}`, {
+        method: 'DELETE',
+      });
+      const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      if (!res.ok || !json.ok) throw new Error(json.error ?? 'Failed to delete session');
+
+      setHistoryDetail(null);
+      setHistoryReport(null);
+      setHistoryReportError(null);
+      setDeleteSuccess(`Deleted "${displayName}".`);
+      await loadHistory();
+    } catch (e) {
+      setDeleteError(e instanceof Error ? e.message : 'Failed to delete session');
+    } finally {
+      setDeletingHistoryId(null);
+    }
+  }
+
   const transcriptRows = useMemo(
     () =>
       transcript.map((item) => ({
@@ -1048,8 +1099,9 @@ export function LiveCopilotClient() {
         </div>
       </section>
 
-      {activePanel === 'live' ? (
-        <>
+      <div key={activePanel} className={styles.panelStage}>
+        {activePanel === 'live' ? (
+          <>
           <div className="grid2" style={{ alignItems: 'start' }}>
             <section className="card" aria-label="Live transcript panel">
               <div className="cardInner stack" style={{ gap: 12 }}>
@@ -1287,8 +1339,21 @@ export function LiveCopilotClient() {
                   <div className="stack" style={{ gap: 12 }}>
                     <div className={styles.panelHeader}>
                       <h3 className={styles.sectionTitle} style={{ margin: 0 }}>{selectedHistorySession.title?.trim() || 'Untitled session'}</h3>
-                      <span className="small mono">{new Date(selectedHistorySession.started_at).toLocaleString()}</span>
+                      <div className={styles.detailHeaderActions}>
+                        <span className="small mono">{new Date(selectedHistorySession.started_at).toLocaleString()}</span>
+                        <button
+                          className="button buttonDanger"
+                          type="button"
+                          onClick={() => void deleteSelectedHistorySession()}
+                          disabled={deletingHistoryId === selectedHistorySession.id}
+                        >
+                          {deletingHistoryId === selectedHistorySession.id ? 'Deleting…' : 'Delete session'}
+                        </button>
+                      </div>
                     </div>
+
+                    {deleteError ? <div className="error">{deleteError}</div> : null}
+                    {deleteSuccess ? <div className="success">{deleteSuccess}</div> : null}
 
                     <div className={styles.chipRow}>
                       <span className="badge">{historyDetail.session.status}</span>
@@ -1316,7 +1381,16 @@ export function LiveCopilotClient() {
                       {historyReport ? (
                         <>
                           <div className={styles.metricGrid}>
-                            <div className={styles.metricCard}><span className="small">Overall score</span><strong>{historyReport.overallScore ?? '—'}</strong></div>
+                            <div className={`${styles.metricCard} ${styles.reportMetricCard}`}>
+                              <span className="small">Overall score</span>
+                              <strong>{historyReport.overallScore ?? '—'}</strong>
+                              <div className={styles.progressTrack} aria-hidden="true">
+                                <span
+                                  className={`${styles.progressFill} ${styles[`progressFill${scoreTone(historyReport.overallScore, 100)}`]}`}
+                                  style={{ width: `${asPercent(historyReport.overallScore, 100)}%` }}
+                                />
+                              </div>
+                            </div>
                             <div className={styles.metricCard}><span className="small">Hiring signal</span><strong>{formatHiringSignal(historyReport.hiringSignal)}</strong></div>
                           </div>
 
@@ -1329,7 +1403,13 @@ export function LiveCopilotClient() {
                                 <article key={dimension.key} className={styles.rubricCard}>
                                   <div className={styles.panelHeader}>
                                     <h5 className={styles.subSectionTitle}>{dimension.label}</h5>
-                                    <span className="badge">{item.score ?? '—'}/5</span>
+                                    <span className={`badge ${styles[`scoreBadge${scoreTone(item.score, 5)}`]}`}>{item.score ?? '—'}/5</span>
+                                  </div>
+                                  <div className={styles.progressTrack} aria-hidden="true">
+                                    <span
+                                      className={`${styles.progressFill} ${styles[`progressFill${scoreTone(item.score, 5)}`]}`}
+                                      style={{ width: `${asPercent(item.score, 5)}%` }}
+                                    />
                                   </div>
                                   <p className="small" style={{ margin: 0 }}><strong>Evidence:</strong> {item.evidence || 'Not captured.'}</p>
                                   <p className="small" style={{ margin: 0 }}><strong>Recommendation:</strong> {item.recommendation || 'Not captured.'}</p>
@@ -1373,7 +1453,8 @@ export function LiveCopilotClient() {
             </div>
           </div>
         </section>
-      )}
+        )}
+      </div>
     </div>
   );
 }
