@@ -14,6 +14,7 @@ interface SpeechRecognitionResultLite {
 
 interface SpeechRecognitionEventLite extends Event {
   results: ArrayLike<SpeechRecognitionResultLite>;
+  resultIndex?: number;
 }
 
 interface SpeechRecognitionLite extends EventTarget {
@@ -79,6 +80,22 @@ type StreamEnvelope<T> = {
   payload: T;
 };
 
+type TranscriptChunkInput = {
+  speaker: 'interviewer' | 'candidate' | 'system';
+  text: string;
+  isFinal: boolean;
+  interimId?: string;
+  clientTimestamp?: string;
+  autoSuggest?: boolean;
+};
+
+type TranscriptIngestionResponse = {
+  events?: CopilotEvent[];
+  suggestions?: CopilotEvent[];
+  accepted?: number;
+  error?: string;
+};
+
 function asText(value: unknown, fallback = ''): string {
   return typeof value === 'string' ? value : fallback;
 }
@@ -97,6 +114,18 @@ function parseEnvelope<T>(raw: string): StreamEnvelope<T> | null {
 function listOfStrings(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0);
+}
+
+function appendUniqueEvents(current: CopilotEvent[], incoming: CopilotEvent[]): CopilotEvent[] {
+  if (incoming.length === 0) return current;
+  const seen = new Set(current.map((item) => item.id));
+  const additions = incoming.filter((item) => {
+    if (seen.has(item.id)) return false;
+    seen.add(item.id);
+    return true;
+  });
+  if (additions.length === 0) return current;
+  return [...current, ...additions];
 }
 
 function formatModeLabel(mode: string): string {
@@ -124,6 +153,9 @@ export function LiveCopilotClient() {
   const [draftText, setDraftText] = useState('');
   const [draftSpeaker, setDraftSpeaker] = useState<'interviewer' | 'candidate'>('interviewer');
   const [listening, setListening] = useState(false);
+  const [micPreview, setMicPreview] = useState('');
+  const [micSyncing, setMicSyncing] = useState(false);
+  const [lastMicSyncAt, setLastMicSyncAt] = useState<string | null>(null);
   const [summary, setSummary] = useState<{ content: string; strengths: string[]; weaknesses: string[]; next_steps: string[] } | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -140,6 +172,9 @@ export function LiveCopilotClient() {
   const streamRef = useRef<EventSource | null>(null);
   const recognitionRef = useRef<SpeechRecognitionLite | null>(null);
   const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const transcriptQueueRef = useRef<TranscriptChunkInput[]>([]);
+  const transcriptFlushTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const transcriptFlushInFlightRef = useRef(false);
 
   const isActive = session?.status === 'active';
 
@@ -153,6 +188,11 @@ export function LiveCopilotClient() {
       }
       recognitionRef.current?.stop();
       recognitionRef.current = null;
+      transcriptQueueRef.current = [];
+      if (transcriptFlushTimeoutRef.current) {
+        clearTimeout(transcriptFlushTimeoutRef.current);
+        transcriptFlushTimeoutRef.current = null;
+      }
     };
   }, []);
 
@@ -342,6 +382,8 @@ export function LiveCopilotClient() {
     setTranscript([]);
     setSuggestions([]);
     setSummary(null);
+    setMicPreview('');
+    setLastMicSyncAt(null);
 
     try {
       const res = await fetch('/api/copilot/sessions/start', {
@@ -387,6 +429,13 @@ export function LiveCopilotClient() {
       streamRef.current = null;
       stopHeartbeat();
       setConnecting(false);
+      transcriptQueueRef.current = [];
+      if (transcriptFlushTimeoutRef.current) {
+        clearTimeout(transcriptFlushTimeoutRef.current);
+        transcriptFlushTimeoutRef.current = null;
+      }
+      setMicPreview('');
+      setMicSyncing(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to stop session');
     } finally {
@@ -405,6 +454,75 @@ export function LiveCopilotClient() {
     return withSpeech.SpeechRecognition ?? withSpeech.webkitSpeechRecognition ?? null;
   }
 
+  const flushTranscriptQueue = useCallback(async () => {
+    if (!session?.id || !isActive) return;
+    if (transcriptFlushInFlightRef.current) return;
+
+    const queue = transcriptQueueRef.current;
+    if (queue.length === 0) return;
+
+    transcriptFlushInFlightRef.current = true;
+    setMicSyncing(true);
+
+    try {
+      while (queue.length > 0 && session?.id) {
+        const batch = queue.splice(0, 8);
+        const res = await fetch(`/api/copilot/sessions/${session.id}/transcript`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ chunks: batch }),
+        });
+
+        const json = (await res.json().catch(() => ({}))) as TranscriptIngestionResponse;
+        if (!res.ok) {
+          queue.unshift(...batch);
+          throw new Error(json.error ?? 'Failed to sync transcript chunk');
+        }
+
+        setTranscript((prev) => appendUniqueEvents(prev, Array.isArray(json.events) ? json.events : []));
+        setSuggestions((prev) => appendUniqueEvents(prev, Array.isArray(json.suggestions) ? json.suggestions : []));
+        setLastMicSyncAt(new Date().toISOString());
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to sync transcript chunk');
+    } finally {
+      transcriptFlushInFlightRef.current = false;
+      setMicSyncing(false);
+    }
+  }, [isActive, session?.id]);
+
+  const enqueueTranscriptChunk = useCallback(
+    (chunk: TranscriptChunkInput) => {
+      transcriptQueueRef.current.push(chunk);
+
+      if (transcriptFlushTimeoutRef.current) {
+        clearTimeout(transcriptFlushTimeoutRef.current);
+      }
+
+      transcriptFlushTimeoutRef.current = setTimeout(() => {
+        transcriptFlushTimeoutRef.current = null;
+        void flushTranscriptQueue();
+      }, 450);
+    },
+    [flushTranscriptQueue],
+  );
+
+  useEffect(() => {
+    if (!isActive || !session?.id) {
+      transcriptQueueRef.current = [];
+      if (transcriptFlushTimeoutRef.current) {
+        clearTimeout(transcriptFlushTimeoutRef.current);
+        transcriptFlushTimeoutRef.current = null;
+      }
+      setMicSyncing(false);
+      return;
+    }
+
+    if (transcriptQueueRef.current.length > 0) {
+      void flushTranscriptQueue();
+    }
+  }, [flushTranscriptQueue, isActive, session?.id]);
+
   function startListening() {
     if (!session?.id || !isActive) return;
 
@@ -421,28 +539,45 @@ export function LiveCopilotClient() {
     recognition.lang = 'en-US';
 
     recognition.onresult = (event) => {
-      let finalText = '';
-      for (let i = 0; i < event.results.length; i += 1) {
+      const finalChunks: string[] = [];
+      const interimChunks: string[] = [];
+      const startIndex = Number.isInteger(event.resultIndex) ? (event.resultIndex as number) : 0;
+
+      for (let i = startIndex; i < event.results.length; i += 1) {
         const result = event.results[i];
         const alt = result[0];
-        if (result.isFinal && alt?.transcript) {
-          finalText += `${alt.transcript} `;
+        const nextText = alt?.transcript?.trim();
+        if (!nextText) continue;
+
+        if (result.isFinal) {
+          finalChunks.push(nextText);
+        } else {
+          interimChunks.push(nextText);
         }
       }
 
-      const cleaned = finalText.trim();
-      if (cleaned) {
-        setDraftText(cleaned);
+      setMicPreview(interimChunks.join(' ').trim());
+
+      for (const text of finalChunks) {
+        enqueueTranscriptChunk({
+          speaker: draftSpeaker,
+          text,
+          isFinal: true,
+          autoSuggest: draftSpeaker === 'interviewer',
+          clientTimestamp: new Date().toISOString(),
+        });
       }
     };
 
     recognition.onerror = () => {
       setError('Mic transcription failed. You can continue with manual input.');
       setListening(false);
+      setMicPreview('');
     };
 
     recognition.onend = () => {
       setListening(false);
+      setMicPreview('');
     };
 
     recognition.start();
@@ -454,6 +589,8 @@ export function LiveCopilotClient() {
     recognitionRef.current?.stop();
     recognitionRef.current = null;
     setListening(false);
+    setMicPreview('');
+    void flushTranscriptQueue();
   }
 
   async function submitTranscriptEvent() {
@@ -463,19 +600,28 @@ export function LiveCopilotClient() {
     setSubmitting(true);
 
     try {
-      const res = await fetch(`/api/copilot/sessions/${session.id}/events`, {
+      const res = await fetch(`/api/copilot/sessions/${session.id}/transcript`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
-          eventType: 'transcript',
-          speaker: draftSpeaker,
-          text: draftText.trim(),
-          autoSuggest: true,
+          chunks: [
+            {
+              speaker: draftSpeaker,
+              text: draftText.trim(),
+              isFinal: true,
+              autoSuggest: draftSpeaker === 'interviewer',
+              clientTimestamp: new Date().toISOString(),
+            },
+          ],
         }),
       });
 
-      const json = (await res.json().catch(() => ({}))) as { error?: string };
+      const json = (await res.json().catch(() => ({}))) as TranscriptIngestionResponse;
       if (!res.ok) throw new Error(json.error ?? 'Failed to submit transcript event');
+
+      setTranscript((prev) => appendUniqueEvents(prev, Array.isArray(json.events) ? json.events : []));
+      setSuggestions((prev) => appendUniqueEvents(prev, Array.isArray(json.suggestions) ? json.suggestions : []));
+      setLastMicSyncAt(new Date().toISOString());
       setDraftText('');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to submit transcript event');
@@ -676,7 +822,11 @@ export function LiveCopilotClient() {
           <div className={styles.composerCard}>
             <div className={styles.composerHeader}>
               <h3 className={styles.sectionTitle}>Transcript composer</h3>
-              <span className="small">Mic {listening ? 'on' : 'off'}</span>
+              <div className={styles.chipRow}>
+                <span className="badge">Mic {listening ? 'on' : 'off'}</span>
+                <span className="badge">{micSyncing ? 'Transcribing…' : 'Synced'}</span>
+                {lastMicSyncAt ? <span className="small mono">{new Date(lastMicSyncAt).toLocaleTimeString()}</span> : null}
+              </div>
             </div>
             <div className={styles.composerControls}>
               <select
@@ -712,6 +862,11 @@ export function LiveCopilotClient() {
               rows={3}
               disabled={!isActive || submitting}
             />
+            {listening ? (
+              <p className="small" style={{ margin: 0 }}>
+                Live mic preview: {micPreview || 'Listening…'}
+              </p>
+            ) : null}
           </div>
 
           {error ? <div className="error">{error}</div> : null}
