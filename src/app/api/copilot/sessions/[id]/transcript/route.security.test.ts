@@ -170,6 +170,20 @@ describe('copilot transcript route security responses', () => {
 
     expect(response.status).toBe(201);
     await expect(response.json()).resolves.toEqual({
+      ok: true,
+      data: {
+        events: [
+          {
+            id: 'evt-1',
+            event_type: 'transcript',
+            payload: { text: 'Can you walk me through your approach?', transcript_kind: 'interim' },
+            created_at: expect.any(String),
+          },
+        ],
+        suggestions: [],
+        accepted: 1,
+        rejected: 0,
+      },
       events: [
         {
           id: 'evt-1',
@@ -180,6 +194,55 @@ describe('copilot transcript route security responses', () => {
       ],
       suggestions: [],
       accepted: 1,
+      rejected: 0,
+    });
+  });
+
+  it('rejects whitespace-only chunks in batch payloads', async () => {
+    const { POST } = await import('./route');
+
+    const req = {
+      headers: new Headers({
+        'content-type': 'application/json',
+      }),
+      json: async () => ({
+        chunks: [{ speaker: 'interviewer', text: '   ', isFinal: false }],
+      }),
+    } as unknown as NextRequest;
+
+    const response = await POST(req, {
+      params: Promise.resolve({ id: '11111111-1111-1111-1111-111111111111' }),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: 'invalid_body',
+    });
+  });
+
+  it('rejects batch payloads larger than 30 chunks', async () => {
+    const { POST } = await import('./route');
+
+    const req = {
+      headers: new Headers({
+        'content-type': 'application/json',
+      }),
+      json: async () => ({
+        chunks: Array.from({ length: 31 }).map((_, idx) => ({
+          speaker: 'interviewer',
+          text: `Question ${idx + 1}`,
+          isFinal: false,
+        })),
+      }),
+    } as unknown as NextRequest;
+
+    const response = await POST(req, {
+      params: Promise.resolve({ id: '11111111-1111-1111-1111-111111111111' }),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: 'invalid_body',
     });
   });
 });

@@ -8,6 +8,10 @@ interface Params {
   params: Promise<{ id: string }>;
 }
 
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
+}
+
 export async function GET(req: NextRequest, { params }: Params) {
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
   const anonRl = await rateLimit({ key: `copilot:report:anon:${ip}`, limit: 120, windowMs: 60_000 });
@@ -45,19 +49,26 @@ export async function GET(req: NextRequest, { params }: Params) {
 
   const mode = typeof session.metadata?.mode === 'string' ? session.metadata.mode : 'general';
   const reportSource = (summaries ?? []).find((row) => {
-    const payload = row.payload as Record<string, unknown> | null;
-    return !!payload && (payload.report || payload.rubric || payload.overall_score);
+    const payload = asRecord(row.payload);
+    return payload.report || payload.rubric || payload.overall_score;
   });
 
   if (!reportSource) {
     return jsonError(404, 'report_not_found');
   }
 
-  const rawPayload = (reportSource.payload as Record<string, unknown> | null) ?? {};
-  const report = normalizeMockInterviewReport((rawPayload.report as unknown) ?? rawPayload, mode);
+  const rawPayload = asRecord(reportSource.payload);
+  const source = rawPayload.report ?? rawPayload;
+  const report = normalizeMockInterviewReport(source, mode);
 
-  return NextResponse.json({
+  const payload = {
     report,
     summary: reportSource,
+  };
+
+  return NextResponse.json({
+    ok: true,
+    data: payload,
+    ...payload,
   });
 }

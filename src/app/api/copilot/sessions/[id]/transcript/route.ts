@@ -18,9 +18,9 @@ type EventPayload = Record<string, unknown>;
 
 const ChunkSchema = z.object({
   speaker: z.enum(['interviewer', 'candidate', 'system']).default('interviewer'),
-  text: z.string().min(1).max(4000),
+  text: z.string().trim().min(1).max(4000),
   isFinal: z.boolean().default(true),
-  interimId: z.string().min(1).max(120).optional(),
+  interimId: z.string().trim().min(1).max(120).optional(),
   clientTimestamp: z.string().datetime().optional(),
   autoSuggest: z.boolean().optional(),
 });
@@ -93,9 +93,15 @@ export async function POST(req: NextRequest, { params }: Params) {
   const mode = typeof session.metadata?.mode === 'string' ? session.metadata.mode : 'general';
   const createdEvents: Array<Record<string, unknown>> = [];
   const createdSuggestions: Array<Record<string, unknown>> = [];
+  let rejected = 0;
 
   for (const chunk of parse.data.chunks) {
     const cleanedInput = sanitizeCopilotText(chunk.text);
+
+    if (!cleanedInput.sanitized.trim()) {
+      rejected += 1;
+      continue;
+    }
 
     const payload: EventPayload = {
       speaker: chunk.speaker,
@@ -236,11 +242,22 @@ export async function POST(req: NextRequest, { params }: Params) {
     }
   }
 
+  if (createdEvents.length === 0) {
+    return jsonError(400, 'no_valid_chunks', { accepted: 0, rejected });
+  }
+
+  const payload = {
+    events: createdEvents,
+    suggestions: createdSuggestions,
+    accepted: createdEvents.length,
+    rejected,
+  };
+
   return NextResponse.json(
     {
-      events: createdEvents,
-      suggestions: createdSuggestions,
-      accepted: createdEvents.length,
+      ok: true,
+      data: payload,
+      ...payload,
     },
     { status: 201 },
   );
