@@ -116,6 +116,110 @@ function listOfStrings(value: unknown): string[] {
   return value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0);
 }
 
+type HiringSignal = 'strong_no_hire' | 'no_hire' | 'lean_no_hire' | 'lean_hire' | 'hire' | 'strong_hire';
+type RubricKey = 'communication' | 'technical_accuracy' | 'problem_solving' | 'structure' | 'ownership' | 'role_fit';
+
+type ReportDimensionView = {
+  score: number | null;
+  evidence: string;
+  recommendation: string;
+};
+
+type ReportViewModel = {
+  overallScore: number | null;
+  hiringSignal: HiringSignal | null;
+  summary: string;
+  strengths: string[];
+  weaknesses: string[];
+  nextSteps: string[];
+  rubric: Record<RubricKey, ReportDimensionView>;
+  source: 'api' | 'legacy';
+};
+
+const RUBRIC_DIMENSIONS: Array<{ key: RubricKey; label: string }> = [
+  { key: 'communication', label: 'Communication' },
+  { key: 'technical_accuracy', label: 'Technical accuracy' },
+  { key: 'problem_solving', label: 'Problem solving' },
+  { key: 'structure', label: 'Structure' },
+  { key: 'ownership', label: 'Ownership' },
+  { key: 'role_fit', label: 'Role fit' },
+];
+
+function defaultRubric(): Record<RubricKey, ReportDimensionView> {
+  return {
+    communication: { score: null, evidence: '', recommendation: '' },
+    technical_accuracy: { score: null, evidence: '', recommendation: '' },
+    problem_solving: { score: null, evidence: '', recommendation: '' },
+    structure: { score: null, evidence: '', recommendation: '' },
+    ownership: { score: null, evidence: '', recommendation: '' },
+    role_fit: { score: null, evidence: '', recommendation: '' },
+  };
+}
+
+function asObject(value: unknown): Record<string, unknown> {
+  return typeof value === 'object' && value ? (value as Record<string, unknown>) : {};
+}
+
+function asScore(value: unknown): number | null {
+  if (typeof value !== 'number' || Number.isNaN(value)) return null;
+  return Math.max(0, Math.min(100, Math.round(value)));
+}
+
+function asRubricScore(value: unknown): number | null {
+  if (typeof value !== 'number' || Number.isNaN(value)) return null;
+  return Math.max(1, Math.min(5, Math.round(value)));
+}
+
+function asHiringSignal(value: unknown): HiringSignal | null {
+  return value === 'strong_no_hire' || value === 'no_hire' || value === 'lean_no_hire' || value === 'lean_hire' || value === 'hire' || value === 'strong_hire'
+    ? value
+    : null;
+}
+
+function formatHiringSignal(value: HiringSignal | null): string {
+  if (!value) return 'Unknown';
+  return value.split('_').map((part) => `${part[0]?.toUpperCase() ?? ''}${part.slice(1)}`).join(' ');
+}
+
+function parseReportPayload(payload: unknown): Omit<ReportViewModel, 'source'> | null {
+  const root = asObject(payload);
+  const nested = asObject(root.report);
+  const source = Object.keys(nested).length > 0 ? nested : root;
+
+  const rubric = defaultRubric();
+  const rubricInput = asObject(source.rubric);
+  for (const item of RUBRIC_DIMENSIONS) {
+    const dim = asObject(rubricInput[item.key]);
+    rubric[item.key] = {
+      score: asRubricScore(dim.score),
+      evidence: asText(dim.evidence, ''),
+      recommendation: asText(dim.recommendation, ''),
+    };
+  }
+
+  const summary = asText(source.summary, '');
+  const strengths = listOfStrings(source.strengths ?? root.strengths);
+  const weaknesses = listOfStrings(source.weaknesses ?? root.weaknesses);
+  const nextSteps = listOfStrings(source.next_steps ?? root.next_steps);
+  const overallScore = asScore(source.overall_score ?? root.overall_score);
+  const hiringSignal = asHiringSignal(source.hiring_signal ?? root.hiring_signal);
+
+  const hasMeaningfulContent =
+    summary.length > 0 || strengths.length > 0 || weaknesses.length > 0 || nextSteps.length > 0 || overallScore !== null || hiringSignal !== null;
+
+  if (!hasMeaningfulContent) return null;
+
+  return {
+    summary,
+    strengths,
+    weaknesses,
+    nextSteps,
+    overallScore,
+    hiringSignal,
+    rubric,
+  };
+}
+
 function appendUniqueEvents(current: CopilotEvent[], incoming: CopilotEvent[]): CopilotEvent[] {
   if (incoming.length === 0) return current;
   const seen = new Set(current.map((item) => item.id));
@@ -168,6 +272,9 @@ export function LiveCopilotClient() {
   const [historyDetail, setHistoryDetail] = useState<{ session: CopilotSessionDetail; events: CopilotEvent[]; summaries: CopilotSummary[] } | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
+  const [historyReport, setHistoryReport] = useState<ReportViewModel | null>(null);
+  const [historyReportLoading, setHistoryReportLoading] = useState(false);
+  const [historyReportError, setHistoryReportError] = useState<string | null>(null);
 
   const streamRef = useRef<EventSource | null>(null);
   const recognitionRef = useRef<SpeechRecognitionLite | null>(null);
@@ -323,6 +430,57 @@ export function LiveCopilotClient() {
     if (activePanel !== 'analytics' || !selectedHistoryId) return;
     void loadHistoryDetail(selectedHistoryId);
   }, [activePanel, selectedHistoryId, loadHistoryDetail]);
+
+  useEffect(() => {
+    if (activePanel !== 'analytics' || !selectedHistoryId) {
+      setHistoryReport(null);
+      setHistoryReportError(null);
+      setHistoryReportLoading(false);
+      return;
+    }
+
+    const fallbackSummary =
+      historyDetail?.session?.id === selectedHistoryId
+        ? historyDetail.summaries.find((item) => item.summary_type === 'mock_interview_report') ?? historyDetail.summaries[0] ?? null
+        : null;
+    const fallbackReport = fallbackSummary ? parseReportPayload(fallbackSummary.payload) : null;
+
+    setHistoryReport(fallbackReport ? { ...fallbackReport, source: 'legacy' } : null);
+    setHistoryReportError(null);
+    setHistoryReportLoading(true);
+
+    let cancelled = false;
+
+    const loadReport = async () => {
+      try {
+        const res = await fetch(`/api/copilot/sessions/${selectedHistoryId}/report`);
+        const json = (await res.json().catch(() => ({}))) as { report?: unknown; error?: string };
+
+        if (!res.ok) {
+          if (res.status === 404) return;
+          throw new Error(json.error ?? 'Failed to load report');
+        }
+
+        const parsed = parseReportPayload(json.report);
+        if (cancelled) return;
+
+        if (parsed) {
+          setHistoryReport({ ...parsed, source: 'api' });
+        }
+      } catch (e) {
+        if (cancelled) return;
+        setHistoryReportError(e instanceof Error ? e.message : 'Failed to load report');
+      } finally {
+        if (!cancelled) setHistoryReportLoading(false);
+      }
+    };
+
+    void loadReport();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activePanel, selectedHistoryId, historyDetail]);
 
   function connectStream(sessionId: string) {
     streamRef.current?.close();
@@ -743,19 +901,6 @@ export function LiveCopilotClient() {
     };
   }, [historyDetail, selectedHistorySession]);
 
-  const latestSummary = useMemo(() => {
-    if (!historyDetail?.summaries?.length) return null;
-    return historyDetail.summaries[0];
-  }, [historyDetail]);
-
-  const latestSummaryPayload = useMemo(() => {
-    return {
-      strengths: listOfStrings(latestSummary?.payload?.strengths),
-      weaknesses: listOfStrings(latestSummary?.payload?.weaknesses),
-      nextSteps: listOfStrings(latestSummary?.payload?.next_steps),
-    };
-  }, [latestSummary]);
-
   const streamState = connecting ? 'Connecting…' : streamRef.current ? 'Connected' : 'Disconnected';
 
   return (
@@ -1158,29 +1303,55 @@ export function LiveCopilotClient() {
 
                     <div className={styles.summaryCard}>
                       <div className={styles.panelHeader}>
-                        <h4 className={styles.sectionTitle} style={{ margin: 0 }}>Latest summary</h4>
-                        {latestSummary ? <span className="small mono">{new Date(latestSummary.updated_at).toLocaleString()}</span> : null}
+                        <h4 className={styles.sectionTitle} style={{ margin: 0 }}>Interview report</h4>
+                        {historyReport ? <span className="small">{historyReport.source === 'api' ? 'Live report' : 'Legacy summary'}</span> : null}
                       </div>
 
-                      {!latestSummary ? <p className={styles.emptyState}>No generated summary for this session yet.</p> : null}
+                      {historyReportLoading ? <p className={styles.emptyState}>Loading report details…</p> : null}
+                      {historyReportError ? <div className="error">{historyReportError}</div> : null}
+                      {!historyReportLoading && !historyReport && !historyReportError ? (
+                        <p className={styles.emptyState}>No generated report for this session yet.</p>
+                      ) : null}
 
-                      {latestSummary ? (
+                      {historyReport ? (
                         <>
-                          {latestSummary.content ? <p style={{ margin: 0 }}>{latestSummary.content}</p> : null}
+                          <div className={styles.metricGrid}>
+                            <div className={styles.metricCard}><span className="small">Overall score</span><strong>{historyReport.overallScore ?? '—'}</strong></div>
+                            <div className={styles.metricCard}><span className="small">Hiring signal</span><strong>{formatHiringSignal(historyReport.hiringSignal)}</strong></div>
+                          </div>
+
+                          {historyReport.summary ? <p style={{ margin: 0 }}>{historyReport.summary}</p> : null}
+
+                          <div className={styles.rubricGrid}>
+                            {RUBRIC_DIMENSIONS.map((dimension) => {
+                              const item = historyReport.rubric[dimension.key];
+                              return (
+                                <article key={dimension.key} className={styles.rubricCard}>
+                                  <div className={styles.panelHeader}>
+                                    <h5 className={styles.subSectionTitle}>{dimension.label}</h5>
+                                    <span className="badge">{item.score ?? '—'}/5</span>
+                                  </div>
+                                  <p className="small" style={{ margin: 0 }}><strong>Evidence:</strong> {item.evidence || 'Not captured.'}</p>
+                                  <p className="small" style={{ margin: 0 }}><strong>Recommendation:</strong> {item.recommendation || 'Not captured.'}</p>
+                                </article>
+                              );
+                            })}
+                          </div>
+
                           <div className={styles.summaryColumns}>
                             <div>
                               <h5 className={styles.subSectionTitle}>Strengths</h5>
                               <ul className={styles.pointsList}>
-                                {latestSummaryPayload.strengths.length > 0
-                                  ? latestSummaryPayload.strengths.map((point, idx) => <li key={`hist-strength-${idx}`} className="small">{point}</li>)
+                                {historyReport.strengths.length > 0
+                                  ? historyReport.strengths.map((point, idx) => <li key={`hist-strength-${idx}`} className="small">{point}</li>)
                                   : <li className="small">No strengths captured.</li>}
                               </ul>
                             </div>
                             <div>
                               <h5 className={styles.subSectionTitle}>Weaknesses</h5>
                               <ul className={styles.pointsList}>
-                                {latestSummaryPayload.weaknesses.length > 0
-                                  ? latestSummaryPayload.weaknesses.map((point, idx) => <li key={`hist-weakness-${idx}`} className="small">{point}</li>)
+                                {historyReport.weaknesses.length > 0
+                                  ? historyReport.weaknesses.map((point, idx) => <li key={`hist-weakness-${idx}`} className="small">{point}</li>)
                                   : <li className="small">No weaknesses captured.</li>}
                               </ul>
                             </div>
@@ -1188,8 +1359,8 @@ export function LiveCopilotClient() {
                           <div>
                             <h5 className={styles.subSectionTitle}>Next steps</h5>
                             <ul className={styles.pointsList}>
-                              {latestSummaryPayload.nextSteps.length > 0
-                                ? latestSummaryPayload.nextSteps.map((point, idx) => <li key={`hist-next-${idx}`} className="small">{point}</li>)
+                              {historyReport.nextSteps.length > 0
+                                ? historyReport.nextSteps.map((point, idx) => <li key={`hist-next-${idx}`} className="small">{point}</li>)
                                 : <li className="small">No next steps captured.</li>}
                             </ul>
                           </div>
