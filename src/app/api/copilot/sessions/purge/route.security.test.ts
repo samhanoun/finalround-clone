@@ -24,13 +24,15 @@ const { createClient } = jest.requireMock('@/lib/supabase/server') as {
   createClient: jest.Mock;
 };
 
-function buildPurgeSupabaseMock(options: { userId?: string; eventsDeleteError?: Record<string, unknown> | null } = {}) {
+function buildPurgeSupabaseMock(
+  options: { userId?: string; activeSessionCount?: number; eventsDeleteError?: Record<string, unknown> | null } = {},
+) {
   const userId = options.userId ?? 'user-1';
 
   const eventsCountEq = jest.fn().mockResolvedValue({ count: 11, error: null });
   const summariesCountEq = jest.fn().mockResolvedValue({ count: 4, error: null });
   const sessionsCountEq = jest.fn().mockResolvedValue({ count: 3, error: null });
-  const activeCountEqStatus = jest.fn().mockResolvedValue({ count: 0, error: null });
+  const activeCountEqStatus = jest.fn().mockResolvedValue({ count: options.activeSessionCount ?? 0, error: null });
   const activeCountEqUser = jest.fn(() => ({ eq: activeCountEqStatus }));
 
   let sessionsSelectCallCount = 0;
@@ -105,6 +107,27 @@ describe('copilot purge route security responses', () => {
 
     expect(response.status).toBe(403);
     await expect(response.json()).resolves.toEqual({ error: 'confirmation_user_mismatch' });
+  });
+
+  it('returns session_active when at least one active session exists', async () => {
+    createClient.mockResolvedValue(buildPurgeSupabaseMock({ activeSessionCount: 1 }));
+
+    const { DELETE } = await import('./route');
+
+    const req = {
+      headers: new Headers(),
+      json: jest.fn().mockResolvedValue({
+        confirmation: 'DELETE ALL COPILOT DATA',
+      }),
+    } as unknown as NextRequest;
+
+    const response = await DELETE(req);
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({
+      error: 'session_active',
+      extra: { message: 'Stop active sessions before deleting all copilot data.' },
+    });
   });
 
   it('echoes x-request-id and returns client-safe internal_error payload', async () => {

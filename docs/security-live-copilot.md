@@ -34,6 +34,7 @@ This document defines minimum enforceable security controls for the live copilot
 
 - Account deletion flows must call the same session-scoped cleanup logic and apply identical response safety guarantees.
 - Billing-required aggregate data (usage totals/minutes) may be retained when legally required, but transcript/event payloads should be removed.
+- Operational runbook: `docs/dsar-retention-runbook.md`.
 
 ## 3) PII Redaction Controls
 
@@ -93,9 +94,9 @@ Transcript text is scanned for model-control and exfiltration patterns (e.g., "i
 ## 8) Recommended Next Hardening
 
 - Add explicit security event metric counters (redaction count, injection-detected count).
-- Add retention jobs (scheduled purge) for events/summaries.
+- Add scheduled retention job wiring (policy hook scaffold now available in `src/lib/copilotRetention.ts`).
 - Add unit tests for sanitizer edge-cases and prompt-injection pattern tuning.
-- Add DSAR/admin delete endpoint coverage tests.
+- Add DSAR/admin delete endpoint coverage tests for any future admin-only flows.
 
 ## 9) Verification Checklist (Request-ID + Safe 5xx Payloads)
 

@@ -38,7 +38,7 @@ Legend: ✅ met · 🟡 partial/evidence pending · ⬜ not met
 
 ### Security / Compliance
 - 🟡 Error hygiene + route security tests improved (including delete-route safe-response and ownership privacy guard coverage)
-- 🟡 DSAR/export-delete workflow documentation advanced; retention automation still pending implementation
+- 🟡 DSAR export + purge-all endpoints hardened and security-tested; retention automation wiring still pending (scaffold landed)
 
 ---
 

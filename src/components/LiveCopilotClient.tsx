@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import styles from './LiveCopilotClient.module.css';
+import { formatCopilotActionError } from './liveCopilotDataControls';
 
 interface SpeechRecognitionAlternativeLite {
   transcript: string;
@@ -865,8 +866,8 @@ export function LiveCopilotClient() {
       const res = await fetch(`/api/copilot/sessions/${selectedHistorySession.id}`, {
         method: 'DELETE',
       });
-      const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
-      if (!res.ok || !json.ok) throw new Error(json.error ?? 'Failed to delete session');
+      const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; extra?: { requestId?: string } };
+      if (!res.ok || !json.ok) throw new Error(formatCopilotActionError(json, 'Failed to delete session'));
 
       setHistoryDetail(null);
       setHistoryReport(null);
@@ -890,8 +891,8 @@ export function LiveCopilotClient() {
     try {
       const res = await fetch('/api/copilot/sessions/export');
       if (!res.ok) {
-        const json = (await res.json().catch(() => ({}))) as { error?: string };
-        throw new Error(json.error ?? 'Failed to export data');
+        const json = (await res.json().catch(() => ({}))) as { error?: string; extra?: { requestId?: string } };
+        throw new Error(formatCopilotActionError(json, 'Failed to export data'));
       }
 
       const blob = await res.blob();
@@ -919,6 +920,11 @@ export function LiveCopilotClient() {
   async function deleteAllCopilotData() {
     if (deleteAllPending || exportingAllData) return;
 
+    if (isActive) {
+      setSettingsError('Stop your active session before deleting all copilot data.');
+      return;
+    }
+
     if (deleteAllConfirmation !== 'DELETE ALL COPILOT DATA') {
       setSettingsError('Type DELETE ALL COPILOT DATA to confirm.');
       return;
@@ -934,8 +940,13 @@ export function LiveCopilotClient() {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ confirmation: deleteAllConfirmation }),
       });
-      const json = (await res.json().catch(() => ({}))) as { ok?: boolean; deleted?: { sessions?: number; events?: number; summaries?: number }; error?: string };
-      if (!res.ok || !json.ok) throw new Error(json.error ?? 'Failed to delete all copilot data');
+      const json = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        deleted?: { sessions?: number; events?: number; summaries?: number };
+        error?: string;
+        extra?: { requestId?: string };
+      };
+      if (!res.ok || !json.ok) throw new Error(formatCopilotActionError(json, 'Failed to delete all copilot data'));
 
       setSession(null);
       setTranscript([]);
@@ -1392,6 +1403,7 @@ export function LiveCopilotClient() {
                   <h4 className={styles.subSectionTitle}>Delete all copilot data</h4>
                   <p className="small" style={{ margin: 0 }}>
                     <strong>Warning:</strong> this permanently deletes every copilot session, transcript event, and summary for your account. This cannot be undone.
+                    {' '}You must stop any active session first.
                   </p>
                   <label className="label" style={{ margin: 0 }}>
                     Type <code>DELETE ALL COPILOT DATA</code> to confirm
@@ -1407,7 +1419,7 @@ export function LiveCopilotClient() {
                     className="button buttonDanger"
                     type="button"
                     onClick={() => void deleteAllCopilotData()}
-                    disabled={deleteAllPending || exportingAllData || deleteAllConfirmation !== 'DELETE ALL COPILOT DATA'}
+                    disabled={isActive || deleteAllPending || exportingAllData || deleteAllConfirmation !== 'DELETE ALL COPILOT DATA'}
                   >
                     {deleteAllPending ? 'Deleting all data…' : 'Delete all copilot data'}
                   </button>

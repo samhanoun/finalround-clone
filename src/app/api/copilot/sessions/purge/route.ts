@@ -8,7 +8,7 @@ const DELETE_ALL_CONFIRMATION = 'DELETE ALL COPILOT DATA';
 
 const PurgeBodySchema = z.object({
   confirmation: z.string().min(1),
-  confirmUserId: z.string().min(1),
+  confirmUserId: z.string().min(1).optional(),
 });
 
 function getClientIp(req: NextRequest) {
@@ -48,7 +48,7 @@ export async function DELETE(req: NextRequest) {
   const userRl = await rateLimit({ key: `copilot:purge:user:${userId}`, limit: 5, windowMs: 60_000 });
   if (!userRl.ok) return jsonError(429, 'rate_limited');
 
-  if (parse.data.confirmUserId !== userId) {
+  if (parse.data.confirmUserId && parse.data.confirmUserId !== userId) {
     return jsonError(403, 'confirmation_user_mismatch');
   }
 
