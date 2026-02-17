@@ -1,20 +1,21 @@
 # Execution Status — FinalRound Clone
 
-_Last updated: 2026-02-16 (post-shipped review + privacy delete hardening in progress)_
+_Last updated: 2026-02-18 (Europe/Paris, post DSAR export/delete + retention scaffolding)_
 
-## 1) Latest shipped delta (master)
+## 1) Latest integrated commits (master)
 
-### Newly shipped
-- ✅ `4fbbf8b` — **Analytics history UI with session drill-down** (`LiveCopilotClient`)
-- ✅ `1d2b896` — **History API filters + pagination + usage aggregates** (`/api/copilot/sessions/history`, `copilotHistory` tests)
-- ✅ `f127364` — **Heartbeat UX + coding hints UI polish + analytics scaffold**
-- ✅ `d1e0c60` / `3ebd2f0` — **Route hardening + security test expansion**
+### Newly integrated (latest first)
+- ✅ `51d91e7` — **Harden DSAR purge flow** and scaffold copilot retention hooks
+- ✅ `f8dda6c` — **Add copilot DSAR export/purge safety guards** and tests
+- ✅ `dcc925a` — **Add copilot analytics data export + delete-all controls**
+- ✅ `81270d1` — Harden copilot report/history errors; expand security regression coverage
+- ✅ `5cc55e6` — Polish copilot flow envelopes and add integration route coverage
+- ✅ `303f747` — Polish live/analytics flow and analytics drill-down UX
 
-### Status impact
-- **M1 Live Copilot:** remains 🟡 (core UX stronger; controls + STT + scoring gaps remain)
-- **M3 Analytics/Coding:** moves from early scaffold to **🟡 active delivery** (history retrieval, drill-down, aggregates now shipped)
-- **Security quality bar:** improved via added route-level security tests and safer error handling
-- **Privacy controls (current branch):** `DELETE /api/copilot/sessions/:id` ownership-enumeration guard + safe `internal_error` response tests added; retention/delete workflow docs updated.
+### Milestone impact snapshot
+- **Security/Compliance (backend):** DSAR export + purge-all + safety guards are now shipped with stronger regression coverage.
+- **Frontend analytics UX:** history/drill-down experience has been iteratively polished and remains production-usable.
+- **Backend API quality:** response envelopes and route integration/error handling are materially hardened.
 
 ---
 
@@ -23,64 +24,45 @@ _Last updated: 2026-02-16 (post-shipped review + privacy delete hardening in pro
 Legend: ✅ met · 🟡 partial/evidence pending · ⬜ not met
 
 ### Live Copilot / Mock
-- 🟡 Suggestion latency p75 <3s (path exists; benchmark evidence missing)
-- ⬜ Overlay hide/reveal interaction target met (<100ms + UX completeness)
-- ⬜ Server STT adapter + robust transcript pipeline
-- ⬜ Mock auto-score output (>=3 strengths, >=3 weaknesses, prioritized plan)
+- 🟡 Live flow reliability and envelope/error safety improved; formal latency evidence still pending.
+- ⬜ Overlay hide/reveal interaction target (<100ms) not yet fully evidenced.
+- ⬜ Server STT adapter + robust transcript lifecycle still pending.
+- ⬜ Mock auto-score output completeness (>=3 strengths, >=3 weaknesses, prioritized plan) still pending.
 
 ### Coding Copilot
-- 🟡 Hints UX improved; 3-tier ladder policy not yet enforced end-to-end
-- ⬜ No-full-code guardrail enforcement + tests
+- 🟡 UX and response handling improved; policy enforcement still needs end-to-end proof.
+- ⬜ No-full-code guardrail enforcement + dedicated tests still pending.
 
 ### Analytics
-- 🟡 Session history, filters, pagination, aggregates, drill-down shipped
-- ⬜ Dashboard reconciliation (±1%) and p95/<2s performance evidence
+- 🟡 Drill-down/history UX and backend behavior improved through recent polish/hardening commits.
+- 🟡 DSAR-aligned analytics export/delete controls now shipped (`dcc925a`) with additional hardening in follow-ups.
+- ⬜ Dashboard reconciliation (±1%) and p95 <2s evidence still pending.
 
 ### Security / Compliance
-- 🟡 Error hygiene + route security tests improved (including delete-route safe-response and ownership privacy guard coverage)
-- 🟡 DSAR export + purge-all endpoints hardened and security-tested; retention automation wiring still pending (scaffold landed)
+- 🟡 Route-level safe error handling and regression coverage improved (`81270d1`, `f8dda6c`, `51d91e7`).
+- 🟡 DSAR export/delete-all flow now implemented and hardened; retention automation is scaffolded, not fully closed.
 
 ---
 
-## 3) Next sprint ticket sequence (execution-ready)
+## 3) Execution priorities (next)
 
-## Sprint N+1 (close M1 acceptance gaps first)
-1. **BE-011 — STT adapter v1 + transcript contract**
-   - Scope: provider abstraction, partial/final transcript persistence, retry/fallback, failure telemetry.
-   - Acceptance checks:
-     - [ ] Integration test proves partial→final transcript lifecycle persisted for a live session.
-     - [ ] Provider failure triggers fallback or deterministic degraded mode without 5xx leak.
-     - [ ] p95 transcript chunk persist latency recorded in CI artifact.
+1. **Close M1 acceptance gaps**
+   - STT adapter + transcript persistence contract
+   - Mock scoring/report completeness + deterministic rubric checks
+   - Live controls performance evidence (hide/reveal, hotkeys, timer/mute state)
 
-2. **BE-013 + FE-012 — Mock scoring report pipeline**
-   - Scope: deterministic rubric service + report UI wiring.
-   - Acceptance checks:
-     - [ ] `/api/mock/:id/report` returns overall score, >=3 strengths, >=3 weaknesses, prioritized plan.
-     - [ ] UI renders all sections with empty-state/error-state handling.
-     - [ ] Unit tests cover rubric determinism and schema validation.
+2. **Close M3 analytics evidence**
+   - p95 <2s verification for key analytics endpoints
+   - Reconciliation evidence within ±1%
+   - Regression coverage for filters/pagination/drill-down invariants
 
-3. **FE-011 — Live controls completion (hotkeys/hide/mute/timer)**
-   - Acceptance checks:
-     - [ ] Keyboard shortcuts documented + tested.
-     - [ ] Hide/reveal is local-first and consistently sub-100ms in browser perf sample.
-     - [ ] Session timer and mute state survive component re-render/navigation.
-
-## Sprint N+2 (stabilize M3 analytics + policy)
-1. **AN-030 — Analytics reliability + performance hardening**
-   - Scope: query/index tuning, reconciliation job, dashboard evidence pack.
-   - Acceptance checks:
-     - [ ] Key analytics endpoints meet p95 <2s under agreed fixture load.
-     - [ ] Aggregate metrics reconcile within ±1% against source-of-truth sample.
-     - [ ] Regression tests added for filters/pagination/session drill-down invariants.
-
-2. **SEC-041 + CP-032 — DSAR + no-full-code policy enforcement**
-   - Acceptance checks:
-     - [ ] Export/delete DSAR flow executable via documented runbook + automated checks.
-     - [ ] Coding output policy blocks full-solution responses when guard enabled.
-     - [ ] Security tests validate policy behavior and safe error payloads.
+3. **Finish compliance hardening**
+   - Move retention hooks from scaffold to active jobs + alerting
+   - Finalize DSAR runbook with repeatable evidence capture
 
 ---
 
-## 4) PM operating rule (effective now)
-- No milestone marked complete without linked acceptance evidence (test artifact, benchmark, or demo capture).
-- Priority order: **M1 acceptance closure → M3 analytics reliability → compliance hardening**.
+## 4) Release-gate reminder (effective)
+
+- No milestone is marked complete without linked acceptance evidence (tests, benchmark artifacts, or demo capture).
+- Priority order remains: **M1 acceptance closure → M3 analytics reliability proof → compliance completion**.
