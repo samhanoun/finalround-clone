@@ -283,6 +283,8 @@ export function LiveCopilotClient() {
   const [historySessions, setHistorySessions] = useState<CopilotHistorySession[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
+  const [historyQuery, setHistoryQuery] = useState('');
+  const [historyModeFilter, setHistoryModeFilter] = useState<'all' | CopilotMode>('all');
   const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(null);
   const [historyDetail, setHistoryDetail] = useState<{ session: CopilotSessionDetail; events: CopilotEvent[]; summaries: CopilotSummary[] } | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -290,6 +292,7 @@ export function LiveCopilotClient() {
   const [historyReport, setHistoryReport] = useState<ReportViewModel | null>(null);
   const [historyReportLoading, setHistoryReportLoading] = useState(false);
   const [historyReportError, setHistoryReportError] = useState<string | null>(null);
+  const [historyReportCopied, setHistoryReportCopied] = useState(false);
   const [deletingHistoryId, setDeletingHistoryId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [deleteSuccess, setDeleteSuccess] = useState<string | null>(null);
@@ -470,6 +473,7 @@ export function LiveCopilotClient() {
       setHistoryReport(null);
       setHistoryReportError(null);
       setHistoryReportLoading(false);
+      setHistoryReportCopied(false);
       return;
     }
 
@@ -481,6 +485,7 @@ export function LiveCopilotClient() {
 
     setHistoryReport(fallbackReport ? { ...fallbackReport, source: 'legacy' } : null);
     setHistoryReportError(null);
+    setHistoryReportCopied(false);
     setHistoryReportLoading(true);
 
     let cancelled = false;
@@ -859,6 +864,24 @@ export function LiveCopilotClient() {
     draftTextareaRef.current?.focus();
   }
 
+  async function copyReportSnapshot() {
+    if (!historyReport || typeof navigator === 'undefined' || !navigator.clipboard) return;
+
+    const payload = {
+      overallScore: historyReport.overallScore,
+      hiringSignal: historyReport.hiringSignal,
+      summary: historyReport.summary,
+      strengths: historyReport.strengths,
+      weaknesses: historyReport.weaknesses,
+      nextSteps: historyReport.nextSteps,
+      rubric: historyReport.rubric,
+    };
+
+    await navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
+    setHistoryReportCopied(true);
+    window.setTimeout(() => setHistoryReportCopied(false), 1800);
+  }
+
   async function generateSummary() {
     if (!session?.id || submitting || summaryLoading) return;
 
@@ -1055,10 +1078,32 @@ export function LiveCopilotClient() {
     };
   }, [suggestionRows, transcriptRows.length]);
 
+  const filteredHistorySessions = useMemo(() => {
+    const normalizedQuery = historyQuery.trim().toLowerCase();
+
+    return historySessions.filter((item) => {
+      const mode = asText(item.metadata?.mode, 'general') as CopilotMode | string;
+      if (historyModeFilter !== 'all' && mode !== historyModeFilter) return false;
+
+      if (!normalizedQuery) return true;
+
+      const inTitle = (item.title ?? '').toLowerCase().includes(normalizedQuery);
+      const inStatus = item.status.toLowerCase().includes(normalizedQuery);
+      const inMode = mode.toLowerCase().includes(normalizedQuery);
+      return inTitle || inStatus || inMode;
+    });
+  }, [historyModeFilter, historyQuery, historySessions]);
+
   const selectedHistorySession = useMemo(
     () => historySessions.find((item) => item.id === selectedHistoryId) ?? null,
     [historySessions, selectedHistoryId],
   );
+
+  useEffect(() => {
+    if (!selectedHistoryId) return;
+    if (filteredHistorySessions.some((item) => item.id === selectedHistoryId)) return;
+    setSelectedHistoryId(filteredHistorySessions[0]?.id ?? null);
+  }, [filteredHistorySessions, selectedHistoryId]);
 
   const historyInsights = useMemo(() => {
     if (!historyDetail) {
@@ -1157,7 +1202,7 @@ export function LiveCopilotClient() {
             </button>
             <div className={styles.inlineMeta}>
               <span className="small">Stream</span>
-              <span className="badge">{streamState}</span>
+              <span className="badge" aria-live="polite">{streamState}</span>
             </div>
           </div>
 
@@ -1226,7 +1271,7 @@ export function LiveCopilotClient() {
             ) : null}
           </div>
 
-          {error ? <div className="error">{error}</div> : null}
+          {error ? <div className="error" role="status" aria-live="polite">{error}</div> : null}
         </div>
       </section>
 
@@ -1234,19 +1279,25 @@ export function LiveCopilotClient() {
         <div className="cardInner stack" style={{ gap: 10 }}>
           <div className={styles.tabRow} role="tablist" aria-label="Copilot views">
             <button
-              className={`button ${activePanel === 'live' ? 'buttonPrimary' : ''}`}
+              id="copilot-tab-live"
+              className={`button ${styles.tabButton} ${activePanel === 'live' ? 'buttonPrimary' : ''}`}
               type="button"
               role="tab"
+              tabIndex={activePanel === 'live' ? 0 : -1}
               aria-selected={activePanel === 'live'}
+              aria-controls="copilot-panel-live"
               onClick={() => setActivePanel('live')}
             >
               Live feed
             </button>
             <button
-              className={`button ${activePanel === 'analytics' ? 'buttonPrimary' : ''}`}
+              id="copilot-tab-analytics"
+              className={`button ${styles.tabButton} ${activePanel === 'analytics' ? 'buttonPrimary' : ''}`}
               type="button"
               role="tab"
+              tabIndex={activePanel === 'analytics' ? 0 : -1}
               aria-selected={activePanel === 'analytics'}
+              aria-controls="copilot-panel-analytics"
               onClick={() => setActivePanel('analytics')}
             >
               Analytics
@@ -1262,15 +1313,15 @@ export function LiveCopilotClient() {
 
       <div key={activePanel} className={styles.panelStage}>
         {activePanel === 'live' ? (
-          <>
+          <div role="tabpanel" id="copilot-panel-live" aria-labelledby="copilot-tab-live" className="stack">
           <section className="card" aria-label="Live layout controls">
             <div className="cardInner stack" style={{ gap: 10 }}>
               <div className={styles.panelHeader}>
                 <h3 className={styles.sectionTitle} style={{ margin: 0 }}>Live feed layout</h3>
-                <div className={styles.tabRow} role="tablist" aria-label="Live layout options">
-                  <button className={`button ${liveLayout === 'split' ? 'buttonPrimary' : ''}`} type="button" onClick={() => setLiveLayout('split')}>Split</button>
-                  <button className={`button ${liveLayout === 'transcript' ? 'buttonPrimary' : ''}`} type="button" onClick={() => setLiveLayout('transcript')}>Transcript only</button>
-                  <button className={`button ${liveLayout === 'suggestions' ? 'buttonPrimary' : ''}`} type="button" onClick={() => setLiveLayout('suggestions')}>Suggestions only</button>
+                <div className={styles.tabRow} role="toolbar" aria-label="Live layout options">
+                  <button className={`button ${styles.tabButton} ${liveLayout === 'split' ? 'buttonPrimary' : ''}`} type="button" aria-pressed={liveLayout === 'split'} onClick={() => setLiveLayout('split')}>Split</button>
+                  <button className={`button ${styles.tabButton} ${liveLayout === 'transcript' ? 'buttonPrimary' : ''}`} type="button" aria-pressed={liveLayout === 'transcript'} onClick={() => setLiveLayout('transcript')}>Transcript only</button>
+                  <button className={`button ${styles.tabButton} ${liveLayout === 'suggestions' ? 'buttonPrimary' : ''}`} type="button" aria-pressed={liveLayout === 'suggestions'} onClick={() => setLiveLayout('suggestions')}>Suggestions only</button>
                 </div>
               </div>
             </div>
@@ -1436,8 +1487,9 @@ export function LiveCopilotClient() {
               ) : null}
             </div>
           </section>
-        </>
+        </div>
       ) : (
+        <div role="tabpanel" id="copilot-panel-analytics" aria-labelledby="copilot-tab-analytics">
         <section className="card" aria-label="Analytics history view">
           <div className="cardInner stack" style={{ gap: 14 }}>
             <h2 className="cardTitle">Copilot history</h2>
@@ -1498,8 +1550,8 @@ export function LiveCopilotClient() {
                 </article>
               </div>
 
-              {settingsError ? <div className="error">{settingsError}</div> : null}
-              {settingsSuccess ? <div className="success">{settingsSuccess}</div> : null}
+              {settingsError ? <div className="error" role="status" aria-live="polite">{settingsError}</div> : null}
+              {settingsSuccess ? <div className="success" role="status" aria-live="polite">{settingsSuccess}</div> : null}
             </section>
 
             <div className={styles.historyScaffold}>
@@ -1511,15 +1563,40 @@ export function LiveCopilotClient() {
                   </button>
                 </div>
 
+                <div className={styles.filtersGrid}>
+                  <label className="label" style={{ margin: 0 }}>
+                    Search
+                    <input
+                      className="input"
+                      value={historyQuery}
+                      onChange={(e) => setHistoryQuery(e.target.value)}
+                      placeholder="Title, mode, status"
+                    />
+                  </label>
+                  <label className="label" style={{ margin: 0 }}>
+                    Mode
+                    <select className="select" value={historyModeFilter} onChange={(e) => setHistoryModeFilter(e.target.value as 'all' | CopilotMode)}>
+                      <option value="all">All modes</option>
+                      <option value="general">General interview</option>
+                      <option value="coding">Coding interview</option>
+                      <option value="phone">Phone screen</option>
+                      <option value="video">Video call</option>
+                    </select>
+                  </label>
+                </div>
+
                 {historyLoading ? <p className={styles.emptyState}>Loading session history…</p> : null}
                 {historyError ? <div className="error">{historyError}</div> : null}
                 {!historyLoading && !historyError && historySessions.length === 0 ? (
                   <p className={styles.emptyState}>No copilot sessions yet. Run a live session to build analytics history.</p>
                 ) : null}
+                {!historyLoading && !historyError && historySessions.length > 0 && filteredHistorySessions.length === 0 ? (
+                  <p className={styles.emptyState}>No sessions match your filters yet.</p>
+                ) : null}
 
-                {historySessions.length > 0 ? (
+                {filteredHistorySessions.length > 0 ? (
                   <ol className={styles.sessionList}>
-                    {historySessions.map((item) => {
+                    {filteredHistorySessions.map((item) => {
                       const modeValue = formatModeLabel(asText(item.metadata?.mode, 'general'));
                       const duration = typeof item.consumed_minutes === 'number'
                         ? item.consumed_minutes
@@ -1530,6 +1607,7 @@ export function LiveCopilotClient() {
                           <button
                             className={`${styles.sessionItemButton} ${selectedHistoryId === item.id ? styles.sessionItemButtonActive : ''}`}
                             type="button"
+                            aria-pressed={selectedHistoryId === item.id}
                             onClick={() => setSelectedHistoryId(item.id)}
                           >
                             <div className={styles.sessionItemTopRow}>
@@ -1578,8 +1656,8 @@ export function LiveCopilotClient() {
                       </div>
                     </div>
 
-                    {deleteError ? <div className="error">{deleteError}</div> : null}
-                    {deleteSuccess ? <div className="success">{deleteSuccess}</div> : null}
+                    {deleteError ? <div className="error" role="status" aria-live="polite">{deleteError}</div> : null}
+                    {deleteSuccess ? <div className="success" role="status" aria-live="polite">{deleteSuccess}</div> : null}
 
                     <div className={styles.chipRow}>
                       <span className="badge">{historyDetail.session.status}</span>
@@ -1629,7 +1707,12 @@ export function LiveCopilotClient() {
                     <div className={styles.summaryCard}>
                       <div className={styles.panelHeader}>
                         <h4 className={styles.sectionTitle} style={{ margin: 0 }}>Interview report</h4>
-                        {historyReport ? <span className="small">{historyReport.source === 'api' ? 'Live report' : 'Legacy summary'}</span> : null}
+                        <div className={styles.detailHeaderActions}>
+                          {historyReport ? <span className="small">{historyReport.source === 'api' ? 'Live report' : 'Legacy summary'}</span> : null}
+                          <button className="button" type="button" onClick={() => void copyReportSnapshot()} disabled={!historyReport}>
+                            {historyReportCopied ? 'Copied' : 'Copy report JSON'}
+                          </button>
+                        </div>
                       </div>
 
                       {historyReportLoading ? <p className={styles.emptyState}>Loading report details…</p> : null}
@@ -1713,6 +1796,7 @@ export function LiveCopilotClient() {
             </div>
           </div>
         </section>
+        </div>
         )}
       </div>
     </div>

@@ -78,8 +78,8 @@
 .feedCard {
   display: grid;
   gap: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.015);
   border-radius: 12px;
   padding: 12px;
 }
@@ -119,21 +119,13 @@
   flex-wrap: wrap;
 }
 
+.tabButton {
+  min-width: 128px;
+}
+
 .panelStage {
   display: grid;
   gap: 14px;
-  animation: panelFadeIn 220ms ease;
-}
-
-@keyframes panelFadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(4px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
 }
 
 .metricGrid {
@@ -143,8 +135,8 @@
 }
 
 .metricCard {
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.015);
   border-radius: 10px;
   padding: 10px;
   display: grid;
@@ -198,8 +190,8 @@
 }
 
 .settingsCard {
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.015);
   border-radius: 12px;
   padding: 12px;
   display: grid;
@@ -213,7 +205,7 @@
 }
 
 .actionCard {
-  border: 1px solid rgba(255, 255, 255, 0.09);
+  border: 1px solid var(--border);
   background: rgba(255, 255, 255, 0.015);
   border-radius: 10px;
   padding: 10px;
@@ -247,6 +239,17 @@
   gap: 8px;
 }
 
+.filtersGrid {
+  display: grid;
+  gap: 8px;
+}
+
+@media (min-width: 760px) {
+  .filtersGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 .sessionList {
   list-style: none;
   margin: 0;
@@ -258,8 +261,8 @@
 .sessionItemButton {
   width: 100%;
   text-align: left;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.015);
   border-radius: 10px;
   padding: 10px;
   display: grid;
@@ -308,8 +311,8 @@
 }
 
 .summaryCard {
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.015);
   border-radius: 12px;
   padding: 12px;
   display: grid;
@@ -348,12 +351,30 @@
 }
 
 .rubricCard {
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.015);
   border-radius: 10px;
   padding: 10px;
   display: grid;
   gap: 8px;
+}
+
+.sessionItemButton:focus-visible,
+.tabButton:focus-visible {
+  outline: 2px solid rgba(124, 92, 255, 0.85);
+  outline-offset: 2px;
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 @media (max-width: 640px) {
