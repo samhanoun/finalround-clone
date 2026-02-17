@@ -21,8 +21,9 @@ function internalError(requestId: string) {
 
 export async function GET(req: NextRequest, { params }: Params) {
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
+  const requestId = getRequestId(req);
   const anonRl = await rateLimit({ key: `copilot:get:anon:${ip}`, limit: 120, windowMs: 60_000 });
-  if (!anonRl.ok) return NextResponse.json({ error: 'rate_limited' }, { status: 429 });
+  if (!anonRl.ok) return jsonError(429, 'rate_limited');
 
   const { id } = await params;
   const supabase = await createClient();
@@ -32,7 +33,7 @@ export async function GET(req: NextRequest, { params }: Params) {
 
   const userId = userData.user.id;
   const userRl = await rateLimit({ key: `copilot:get:user:${userId}`, limit: 240, windowMs: 60_000 });
-  if (!userRl.ok) return NextResponse.json({ error: 'rate_limited' }, { status: 429 });
+  if (!userRl.ok) return jsonError(429, 'rate_limited');
 
   const { data: session, error: sessionError } = await supabase
     .from('copilot_sessions')
@@ -59,8 +60,21 @@ export async function GET(req: NextRequest, { params }: Params) {
       .order('created_at', { ascending: false }),
   ]);
 
-  if (eventsError) return jsonError(500, 'db_error', eventsError);
-  if (summariesError) return jsonError(500, 'db_error', summariesError);
+  if (eventsError) {
+    logCopilotRouteError('/api/copilot/sessions/[id]', requestId, 'db_fetch_events_failed', {
+      sessionId: id,
+      code: eventsError.code ?? null,
+    });
+    return internalError(requestId);
+  }
+
+  if (summariesError) {
+    logCopilotRouteError('/api/copilot/sessions/[id]', requestId, 'db_fetch_summaries_failed', {
+      sessionId: id,
+      code: summariesError.code ?? null,
+    });
+    return internalError(requestId);
+  }
 
   return NextResponse.json({
     session,
@@ -73,7 +87,7 @@ export async function DELETE(req: NextRequest, { params }: Params) {
   const requestId = getRequestId(req);
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
   const anonRl = await rateLimit({ key: `copilot:delete:anon:${ip}`, limit: 60, windowMs: 60_000 });
-  if (!anonRl.ok) return NextResponse.json({ error: 'rate_limited' }, { status: 429 });
+  if (!anonRl.ok) return jsonError(429, 'rate_limited');
 
   const { id } = await params;
   const supabase = await createClient();
@@ -83,7 +97,7 @@ export async function DELETE(req: NextRequest, { params }: Params) {
 
   const userId = userData.user.id;
   const userRl = await rateLimit({ key: `copilot:delete:user:${userId}`, limit: 120, windowMs: 60_000 });
-  if (!userRl.ok) return NextResponse.json({ error: 'rate_limited' }, { status: 429 });
+  if (!userRl.ok) return jsonError(429, 'rate_limited');
 
   const { data: session, error: sessionError } = await supabase
     .from('copilot_sessions')
