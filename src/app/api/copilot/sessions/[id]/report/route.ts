@@ -1,6 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { jsonError } from '@/lib/api';
+import { copilotOk, copilotRateLimited } from '@/lib/copilotApiResponse';
 import { rateLimit } from '@/lib/rateLimit';
 import { normalizeMockInterviewReport } from '@/lib/mockInterviewReport';
 
@@ -15,7 +16,7 @@ function asRecord(value: unknown): Record<string, unknown> {
 export async function GET(req: NextRequest, { params }: Params) {
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
   const anonRl = await rateLimit({ key: `copilot:report:anon:${ip}`, limit: 120, windowMs: 60_000 });
-  if (!anonRl.ok) return NextResponse.json({ error: 'rate_limited' }, { status: 429 });
+  if (!anonRl.ok) return copilotRateLimited();
 
   const { id } = await params;
   const supabase = await createClient();
@@ -25,7 +26,7 @@ export async function GET(req: NextRequest, { params }: Params) {
 
   const userId = userData.user.id;
   const userRl = await rateLimit({ key: `copilot:report:user:${userId}`, limit: 240, windowMs: 60_000 });
-  if (!userRl.ok) return NextResponse.json({ error: 'rate_limited' }, { status: 429 });
+  if (!userRl.ok) return copilotRateLimited();
 
   const { data: session, error: sessionError } = await supabase
     .from('copilot_sessions')
@@ -66,9 +67,5 @@ export async function GET(req: NextRequest, { params }: Params) {
     summary: reportSource,
   };
 
-  return NextResponse.json({
-    ok: true,
-    data: payload,
-    ...payload,
-  });
+  return copilotOk(payload);
 }

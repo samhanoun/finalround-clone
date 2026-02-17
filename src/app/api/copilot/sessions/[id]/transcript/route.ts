@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import OpenAI from 'openai';
 import { z } from 'zod';
 import { jsonError } from '@/lib/api';
@@ -8,7 +8,7 @@ import { rateLimit } from '@/lib/rateLimit';
 import { sanitizeCopilotText } from '@/lib/copilotSecurity';
 import { isSessionHeartbeatExpired, withHeartbeatMetadata } from '@/lib/copilotSession';
 import { buildSuggestionPrompt, parseSuggestionContent } from '@/lib/copilotSuggestion';
-import { sessionExpiredResponse } from '@/lib/copilotApiResponse';
+import { copilotOk, copilotRateLimited, sessionExpiredResponse } from '@/lib/copilotApiResponse';
 
 interface Params {
   params: Promise<{ id: string }>;
@@ -46,7 +46,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
 
   const anonRl = await rateLimit({ key: `copilot:transcript:anon:${ip}`, limit: 120, windowMs: 60_000 });
-  if (!anonRl.ok) return NextResponse.json({ error: 'rate_limited' }, { status: 429 });
+  if (!anonRl.ok) return copilotRateLimited();
 
   const parse = BodySchema.safeParse(await req.json().catch(() => null));
   if (!parse.success) return jsonError(400, 'invalid_body', parse.error.flatten());
@@ -58,7 +58,7 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   const userId = userData.user.id;
   const userRl = await rateLimit({ key: `copilot:transcript:user:${userId}`, limit: 240, windowMs: 60_000 });
-  if (!userRl.ok) return NextResponse.json({ error: 'rate_limited' }, { status: 429 });
+  if (!userRl.ok) return copilotRateLimited();
 
   const { data: session, error: sessionError } = await supabase
     .from('copilot_sessions')
@@ -253,12 +253,5 @@ export async function POST(req: NextRequest, { params }: Params) {
     rejected,
   };
 
-  return NextResponse.json(
-    {
-      ok: true,
-      data: payload,
-      ...payload,
-    },
-    { status: 201 },
-  );
+  return copilotOk(payload, 201);
 }

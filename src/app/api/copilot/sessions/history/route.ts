@@ -1,7 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { rateLimit } from '@/lib/rateLimit';
 import { jsonError } from '@/lib/api';
+import { copilotOk, copilotRateLimited } from '@/lib/copilotApiResponse';
 import { computeCopilotUsageAggregate, isIsoDate, parseCopilotHistoryFilters } from '@/lib/copilotHistory';
 
 function getClientIp(req: NextRequest) {
@@ -12,7 +13,7 @@ export async function GET(req: NextRequest) {
   const ip = getClientIp(req);
 
   const anonymousRl = await rateLimit({ key: `copilot:history:anon:${ip}`, limit: 60, windowMs: 60_000 });
-  if (!anonymousRl.ok) return NextResponse.json({ error: 'rate_limited' }, { status: 429 });
+  if (!anonymousRl.ok) return copilotRateLimited();
 
   const supabase = await createClient();
   const { data: userData, error: userError } = await supabase.auth.getUser();
@@ -20,7 +21,7 @@ export async function GET(req: NextRequest) {
 
   const userId = userData.user.id;
   const userRl = await rateLimit({ key: `copilot:history:user:${userId}`, limit: 120, windowMs: 60_000 });
-  if (!userRl.ok) return NextResponse.json({ error: 'rate_limited' }, { status: 429 });
+  if (!userRl.ok) return copilotRateLimited();
 
   const filters = parseCopilotHistoryFilters(req.nextUrl);
   if ((filters.from && !isIsoDate(filters.from)) || (filters.to && !isIsoDate(filters.to))) {
@@ -75,7 +76,7 @@ export async function GET(req: NextRequest) {
 
   const totals = computeCopilotUsageAggregate(aggregateRows ?? []);
 
-  return NextResponse.json({
+  return copilotOk({
     sessions: sessions ?? [],
     pagination: {
       page: filters.page,
