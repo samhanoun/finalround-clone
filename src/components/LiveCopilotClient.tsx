@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import styles from './LiveCopilotClient.module.css';
 import { formatCopilotActionError } from './liveCopilotDataControls';
 
@@ -1153,6 +1153,29 @@ export function LiveCopilotClient() {
 
   const streamState = connecting ? 'Connecting…' : streamRef.current ? 'Connected' : 'Disconnected';
 
+  const handlePanelTabKeyDown = useCallback(
+    (event: ReactKeyboardEvent<HTMLDivElement>) => {
+      const panelOrder: Array<'live' | 'analytics'> = ['live', 'analytics'];
+      const currentIndex = panelOrder.indexOf(activePanel);
+      if (currentIndex < 0) return;
+
+      if (event.key === 'ArrowRight') {
+        event.preventDefault();
+        setActivePanel(panelOrder[(currentIndex + 1) % panelOrder.length]);
+      } else if (event.key === 'ArrowLeft') {
+        event.preventDefault();
+        setActivePanel(panelOrder[(currentIndex - 1 + panelOrder.length) % panelOrder.length]);
+      } else if (event.key === 'Home') {
+        event.preventDefault();
+        setActivePanel(panelOrder[0]);
+      } else if (event.key === 'End') {
+        event.preventDefault();
+        setActivePanel(panelOrder[panelOrder.length - 1]);
+      }
+    },
+    [activePanel],
+  );
+
   return (
     <div className="stack" style={{ gap: 16 }}>
       <section className="card">
@@ -1277,7 +1300,7 @@ export function LiveCopilotClient() {
 
       <section className="card" aria-label="Copilot view tabs">
         <div className="cardInner stack" style={{ gap: 10 }}>
-          <div className={styles.tabRow} role="tablist" aria-label="Copilot views">
+          <div className={styles.tabRow} role="tablist" aria-label="Copilot views" onKeyDown={handlePanelTabKeyDown}>
             <button
               id="copilot-tab-live"
               className={`button ${styles.tabButton} ${activePanel === 'live' ? 'buttonPrimary' : ''}`}
