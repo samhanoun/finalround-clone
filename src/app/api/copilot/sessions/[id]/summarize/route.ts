@@ -5,6 +5,11 @@ import { llmProvider, requireEnv } from '@/lib/env';
 import { createClient } from '@/lib/supabase/server';
 import { rateLimit } from '@/lib/rateLimit';
 import { sanitizeCopilotText } from '@/lib/copilotSecurity';
+import {
+  fallbackMockInterviewReport,
+  normalizeMockInterviewReport,
+  reportToLegacyPayload,
+} from '@/lib/mockInterviewReport';
 
 interface Params {
   params: Promise<{ id: string }>;
@@ -84,8 +89,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   const transcript = compactSession(events);
   const mode = typeof session.metadata?.mode === 'string' ? session.metadata.mode : 'general';
 
-  let content = 'Summary unavailable.';
-  let payload: Record<string, unknown> = { mode };
+  let report = fallbackMockInterviewReport(mode);
 
   try {
     if (llmProvider() !== 'openai') {
@@ -102,68 +106,63 @@ export async function POST(req: NextRequest, { params }: Params) {
         {
           role: 'system',
           content:
-            'Summarize interview sessions for candidate coaching. Be specific, concise, and actionable. Return JSON only.',
+            'You are an interview coach creating final evaluation reports. Be specific, concise, and actionable. Return strict JSON only.',
         },
         {
           role: 'user',
-          content:
-            `Mode: ${mode}\n\nSession log:\n${transcript}\n\nReturn JSON with keys: summary (string), strengths (string[]), weaknesses (string[]), next_steps (string[]).`,
+          content: `Mode: ${mode}\n\nSession log:\n${transcript}\n\nReturn JSON with keys:\n- overall_score (0-100 number)\n- hiring_signal (one of: strong_no_hire, no_hire, lean_no_hire, lean_hire, hire, strong_hire)\n- summary (string)\n- strengths (string[])\n- weaknesses (string[])\n- next_steps (string[])\n- rubric (object with dimensions: communication, technical_accuracy, problem_solving, structure, ownership, role_fit).\nEach dimension must include: score (1-5), evidence (string), recommendation (string).`,
         },
       ],
     });
 
     const raw = completion.choices[0]?.message?.content ?? '{}';
-    const parsed = JSON.parse(raw) as {
-      summary?: string;
-      strengths?: string[];
-      weaknesses?: string[];
-      next_steps?: string[];
-    };
-
-    content = parsed.summary ?? 'Session summary generated.';
-    payload = {
-      mode,
-      strengths: Array.isArray(parsed.strengths) ? parsed.strengths : [],
-      weaknesses: Array.isArray(parsed.weaknesses) ? parsed.weaknesses : [],
-      next_steps: Array.isArray(parsed.next_steps) ? parsed.next_steps : [],
-    };
+    report = normalizeMockInterviewReport(JSON.parse(raw), mode);
   } catch (e) {
     logCopilotRouteError('/api/copilot/sessions/[id]/summarize', requestId, 'llm_summary_failed', {
       sessionId: id,
       errorType: e instanceof Error ? e.name : 'unknown',
     });
 
-    content = 'Summary generated with fallback template.';
-    payload = {
-      mode,
-      strengths: ['Stayed engaged and completed the session.'],
-      weaknesses: ['Need more targeted examples for interviewer-style questions.'],
-      next_steps: ['Practice concise 60-90 second responses for top role questions.'],
-    };
+    report = fallbackMockInterviewReport(mode);
   }
 
-  const { data: savedSummary, error: summaryError } = await supabase
-    .from('copilot_summaries')
-    .upsert(
+  const content = report.summary || 'Session summary generated.';
+  const payload = reportToLegacyPayload(report);
+
+  const [{ data: savedSummary, error: summaryError }, { error: reportSummaryError }] = await Promise.all([
+    supabase
+      .from('copilot_summaries')
+      .upsert(
+        {
+          session_id: id,
+          user_id: userData.user.id,
+          summary_type: 'final',
+          content,
+          payload,
+        },
+        { onConflict: 'session_id,summary_type' },
+      )
+      .select('id, summary_type, content, payload, created_at, updated_at')
+      .single(),
+    supabase.from('copilot_summaries').upsert(
       {
         session_id: id,
         user_id: userData.user.id,
-        summary_type: 'final',
+        summary_type: 'mock_interview_report',
         content,
         payload,
       },
       { onConflict: 'session_id,summary_type' },
-    )
-    .select('id, summary_type, content, payload, created_at, updated_at')
-    .single();
+    ),
+  ]);
 
-  if (summaryError) {
+  if (summaryError || reportSummaryError) {
     logCopilotRouteError('/api/copilot/sessions/[id]/summarize', requestId, 'db_upsert_summary_failed', {
       sessionId: id,
-      code: summaryError.code ?? null,
+      code: summaryError?.code ?? reportSummaryError?.code ?? null,
     });
     return internalError(requestId);
   }
 
-  return NextResponse.json({ summary: savedSummary });
+  return NextResponse.json({ summary: savedSummary, report });
 }
