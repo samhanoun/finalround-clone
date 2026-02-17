@@ -53,6 +53,19 @@ Use an external scheduler/worker to call retention hook with admin client:
 - `npm run lint`
 - `npm test`
 - `npm run build`
+- ownership/privacy regression checks:
+  - non-owner access on session-scoped routes returns `404 session_not_found` (no cross-account existence leak)
+  - internal DB/provider failures return `{"error":"internal_error","extra":{"requestId":"..."}}`
 - security tests:
   - `src/app/api/copilot/sessions/export/route.security.test.ts`
   - `src/app/api/copilot/sessions/purge/route.security.test.ts`
+  - `src/app/api/copilot/sessions/[id]/heartbeat/route.security.test.ts`
+  - `src/app/api/copilot/sessions/[id]/transcript/route.security.test.ts`
+
+## Retention sweep verification log template
+Capture this per-run (dry-run and active mode):
+- `requestId` / job id
+- execution mode (`dryRun=true|false`)
+- policy cutoffs (`eventsBefore`, `summariesBefore`, `sessionsBefore`)
+- row counts by table (`events`, `summaries`, `sessions`)
+- anomalies (unexpected zero counts, DB errors, active-session conflicts)

@@ -16,6 +16,13 @@ interface Params {
 
 type EventPayload = Record<string, unknown>;
 
+type CopilotEventRow = {
+  id: string;
+  event_type: string;
+  payload: EventPayload;
+  created_at: string;
+};
+
 const ChunkSchema = z.object({
   speaker: z.enum(['interviewer', 'candidate', 'system']).default('interviewer'),
   text: z.string().trim().min(1).max(4000),
@@ -39,6 +46,18 @@ function logCopilotRouteError(route: string, requestId: string, errorClass: stri
 
 function internalError(requestId: string) {
   return jsonError(500, 'internal_error', { requestId });
+}
+
+function matchesChunk(event: CopilotEventRow, chunk: z.infer<typeof ChunkSchema>, text: string) {
+  if (event.event_type !== 'transcript') return false;
+  const payload = event.payload;
+
+  return (
+    payload.speaker === chunk.speaker &&
+    payload.text === text &&
+    payload.transcript_kind === (chunk.isFinal ? 'final' : 'interim') &&
+    payload.interim_id === (chunk.interimId ?? null)
+  );
 }
 
 export async function POST(req: NextRequest, { params }: Params) {
@@ -67,7 +86,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     .single<{ id: string; user_id: string; status: string; started_at: string; metadata: Record<string, unknown> | null }>();
 
   if (sessionError || !session) return jsonError(404, 'session_not_found');
-  if (session.user_id !== userId) return jsonError(403, 'forbidden');
+  if (session.user_id !== userId) return jsonError(404, 'session_not_found');
 
   if (isSessionHeartbeatExpired(session)) {
     const nowIso = new Date().toISOString();
@@ -95,11 +114,31 @@ export async function POST(req: NextRequest, { params }: Params) {
   const createdSuggestions: Array<Record<string, unknown>> = [];
   let rejected = 0;
 
+  const { data: recentTranscriptRows } = await supabase
+    .from('copilot_events')
+    .select('id, event_type, payload, created_at')
+    .eq('session_id', id)
+    .eq('event_type', 'transcript')
+    .order('created_at', { ascending: false })
+    .limit(40)
+    .returns<CopilotEventRow[]>();
+
+  const recentTranscriptEvents = (recentTranscriptRows ?? []).slice();
+
   for (const chunk of parse.data.chunks) {
     const cleanedInput = sanitizeCopilotText(chunk.text);
 
     if (!cleanedInput.sanitized.trim()) {
       rejected += 1;
+      continue;
+    }
+
+    const duplicateEvent = chunk.interimId
+      ? recentTranscriptEvents.find((event) => matchesChunk(event, chunk, cleanedInput.sanitized))
+      : null;
+
+    if (duplicateEvent) {
+      createdEvents.push(duplicateEvent);
       continue;
     }
 
@@ -136,6 +175,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     }
 
     createdEvents.push(createdEvent);
+    recentTranscriptEvents.unshift(createdEvent as CopilotEventRow);
 
     const shouldSuggest =
       (chunk.autoSuggest ?? true) &&

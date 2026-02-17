@@ -24,7 +24,7 @@ const { createClient } = jest.requireMock('@/lib/supabase/server') as {
   createClient: jest.Mock;
 };
 
-function buildSessionSelect() {
+function buildSessionSelect(dataOverride?: Partial<{ id: string; user_id: string; status: string; started_at: string; metadata: { mode: string } }>) {
   return jest.fn().mockResolvedValue({
     data: {
       id: '11111111-1111-1111-1111-111111111111',
@@ -32,9 +32,19 @@ function buildSessionSelect() {
       status: 'active',
       started_at: new Date().toISOString(),
       metadata: { mode: 'general' },
+      ...(dataOverride ?? {}),
     },
     error: null,
   });
+}
+
+function buildSelectChain(single: jest.Mock) {
+  const chain = {
+    eq: jest.fn(() => chain),
+    single,
+  };
+
+  return chain;
 }
 
 describe('copilot transcript route security responses', () => {
@@ -49,7 +59,7 @@ describe('copilot transcript route security responses', () => {
     consoleSpy.mockRestore();
   });
 
-  it('returns forbidden when session owner does not match authenticated user', async () => {
+  it('returns session_not_found when session owner does not match authenticated user', async () => {
     const sessionSingle = jest.fn().mockResolvedValue({
       data: {
         id: '11111111-1111-1111-1111-111111111111',
@@ -68,11 +78,7 @@ describe('copilot transcript route security responses', () => {
       from: jest.fn((table: string) => {
         if (table === 'copilot_sessions') {
           return {
-            select: jest.fn(() => ({
-              eq: jest.fn(() => ({
-                single: sessionSingle,
-              })),
-            })),
+            select: jest.fn(() => buildSelectChain(sessionSingle)),
           };
         }
 
@@ -95,8 +101,8 @@ describe('copilot transcript route security responses', () => {
       params: Promise.resolve({ id: '11111111-1111-1111-1111-111111111111' }),
     });
 
-    expect(response.status).toBe(403);
-    await expect(response.json()).resolves.toEqual({ error: 'forbidden' });
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toEqual({ error: 'session_not_found' });
   });
 
   it('echoes x-request-id and returns client-safe internal_error payload', async () => {
@@ -117,16 +123,23 @@ describe('copilot transcript route security responses', () => {
       from: jest.fn((table: string) => {
         if (table === 'copilot_sessions') {
           return {
-            select: jest.fn(() => ({
-              eq: jest.fn(() => ({
-                single: sessionSingle,
-              })),
-            })),
+            select: jest.fn(() => buildSelectChain(sessionSingle)),
           };
         }
 
         if (table === 'copilot_events') {
           return {
+            select: jest.fn(() => ({
+              eq: jest.fn(() => ({
+                eq: jest.fn(() => ({
+                  order: jest.fn(() => ({
+                    limit: jest.fn(() => ({
+                      returns: jest.fn().mockResolvedValue({ data: [], error: null }),
+                    })),
+                  })),
+                })),
+              })),
+            })),
             insert: jest.fn(() => ({
               select: jest.fn(() => ({
                 single: eventInsertSingle,
@@ -181,16 +194,23 @@ describe('copilot transcript route security responses', () => {
       from: jest.fn((table: string) => {
         if (table === 'copilot_sessions') {
           return {
-            select: jest.fn(() => ({
-              eq: jest.fn(() => ({
-                single: sessionSingle,
-              })),
-            })),
+            select: jest.fn(() => buildSelectChain(sessionSingle)),
           };
         }
 
         if (table === 'copilot_events') {
           return {
+            select: jest.fn(() => ({
+              eq: jest.fn(() => ({
+                eq: jest.fn(() => ({
+                  order: jest.fn(() => ({
+                    limit: jest.fn(() => ({
+                      returns: jest.fn().mockResolvedValue({ data: [], error: null }),
+                    })),
+                  })),
+                })),
+              })),
+            })),
             insert: jest.fn(() => ({
               select: jest.fn(() => ({
                 single: eventInsertSingle,
@@ -245,6 +265,91 @@ describe('copilot transcript route security responses', () => {
       suggestions: [],
       accepted: 1,
       rejected: 0,
+    });
+  });
+
+  it('deduplicates retried interim chunks when interimId matches existing transcript event', async () => {
+    const sessionSingle = buildSessionSelect();
+    const eventInsertSingle = jest.fn();
+    const existingEvent = {
+      id: 'evt-existing',
+      event_type: 'transcript',
+      payload: {
+        speaker: 'interviewer',
+        text: 'Can you walk me through your approach?',
+        transcript_kind: 'interim',
+        interim_id: 'int-42',
+      },
+      created_at: new Date().toISOString(),
+    };
+
+    createClient.mockResolvedValue({
+      auth: {
+        getUser: jest.fn().mockResolvedValue({ data: { user: { id: 'user-1' } }, error: null }),
+      },
+      from: jest.fn((table: string) => {
+        if (table === 'copilot_sessions') {
+          return {
+            select: jest.fn(() => buildSelectChain(sessionSingle)),
+          };
+        }
+
+        if (table === 'copilot_events') {
+          return {
+            select: jest.fn(() => ({
+              eq: jest.fn(() => ({
+                eq: jest.fn(() => ({
+                  order: jest.fn(() => ({
+                    limit: jest.fn(() => ({
+                      returns: jest.fn().mockResolvedValue({ data: [existingEvent], error: null }),
+                    })),
+                  })),
+                })),
+              })),
+            })),
+            insert: jest.fn(() => ({
+              select: jest.fn(() => ({
+                single: eventInsertSingle,
+              })),
+            })),
+          };
+        }
+
+        throw new Error(`Unexpected table: ${table}`);
+      }),
+    });
+
+    const { POST } = await import('./route');
+
+    const req = {
+      headers: new Headers({
+        'content-type': 'application/json',
+      }),
+      json: async () => ({
+        chunks: [
+          {
+            speaker: 'interviewer',
+            text: 'Can you walk me through your approach?',
+            isFinal: false,
+            interimId: 'int-42',
+          },
+        ],
+      }),
+    } as unknown as NextRequest;
+
+    const response = await POST(req, {
+      params: Promise.resolve({ id: '11111111-1111-1111-1111-111111111111' }),
+    });
+
+    expect(eventInsertSingle).not.toHaveBeenCalled();
+    expect(response.status).toBe(201);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: true,
+      data: {
+        accepted: 1,
+        suggestions: [],
+        events: [expect.objectContaining({ id: 'evt-existing' })],
+      },
     });
   });
 

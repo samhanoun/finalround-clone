@@ -278,6 +278,7 @@ export function LiveCopilotClient() {
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activePanel, setActivePanel] = useState<'live' | 'analytics'>('live');
+  const [liveLayout, setLiveLayout] = useState<'split' | 'transcript' | 'suggestions'>('split');
 
   const [historySessions, setHistorySessions] = useState<CopilotHistorySession[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -304,6 +305,7 @@ export function LiveCopilotClient() {
   const transcriptQueueRef = useRef<TranscriptChunkInput[]>([]);
   const transcriptFlushTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const transcriptFlushInFlightRef = useRef(false);
+  const draftTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   const isActive = session?.status === 'active';
 
@@ -713,7 +715,7 @@ export function LiveCopilotClient() {
     }
   }, [flushTranscriptQueue, isActive, session?.id]);
 
-  function startListening() {
+  const startListening = useCallback(() => {
     if (!session?.id || !isActive) return;
 
     const Ctor = getSpeechRecognitionCtor();
@@ -773,17 +775,17 @@ export function LiveCopilotClient() {
     recognition.start();
     recognitionRef.current = recognition;
     setListening(true);
-  }
+  }, [draftSpeaker, enqueueTranscriptChunk, isActive, session?.id]);
 
-  function stopListening() {
+  const stopListening = useCallback(() => {
     recognitionRef.current?.stop();
     recognitionRef.current = null;
     setListening(false);
     setMicPreview('');
     void flushTranscriptQueue();
-  }
+  }, [flushTranscriptQueue]);
 
-  async function submitTranscriptEvent() {
+  const submitTranscriptEvent = useCallback(async () => {
     if (!session?.id || !draftText.trim() || submitting) return;
 
     setError(null);
@@ -818,6 +820,43 @@ export function LiveCopilotClient() {
     } finally {
       setSubmitting(false);
     }
+  }, [draftSpeaker, draftText, session?.id, submitting]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (activePanel !== 'live') return;
+      if (!session?.id || !isActive || submitting) return;
+
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'enter') {
+        event.preventDefault();
+        void submitTranscriptEvent();
+      }
+
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'm') {
+        event.preventDefault();
+        if (listening) {
+          stopListening();
+        } else {
+          startListening();
+        }
+      }
+
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        draftTextareaRef.current?.focus();
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [activePanel, isActive, listening, session?.id, startListening, stopListening, submitTranscriptEvent, submitting]);
+
+  function injectFillerLine() {
+    setDraftSpeaker('candidate');
+    setDraftText("Let me take a moment to structure that. I'll start with the goal, then walk through trade-offs and implementation details.");
+    draftTextareaRef.current?.focus();
   }
 
   async function generateSummary() {
@@ -1053,6 +1092,20 @@ export function LiveCopilotClient() {
     };
   }, [historyDetail, selectedHistorySession]);
 
+  const historyEventBreakdown = useMemo(() => {
+    if (!historyDetail) return { transcripts: [], suggestions: [], systems: [] } as {
+      transcripts: CopilotEvent[];
+      suggestions: CopilotEvent[];
+      systems: CopilotEvent[];
+    };
+
+    return {
+      transcripts: historyDetail.events.filter((item) => item.event_type === 'transcript'),
+      suggestions: historyDetail.events.filter((item) => item.event_type === 'suggestion'),
+      systems: historyDetail.events.filter((item) => item.event_type !== 'transcript' && item.event_type !== 'suggestion'),
+    };
+  }, [historyDetail]);
+
   const streamState = connecting ? 'Connecting…' : streamRef.current ? 'Connected' : 'Disconnected';
 
   return (
@@ -1147,11 +1200,15 @@ export function LiveCopilotClient() {
               <button className="button" type="button" onClick={listening ? stopListening : startListening} disabled={!isActive || submitting}>
                 {listening ? 'Stop mic' : 'Start mic'}
               </button>
+              <button className="button" type="button" onClick={injectFillerLine} disabled={!isActive || submitting}>
+                Add 10-sec filler
+              </button>
               <button className="button" type="button" onClick={generateSummary} disabled={!session || summaryLoading || submitting}>
                 {summaryLoading ? 'Generating…' : 'Generate summary'}
               </button>
             </div>
             <textarea
+              ref={draftTextareaRef}
               className="input"
               value={draftText}
               onChange={(e) => setDraftText(e.target.value)}
@@ -1159,6 +1216,9 @@ export function LiveCopilotClient() {
               rows={3}
               disabled={!isActive || submitting}
             />
+            <p className="small" style={{ margin: 0 }}>
+              Shortcuts: Ctrl/Cmd+Enter send · Ctrl/Cmd+M mic toggle · Ctrl/Cmd+K focus composer
+            </p>
             {listening ? (
               <p className="small" style={{ margin: 0 }}>
                 Live mic preview: {micPreview || 'Listening…'}
@@ -1203,8 +1263,20 @@ export function LiveCopilotClient() {
       <div key={activePanel} className={styles.panelStage}>
         {activePanel === 'live' ? (
           <>
-          <div className="grid2" style={{ alignItems: 'start' }}>
-            <section className="card" aria-label="Live transcript panel">
+          <section className="card" aria-label="Live layout controls">
+            <div className="cardInner stack" style={{ gap: 10 }}>
+              <div className={styles.panelHeader}>
+                <h3 className={styles.sectionTitle} style={{ margin: 0 }}>Live feed layout</h3>
+                <div className={styles.tabRow} role="tablist" aria-label="Live layout options">
+                  <button className={`button ${liveLayout === 'split' ? 'buttonPrimary' : ''}`} type="button" onClick={() => setLiveLayout('split')}>Split</button>
+                  <button className={`button ${liveLayout === 'transcript' ? 'buttonPrimary' : ''}`} type="button" onClick={() => setLiveLayout('transcript')}>Transcript only</button>
+                  <button className={`button ${liveLayout === 'suggestions' ? 'buttonPrimary' : ''}`} type="button" onClick={() => setLiveLayout('suggestions')}>Suggestions only</button>
+                </div>
+              </div>
+            </div>
+          </section>
+          <div className={liveLayout === 'split' ? 'grid2' : 'stack'} style={{ alignItems: 'start' }}>
+            {liveLayout !== 'suggestions' ? <section className="card" aria-label="Live transcript panel">
               <div className="cardInner stack" style={{ gap: 12 }}>
                 <div className={styles.panelHeader}>
                   <h2 className="cardTitle">Transcript</h2>
@@ -1224,9 +1296,9 @@ export function LiveCopilotClient() {
                   ))}
                 </ol>
               </div>
-            </section>
+            </section> : null}
 
-            <section className="card" aria-label="Live suggestions panel">
+            {liveLayout !== 'transcript' ? <section className="card" aria-label="Live suggestions panel">
               <div className="cardInner stack" style={{ gap: 12 }}>
                 <div className={styles.panelHeader}>
                   <h2 className="cardTitle">Suggestions</h2>
@@ -1297,7 +1369,7 @@ export function LiveCopilotClient() {
                   ))}
                 </ol>
               </div>
-            </section>
+            </section> : null}
           </div>
 
           <section className="card" aria-label="Session summary">
@@ -1518,6 +1590,40 @@ export function LiveCopilotClient() {
                     <div className={styles.metricGrid}>
                       <div className={styles.metricCard}><span className="small">Transcript lines</span><strong>{historyInsights.transcriptLines}</strong></div>
                       <div className={styles.metricCard}><span className="small">Suggestions</span><strong>{historyInsights.suggestions}</strong></div>
+                      <div className={styles.metricCard}><span className="small">System events</span><strong>{historyEventBreakdown.systems.length}</strong></div>
+                    </div>
+
+                    <div className={styles.summaryColumns}>
+                      <article className={styles.summaryCard}>
+                        <div className={styles.panelHeader}>
+                          <h4 className={styles.sectionTitle} style={{ margin: 0 }}>Recent transcript</h4>
+                          <span className="small">Last 5</span>
+                        </div>
+                        <ol className={styles.pointsList}>
+                          {historyEventBreakdown.transcripts.slice(-5).reverse().map((event) => (
+                            <li key={`transcript-preview-${event.id}`} className="small">
+                              <strong>{asText(event.payload.speaker, 'speaker')}:</strong>{' '}
+                              {asText(event.payload.text, asText(event.payload.content, '—'))}
+                            </li>
+                          ))}
+                          {historyEventBreakdown.transcripts.length === 0 ? <li className="small">No transcript events captured.</li> : null}
+                        </ol>
+                      </article>
+                      <article className={styles.summaryCard}>
+                        <div className={styles.panelHeader}>
+                          <h4 className={styles.sectionTitle} style={{ margin: 0 }}>Recent suggestions</h4>
+                          <span className="small">Last 5</span>
+                        </div>
+                        <ol className={styles.pointsList}>
+                          {historyEventBreakdown.suggestions.slice(-5).reverse().map((event) => (
+                            <li key={`suggestion-preview-${event.id}`} className="small">
+                              <strong>{asText(event.payload.category, 'suggestion')}:</strong>{' '}
+                              {asText(event.payload.text, asText(event.payload.content, '—'))}
+                            </li>
+                          ))}
+                          {historyEventBreakdown.suggestions.length === 0 ? <li className="small">No suggestion events captured.</li> : null}
+                        </ol>
+                      </article>
                     </div>
 
                     <div className={styles.summaryCard}>

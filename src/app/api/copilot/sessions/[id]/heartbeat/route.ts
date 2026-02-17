@@ -9,10 +9,23 @@ interface Params {
   params: Promise<{ id: string }>;
 }
 
+function getRequestId(req: NextRequest) {
+  return req.headers.get('x-request-id') || crypto.randomUUID();
+}
+
+function logCopilotRouteError(route: string, requestId: string, errorClass: string, meta?: Record<string, unknown>) {
+  console.error('[copilot]', { route, requestId, errorClass, ...(meta ?? {}) });
+}
+
+function internalError(requestId: string) {
+  return jsonError(500, 'internal_error', { requestId });
+}
+
 export async function POST(req: NextRequest, { params }: Params) {
+  const requestId = getRequestId(req);
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
   const rl = await rateLimit({ key: `copilot:heartbeat:${ip}`, limit: 240, windowMs: 60_000 });
-  if (!rl.ok) return NextResponse.json({ error: 'rate_limited' }, { status: 429 });
+  if (!rl.ok) return jsonError(429, 'rate_limited');
 
   const { id } = await params;
   const supabase = await createClient();
@@ -33,7 +46,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     }>();
 
   if (sessionError || !session) return jsonError(404, 'session_not_found');
-  if (session.user_id !== userData.user.id) return jsonError(403, 'forbidden');
+  if (session.user_id !== userData.user.id) return jsonError(404, 'session_not_found');
 
   if (session.status !== 'active') {
     return NextResponse.json({ ok: true, state: 'already_closed' });
@@ -56,7 +69,13 @@ export async function POST(req: NextRequest, { params }: Params) {
       .eq('user_id', session.user_id)
       .eq('status', 'active');
 
-    if (expireError) return jsonError(500, 'db_error', expireError);
+    if (expireError) {
+      logCopilotRouteError('/api/copilot/sessions/[id]/heartbeat', requestId, 'db_expire_session_failed', {
+        sessionId: session.id,
+        code: expireError.code ?? null,
+      });
+      return internalError(requestId);
+    }
     return sessionExpiredResponse(session, nowIso);
   }
 
@@ -69,7 +88,13 @@ export async function POST(req: NextRequest, { params }: Params) {
     .eq('user_id', session.user_id)
     .eq('status', 'active');
 
-  if (heartbeatError) return jsonError(500, 'db_error', heartbeatError);
+  if (heartbeatError) {
+    logCopilotRouteError('/api/copilot/sessions/[id]/heartbeat', requestId, 'db_update_heartbeat_failed', {
+      sessionId: session.id,
+      code: heartbeatError.code ?? null,
+    });
+    return internalError(requestId);
+  }
 
   return NextResponse.json({ ok: true, heartbeat_at: nowIso });
 }

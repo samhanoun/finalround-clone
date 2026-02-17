@@ -63,7 +63,7 @@ export async function GET(req: NextRequest, { params }: Params) {
     .single<SessionRow>();
 
   if (sessionError || !session) return jsonError(404, 'session_not_found');
-  if (session.user_id !== userData.user.id) return jsonError(403, 'forbidden');
+  if (session.user_id !== userData.user.id) return jsonError(404, 'session_not_found');
 
   const encoder = new TextEncoder();
   const resumeCursor = parseEventCursor(req.headers.get('last-event-id'));

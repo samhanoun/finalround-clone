@@ -12,6 +12,7 @@ const COPILOT_ERROR_MESSAGES: Record<string, string> = {
   session_active: 'Stop active sessions before deleting copilot data.',
   invalid_confirmation: 'Confirmation phrase does not match. Please type it exactly.',
   session_not_found: 'Session no longer exists or you no longer have access to it.',
+  session_expired: 'This copilot session has expired. Start a new session to continue.',
   confirmation_user_mismatch: 'Confirmation details do not match your account.',
 };
 

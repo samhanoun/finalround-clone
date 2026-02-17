@@ -64,7 +64,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     .single<{ id: string; user_id: string; status: string; metadata: Record<string, unknown> | null }>();
 
   if (sessionError || !session) return jsonError(404, 'session_not_found');
-  if (session.user_id !== userData.user.id) return jsonError(403, 'forbidden');
+  if (session.user_id !== userData.user.id) return jsonError(404, 'session_not_found');
 
   const { data: events, error: eventsError } = await supabase
     .from('copilot_events')
