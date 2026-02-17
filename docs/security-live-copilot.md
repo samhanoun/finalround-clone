@@ -99,12 +99,14 @@ Transcript text is scanned for model-control and exfiltration patterns (e.g., "i
 
 ## 9) Verification Checklist (Request-ID + Safe 5xx Payloads)
 
-Use this checklist for regressions on `events`, `summarize`, and session `delete` routes:
+Use this checklist for regressions on transcript/report/history/delete paths (plus existing events/summarize coverage):
 
 - [ ] Route-level Jest tests assert `500` failures return exactly `{"error":"internal_error","extra":{"requestId":"..."}}` shape.
-- [ ] Tests verify `x-request-id` is propagated when present.
+- [ ] Tests verify `x-request-id` is propagated when present (`transcript`, `report`, `history`, `delete`).
 - [ ] Tests verify `crypto.randomUUID()` generated request IDs are used when header is absent.
 - [ ] Tests verify DB/provider/internal fields are **not** present in client payload (`code`, `message`, `details`, `hint`, stack traces).
-- [ ] Delete-route tests verify non-owner access returns `404 session_not_found` (privacy-preserving ownership guard).
+- [ ] Ownership tests verify transcript rejects non-owner writes (`403 forbidden`).
+- [ ] Ownership privacy tests verify report/delete non-owner access returns `404 session_not_found` (no cross-tenant enumeration).
+- [ ] History tests verify queries are scoped to authenticated `user_id` only.
 - [ ] Route logs still include coarse error classes + request ID for operator debugging (`db_*_failed`, `llm_*_failed`) without raw transcript/prompt content.
-- [ ] `npm test` passes with security route tests in CI.
+- [ ] `npm run lint && npm test && npm run build` passes in CI.

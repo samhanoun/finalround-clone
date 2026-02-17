@@ -49,6 +49,56 @@ describe('copilot transcript route security responses', () => {
     consoleSpy.mockRestore();
   });
 
+  it('returns forbidden when session owner does not match authenticated user', async () => {
+    const sessionSingle = jest.fn().mockResolvedValue({
+      data: {
+        id: '11111111-1111-1111-1111-111111111111',
+        user_id: 'user-2',
+        status: 'active',
+        started_at: new Date().toISOString(),
+        metadata: { mode: 'general' },
+      },
+      error: null,
+    });
+
+    createClient.mockResolvedValue({
+      auth: {
+        getUser: jest.fn().mockResolvedValue({ data: { user: { id: 'user-1' } }, error: null }),
+      },
+      from: jest.fn((table: string) => {
+        if (table === 'copilot_sessions') {
+          return {
+            select: jest.fn(() => ({
+              eq: jest.fn(() => ({
+                single: sessionSingle,
+              })),
+            })),
+          };
+        }
+
+        throw new Error(`Unexpected table: ${table}`);
+      }),
+    });
+
+    const { POST } = await import('./route');
+
+    const req = {
+      headers: new Headers({
+        'content-type': 'application/json',
+      }),
+      json: async () => ({
+        chunks: [{ speaker: 'interviewer', text: 'Tell me about your last project', isFinal: true }],
+      }),
+    } as unknown as NextRequest;
+
+    const response = await POST(req, {
+      params: Promise.resolve({ id: '11111111-1111-1111-1111-111111111111' }),
+    });
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({ error: 'forbidden' });
+  });
+
   it('echoes x-request-id and returns client-safe internal_error payload', async () => {
     const sessionSingle = buildSessionSelect();
     const eventInsertSingle = jest.fn().mockResolvedValue({

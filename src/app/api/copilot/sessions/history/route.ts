@@ -9,7 +9,20 @@ function getClientIp(req: NextRequest) {
   return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
 }
 
+function getRequestId(req: NextRequest) {
+  return req.headers.get('x-request-id') || crypto.randomUUID();
+}
+
+function logCopilotRouteError(route: string, requestId: string, errorClass: string, meta?: Record<string, unknown>) {
+  console.error('[copilot]', { route, requestId, errorClass, ...(meta ?? {}) });
+}
+
+function internalError(requestId: string) {
+  return jsonError(500, 'internal_error', { requestId });
+}
+
 export async function GET(req: NextRequest) {
+  const requestId = getRequestId(req);
   const ip = getClientIp(req);
 
   const anonymousRl = await rateLimit({ key: `copilot:history:anon:${ip}`, limit: 60, windowMs: 60_000 });
@@ -71,8 +84,19 @@ export async function GET(req: NextRequest) {
     aggregateQuery,
   ]);
 
-  if (sessionsError) return jsonError(500, 'db_error', sessionsError);
-  if (aggregateError) return jsonError(500, 'db_error', aggregateError);
+  if (sessionsError) {
+    logCopilotRouteError('/api/copilot/sessions/history', requestId, 'db_fetch_sessions_failed', {
+      code: sessionsError.code ?? null,
+    });
+    return internalError(requestId);
+  }
+
+  if (aggregateError) {
+    logCopilotRouteError('/api/copilot/sessions/history', requestId, 'db_fetch_usage_aggregate_failed', {
+      code: aggregateError.code ?? null,
+    });
+    return internalError(requestId);
+  }
 
   const totals = computeCopilotUsageAggregate(aggregateRows ?? []);
 
