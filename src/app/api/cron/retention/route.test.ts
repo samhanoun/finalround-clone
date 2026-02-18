@@ -25,6 +25,16 @@ jest.mock('@/lib/copilotRetention', () => ({
   })),
 }));
 
+jest.mock('@/lib/env', () => ({
+  ...jest.requireActual('@/lib/env'),
+  requireEnv: jest.fn((key: string) => {
+    if (key === 'CRON_SECRET') {
+      return 'test-cron-secret-key-123456789012345';
+    }
+    throw new Error(`Missing env var: ${key}`);
+  }),
+}));
+
 const { createAdminClient } = jest.requireMock('@/lib/supabase/admin') as {
   createAdminClient: jest.Mock;
 };
@@ -45,7 +55,35 @@ describe('/api/cron/retention', () => {
     consoleErrorSpy.mockRestore();
   });
 
-  it('returns dry-run evidence by default', async () => {
+  it('returns 401 when cronKey is missing', async () => {
+    const { GET } = await import('./route');
+
+    const req = {
+      url: 'http://localhost/api/cron/retention',
+    } as unknown as NextRequest;
+
+    const response = await GET(req);
+
+    expect(response.status).toBe(401);
+    const json = await response.json();
+    expect(json.error).toBe('Unauthorized');
+  });
+
+  it('returns 401 when cronKey is invalid', async () => {
+    const { GET } = await import('./route');
+
+    const req = {
+      url: 'http://localhost/api/cron/retention?cronKey=wrong-key',
+    } as unknown as NextRequest;
+
+    const response = await GET(req);
+
+    expect(response.status).toBe(401);
+    const json = await response.json();
+    expect(json.error).toBe('Unauthorized');
+  });
+
+  it('returns dry-run evidence by default with valid cronKey', async () => {
     runCopilotRetentionSweep.mockResolvedValue({
       dryRun: true,
       policy: { eventsDays: 30, summariesDays: 90, sessionsDays: 90 },
@@ -62,7 +100,7 @@ describe('/api/cron/retention', () => {
     const { GET } = await import('./route');
 
     const req = {
-      url: 'http://localhost/api/cron/retention',
+      url: 'http://localhost/api/cron/retention?cronKey=test-cron-secret-key-123456789012345',
     } as unknown as NextRequest;
 
     const response = await GET(req);
@@ -77,7 +115,7 @@ describe('/api/cron/retention', () => {
     });
   });
 
-  it('executes actual deletion when dryRun=false', async () => {
+  it('executes actual deletion when dryRun=false with valid cronKey', async () => {
     runCopilotRetentionSweep.mockResolvedValue({
       dryRun: false,
       policy: { eventsDays: 30, summariesDays: 90, sessionsDays: 90 },
@@ -94,7 +132,7 @@ describe('/api/cron/retention', () => {
     const { GET } = await import('./route');
 
     const req = {
-      url: 'http://localhost/api/cron/retention?dryRun=false',
+      url: 'http://localhost/api/cron/retention?dryRun=false&cronKey=test-cron-secret-key-123456789012345',
     } as unknown as NextRequest;
 
     const response = await GET(req);
@@ -117,7 +155,7 @@ describe('/api/cron/retention', () => {
     const { GET } = await import('./route');
 
     const req = {
-      url: 'http://localhost/api/cron/retention',
+      url: 'http://localhost/api/cron/retention?cronKey=test-cron-secret-key-123456789012345',
     } as unknown as NextRequest;
 
     const response = await GET(req);
@@ -128,7 +166,7 @@ describe('/api/cron/retention', () => {
     expect(json.message).toContain('failed');
   });
 
-  it('supports POST method', async () => {
+  it('supports POST method with valid cronKey', async () => {
     runCopilotRetentionSweep.mockResolvedValue({
       dryRun: true,
       policy: { eventsDays: 30, summariesDays: 90, sessionsDays: 90 },
@@ -145,7 +183,7 @@ describe('/api/cron/retention', () => {
     const { POST } = await import('./route');
 
     const req = {
-      url: 'http://localhost/api/cron/retention',
+      url: 'http://localhost/api/cron/retention?cronKey=test-cron-secret-key-123456789012345',
     } as unknown as NextRequest;
 
     const response = await POST(req);
