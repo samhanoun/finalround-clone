@@ -2,12 +2,14 @@
 
 import { useRouter } from 'next/navigation';
 import { useState, useId } from 'react';
+import { useToastHook } from '@/components/Toast';
 
 export function DashboardClient() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const errorId = useId();
+  const toast = useToastHook();
 
   async function createInterview() {
     setError(null);
@@ -20,10 +22,14 @@ export function DashboardClient() {
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.error ?? 'Failed to create session');
+      
+      toast.success('Interview Created', 'Your new interview session is ready!');
       router.push(`/interview/${json.session.id}`);
       router.refresh();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed');
+      const message = e instanceof Error ? e.message : 'Failed';
+      setError(message);
+      toast.error('Error', message);
     } finally {
       setLoading(false);
     }

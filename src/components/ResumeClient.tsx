@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState, useId } from 'react';
+import { useToastHook } from '@/components/Toast';
 
 type Doc = {
   id: string;
@@ -38,6 +39,7 @@ type BulletAnalysis = {
 };
 
 export function ResumeClient(props: { initialDocs: Doc[]; initialGenerations: Gen[] }) {
+  const toast = useToastHook();
   const [docs, setDocs] = useState<Doc[]>(props.initialDocs ?? []);
   const [gens, setGens] = useState<Gen[]>(props.initialGenerations ?? []);
 
@@ -48,8 +50,6 @@ export function ResumeClient(props: { initialDocs: Doc[]; initialGenerations: Ge
   const [uploading, setUploading] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [ok, setOk] = useState<string | null>(null);
 
   // Analysis state
   const [atsResult, setAtsResult] = useState<ATSResult | null>(null);
@@ -75,8 +75,6 @@ export function ResumeClient(props: { initialDocs: Doc[]; initialGenerations: Ge
 
   async function upload() {
     if (!file) return;
-    setError(null);
-    setOk(null);
     setUploading(true);
 
     try {
@@ -90,17 +88,16 @@ export function ResumeClient(props: { initialDocs: Doc[]; initialGenerations: Ge
       setDocs((d) => [json.document, ...d]);
       setSelectedDocId(json.document.id);
       setFile(null);
-      setOk(`Uploaded. Parsing ${json.parsed?.status === 'completed' ? 'completed' : 'in progress'}.`);
+      toast.success('Upload Complete', `Parsing ${json.parsed?.status === 'completed' ? 'completed' : 'in progress'}`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Upload failed');
+      const message = e instanceof Error ? e.message : 'Upload failed';
+      toast.error('Upload Failed', message);
     } finally {
       setUploading(false);
     }
   }
 
   async function generate() {
-    setError(null);
-    setOk(null);
     setGenerating(true);
 
     try {
@@ -119,19 +116,17 @@ export function ResumeClient(props: { initialDocs: Doc[]; initialGenerations: Ge
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.error ?? 'Generate failed');
 
-      setOk('Generation requested (queued).');
+      toast.success('Generation Started', 'Your resume generation has been queued.');
       await refreshHistory();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Generate failed');
+      const message = e instanceof Error ? e.message : 'Generate failed';
+      toast.error('Generation Failed', message);
     } finally {
       setGenerating(false);
     }
   }
 
   async function download(docId: string, _docName: string) {
-    setError(null);
-    setOk(null);
-
     try {
       const res = await fetch(`/api/resume/${docId}/download`);
       const json = await res.json().catch(() => ({}));
@@ -143,16 +138,16 @@ export function ResumeClient(props: { initialDocs: Doc[]; initialGenerations: Ge
       // Trigger download in a new tab.
       window.open(url, '_blank', 'noopener,noreferrer');
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Download failed');
+      const message = e instanceof Error ? e.message : 'Download failed';
+      toast.error('Download Failed', message);
     }
   }
 
   async function runATSAnalysis() {
     if (!selectedDocId || !jobDescription) {
-      setError('Please select a document and provide a job description');
+      toast.warning('Missing Input', 'Please select a document and provide a job description');
       return;
     }
-    setError(null);
     setAtsResult(null);
     setAnalyzing(true);
 
@@ -166,9 +161,10 @@ export function ResumeClient(props: { initialDocs: Doc[]; initialGenerations: Ge
       if (!res.ok) throw new Error(json?.error ?? 'Analysis failed');
 
       setAtsResult(json);
-      setOk(`ATS Score: ${json.atsScore}%`);
+      toast.info('ATS Score', `Your resume scored ${json.atsScore}%`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Analysis failed');
+      const message = e instanceof Error ? e.message : 'Analysis failed';
+      toast.error('Analysis Failed', message);
     } finally {
       setAnalyzing(false);
     }
@@ -176,10 +172,9 @@ export function ResumeClient(props: { initialDocs: Doc[]; initialGenerations: Ge
 
   async function optimizeKeywords() {
     if (!selectedDocId || !jobDescription) {
-      setError('Please select a document and provide a job description');
+      toast.warning('Missing Input', 'Please select a document and provide a job description');
       return;
     }
-    setError(null);
     setAnalyzing(true);
 
     try {
@@ -191,9 +186,10 @@ export function ResumeClient(props: { initialDocs: Doc[]; initialGenerations: Ge
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.error ?? 'Keyword optimization failed');
 
-      setOk(`Found ${json.suggestedKeywords?.length || 0} keywords to add`);
+      toast.success('Keywords Optimized', `Found ${json.suggestedKeywords?.length || 0} keywords to add`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Keyword optimization failed');
+      const message = e instanceof Error ? e.message : 'Keyword optimization failed';
+      toast.error('Optimization Failed', message);
     } finally {
       setAnalyzing(false);
     }
@@ -201,10 +197,9 @@ export function ResumeClient(props: { initialDocs: Doc[]; initialGenerations: Ge
 
   async function analyzeBullets() {
     if (!selectedDocId || !bulletInput.trim()) {
-      setError('Please enter bullet points to analyze');
+      toast.warning('Missing Input', 'Please enter bullet points to analyze');
       return;
     }
-    setError(null);
     setAnalyzing(true);
 
     try {
@@ -218,9 +213,10 @@ export function ResumeClient(props: { initialDocs: Doc[]; initialGenerations: Ge
       if (!res.ok) throw new Error(json?.error ?? 'Bullet analysis failed');
 
       setBulletAnalyses(json.analyses || []);
-      setOk('Bullet points analyzed');
+      toast.success('Analysis Complete', 'Your bullet points have been analyzed');
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Bullet analysis failed');
+      const message = e instanceof Error ? e.message : 'Bullet analysis failed';
+      toast.error('Analysis Failed', message);
     } finally {
       setAnalyzing(false);
     }
@@ -442,17 +438,6 @@ export function ResumeClient(props: { initialDocs: Doc[]; initialGenerations: Ge
                     )}
                   </div>
                 ))}
-              </div>
-            )}
-
-            {error && (
-              <div className="error" role="alert" aria-live="assertive">
-                {error}
-              </div>
-            )}
-            {ok && (
-              <div className="success" role="status" aria-live="polite">
-                {ok}
               </div>
             )}
           </div>

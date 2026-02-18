@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useId } from 'react';
+import { useToastHook } from '@/components/Toast';
 
 type Settings = {
   provider: string | null;
@@ -16,8 +17,7 @@ export function SettingsClient(props: { initial: Settings | null }) {
   const [maxTokens, setMaxTokens] = useState(String(props.initial?.max_tokens ?? 1024));
 
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [ok, setOk] = useState<string | null>(null);
+  const toast = useToastHook();
 
   const providerId = useId();
   const modelId = useId();
@@ -25,8 +25,6 @@ export function SettingsClient(props: { initial: Settings | null }) {
   const maxTokensId = useId();
 
   async function save() {
-    setError(null);
-    setOk(null);
     setSaving(true);
 
     try {
@@ -44,9 +42,10 @@ export function SettingsClient(props: { initial: Settings | null }) {
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.error ?? 'Failed to save');
-      setOk('Settings saved successfully.');
+      toast.success('Settings Saved', 'Your LLM preferences have been updated.');
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to save settings');
+      const message = e instanceof Error ? e.message : 'Failed to save settings';
+      toast.error('Error', message);
     } finally {
       setSaving(false);
     }
@@ -128,25 +127,6 @@ export function SettingsClient(props: { initial: Settings | null }) {
             </span>
           )}
         </div>
-
-        {error && (
-          <div 
-            className="error" 
-            role="alert"
-            aria-live="assertive"
-          >
-            {error}
-          </div>
-        )}
-        {ok && (
-          <div 
-            className="success" 
-            role="status"
-            aria-live="polite"
-          >
-            {ok}
-          </div>
-        )}
       </div>
     </div>
   );

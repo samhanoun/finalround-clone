@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useId } from 'react';
 import { createClient } from '@/lib/supabase/browser';
+import { useToastHook } from '@/components/Toast';
+import { LoadingSpinner } from '@/components/Skeleton';
 
 type ApplicationStage = 'saved' | 'applied' | 'oa' | 'interview' | 'offer' | 'rejected';
 
@@ -53,6 +55,7 @@ const STAGE_ORDER: ApplicationStage[] = ['saved', 'applied', 'oa', 'interview', 
 
 export function JobsClient() {
   const supabase = createClient();
+  const toast = useToastHook();
   const [applications, setApplications] = useState<JobWithApplication[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -127,7 +130,7 @@ export function JobsClient() {
           app.id === appId ? { ...app, ...updates, updated_at: new Date().toISOString() } : app
         )
       );
-      announce(`Moved ${app?.title} from ${STAGE_LABELS[oldStage || 'saved']} to ${STAGE_LABELS[newStage]}`);
+      toast.success('Stage Updated', `Moved ${app?.title} to ${STAGE_LABELS[newStage]}`);
     }
   };
 
@@ -140,7 +143,9 @@ export function JobsClient() {
 
     if (!error) {
       setApplications(prev => prev.filter(app => app.id !== appId));
-      announce(`Deleted ${app?.title} application`);
+      toast.success('Deleted', `Removed ${app?.title} application`);
+    } else {
+      toast.error('Error', 'Failed to delete application');
     }
   };
 
@@ -162,7 +167,9 @@ export function JobsClient() {
     if (!error) {
       setShowAddModal(false);
       refreshApplications();
-      announce(`Added new job application for ${jobData.title} at ${jobData.company}`);
+      toast.success('Job Added', `Added ${jobData.title} at ${jobData.company}`);
+    } else {
+      toast.error('Error', 'Failed to add job application');
     }
   };
 
@@ -200,9 +207,7 @@ export function JobsClient() {
 
   if (loading) {
     return (
-      <div style={{ padding: 48, textAlign: 'center' }} role="status" aria-live="polite">
-        <p>Loading applications...</p>
-      </div>
+      <LoadingSpinner text="Loading applications..." />
     );
   }
 
