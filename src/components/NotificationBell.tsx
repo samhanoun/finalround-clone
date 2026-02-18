@@ -22,7 +22,7 @@ export function NotificationBell() {
   const [loading, setLoading] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  async function fetchUnreadCount() {
+  const fetchUnreadCount = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
@@ -33,9 +33,9 @@ export function NotificationBell() {
       .eq('read', false);
 
     setUnreadCount(count || 0);
-  }
+  }, [supabase]);
 
-  async function fetchNotifications() {
+  const fetchNotifications = useCallback(async () => {
     setLoading(true);
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
@@ -52,7 +52,7 @@ export function NotificationBell() {
 
     setNotifications(data || []);
     setLoading(false);
-  }
+  }, [supabase]);
 
   async function markAsRead(id: string) {
     await supabase
@@ -90,8 +90,12 @@ export function NotificationBell() {
   }
 
   useEffect(() => {
-    fetchUnreadCount();
-  }, []);
+    // Use setTimeout to defer the call to the next tick, avoiding synchronous state update
+    const timer = setTimeout(() => {
+      fetchUnreadCount();
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [fetchUnreadCount]);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
