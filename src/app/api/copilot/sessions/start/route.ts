@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/server';
 import { rateLimit } from '@/lib/rateLimit';
 import { getCopilotQuotaSnapshot } from '@/lib/copilot';
 import { withHeartbeatMetadata } from '@/lib/copilotSession';
+import { grantConsentMetadata } from '@/lib/copilotConsent';
 
 const BodySchema = z.object({
   title: z.string().min(1).max(200).optional(),
@@ -43,7 +44,7 @@ export async function POST(req: NextRequest) {
       user_id: userId,
       interview_session_id: parse.data.interviewSessionId ?? null,
       title: parse.data.title ?? null,
-      metadata: withHeartbeatMetadata(parse.data.metadata ?? {}, nowIso),
+      metadata: grantConsentMetadata(withHeartbeatMetadata(parse.data.metadata ?? {}, nowIso), nowIso),
       status: 'active',
       started_at: nowIso,
     })

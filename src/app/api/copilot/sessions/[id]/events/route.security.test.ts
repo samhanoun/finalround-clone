@@ -31,7 +31,7 @@ function buildEventsRouteSupabaseMock() {
       user_id: 'user-1',
       status: 'active',
       started_at: new Date().toISOString(),
-      metadata: { mode: 'general' },
+      metadata: { mode: 'general', consent_status: 'granted', consent_granted_at: new Date().toISOString() },
     },
     error: null,
   });

@@ -9,6 +9,7 @@ import {
   getElapsedUsage,
   recordCopilotUsage,
 } from '@/lib/copilot';
+import { revokeConsentMetadata } from '@/lib/copilotConsent';
 
 const BodySchema = z.object({
   sessionId: z.string().uuid(),
@@ -54,17 +55,22 @@ export async function POST(req: NextRequest) {
 
   await recordCopilotUsage(userId, billableMinutes);
 
+  // Revoke consent when session is stopped
+  const nowIso = new Date().toISOString();
+  const consentRevocation = revokeConsentMetadata(session.metadata, nowIso);
+
   const { data: updated, error: updateError } = await supabase
     .from('copilot_sessions')
     .update({
       status: 'stopped',
-      stopped_at: new Date().toISOString(),
+      stopped_at: nowIso,
       duration_seconds: usage.elapsedSeconds,
       consumed_minutes: billableMinutes,
       metadata: {
         ...(typeof session.metadata === 'object' && session.metadata !== null ? session.metadata : {}),
         quota_snapshot: quota,
         requested_minutes: usage.elapsedMinutes,
+        ...consentRevocation,
       },
     })
     .eq('id', session.id)
