@@ -38,6 +38,7 @@ export async function AppShell(props: { title?: string; children: React.ReactNod
 
           <nav aria-label="Primary" className="row" style={{ gap: 12 }}>
             <Link href="/dashboard">Dashboard</Link>
+            <Link href="/jobs">Jobs</Link>
             <Link href="/copilot/live">Live Copilot</Link>
             <Link href="/resume">Resume</Link>
             <Link href="/settings">Settings</Link>

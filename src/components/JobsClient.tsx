@@ -1,0 +1,744 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import { createClient } from '@/lib/supabase/browser';
+
+type ApplicationStage = 'saved' | 'applied' | 'oa' | 'interview' | 'offer' | 'rejected';
+
+interface Job {
+  id: string;
+  user_id: string;
+  external_source: string | null;
+  external_id: string | null;
+  company: string;
+  title: string;
+  location: string | null;
+  remote_type: string | null;
+  salary_min: number | null;
+  salary_max: number | null;
+  job_description: string | null;
+  job_url: string | null;
+  posted_at: string | null;
+  created_at: string;
+}
+
+interface JobApplication {
+  id: string;
+  user_id: string;
+  job_id: string | null;
+  stage: ApplicationStage;
+  status: string;
+  applied_at: string | null;
+  next_followup_at: string | null;
+  notes: string | null;
+  company: string;
+  title: string;
+  created_at: string;
+}
+
+interface JobWithApplication extends JobApplication {
+  job?: Job;
+}
+
+const STAGE_LABELS: Record<ApplicationStage, string> = {
+  saved: 'Saved',
+  applied: 'Applied',
+  oa: 'Online Assessment',
+  interview: 'Interview',
+  offer: 'Offer',
+  rejected: 'Rejected',
+};
+
+const STAGE_ORDER: ApplicationStage[] = ['saved', 'applied', 'oa', 'interview', 'offer', 'rejected'];
+
+export function JobsClient() {
+  const supabase = createClient();
+  const [applications, setApplications] = useState<JobWithApplication[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterStage, setFilterStage] = useState<ApplicationStage | 'all'>('all');
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [draggedItem, setDraggedItem] = useState<JobWithApplication | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadData() {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from('job_applications')
+        .select('*')
+        .eq('status', 'active')
+        .order('updated_at', { ascending: false });
+
+      if (mounted && !error && data) {
+        setApplications(data as JobWithApplication[]);
+      }
+      if (mounted) {
+        setLoading(false);
+      }
+    }
+
+    loadData();
+
+    return () => {
+      mounted = false;
+    };
+  }, [supabase]);
+
+  const refreshApplications = async () => {
+    const { data, error } = await supabase
+      .from('job_applications')
+      .select('*')
+      .eq('status', 'active')
+      .order('updated_at', { ascending: false });
+
+    if (!error && data) {
+      setApplications(data as JobWithApplication[]);
+    }
+  };
+
+  const updateStage = async (appId: string, newStage: ApplicationStage) => {
+    const updates: Partial<JobApplication> = { stage: newStage };
+    
+    if (newStage === 'applied' && !applications.find(a => a.id === appId)?.applied_at) {
+      updates.applied_at = new Date().toISOString();
+    }
+
+    const { error } = await supabase
+      .from('job_applications')
+      .update(updates)
+      .eq('id', appId);
+
+    if (!error) {
+      setApplications(prev =>
+        prev.map(app =>
+          app.id === appId ? { ...app, ...updates, updated_at: new Date().toISOString() } : app
+        )
+      );
+    }
+  };
+
+  const deleteApplication = async (appId: string) => {
+    const { error } = await supabase
+      .from('job_applications')
+      .delete()
+      .eq('id', appId);
+
+    if (!error) {
+      setApplications(prev => prev.filter(app => app.id !== appId));
+    }
+  };
+
+  const addJob = async (jobData: { company: string; title: string; job_url?: string; notes?: string }) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const { error } = await supabase
+      .from('job_applications')
+      .insert({
+        user_id: user.id,
+        company: jobData.company,
+        title: jobData.title,
+        stage: 'saved',
+        status: 'active',
+        notes: jobData.notes,
+      });
+
+    if (!error) {
+      setShowAddModal(false);
+      refreshApplications();
+    }
+  };
+
+  const filteredApps = applications.filter(app => {
+    const matchesSearch = !searchQuery || 
+      app.company.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      app.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (app.notes && app.notes.toLowerCase().includes(searchQuery.toLowerCase()));
+    
+    const matchesStage = filterStage === 'all' || app.stage === filterStage;
+    
+    return matchesSearch && matchesStage;
+  });
+
+  const getAppsByStage = (stage: ApplicationStage) => 
+    filteredApps.filter(app => app.stage === stage);
+
+  const handleDragStart = (app: JobWithApplication) => {
+    setDraggedItem(app);
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+  };
+
+  const handleDrop = (stage: ApplicationStage) => {
+    if (draggedItem && draggedItem.stage !== stage) {
+      updateStage(draggedItem.id, stage);
+    }
+    setDraggedItem(null);
+  };
+
+  const getStageCount = (stage: ApplicationStage) => applications.filter(a => a.stage === stage).length;
+  const totalApps = applications.length;
+
+  if (loading) {
+    return (
+      <div style={{ padding: 48, textAlign: 'center' }}>
+        <p>Loading applications...</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="jobsContainer">
+      {/* Header Stats */}
+      <div className="jobsStats">
+        <div className="statItem">
+          <span className="statValue">{totalApps}</span>
+          <span className="statLabel">Total Applications</span>
+        </div>
+        <div className="statItem">
+          <span className="statValue">{getStageCount('interview') + getStageCount('offer')}</span>
+          <span className="statLabel">Interviewing</span>
+        </div>
+        <div className="statItem">
+          <span className="statValue">{getStageCount('offer')}</span>
+          <span className="statLabel">Offers</span>
+        </div>
+      </div>
+
+      {/* Search and Filter Bar */}
+      <div className="jobsToolbar">
+        <div className="searchBox">
+          <span className="searchIcon">🔍</span>
+          <input
+            type="text"
+            placeholder="Search by company, title, or notes..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="searchInput"
+          />
+        </div>
+        
+        <div className="filterButtons">
+          <button
+            className={`filterBtn ${filterStage === 'all' ? 'active' : ''}`}
+            onClick={() => setFilterStage('all')}
+          >
+            All ({totalApps})
+          </button>
+          {STAGE_ORDER.slice(0, 5).map(stage => (
+            <button
+              key={stage}
+              className={`filterBtn ${filterStage === stage ? 'active' : ''}`}
+              onClick={() => setFilterStage(stage)}
+            >
+              {STAGE_LABELS[stage]} ({getStageCount(stage)})
+            </button>
+          ))}
+        </div>
+
+        <button className="addJobBtn" onClick={() => setShowAddModal(true)}>
+          + Add Job
+        </button>
+      </div>
+
+      {/* Kanban Board */}
+      <div className="kanbanBoard">
+        {STAGE_ORDER.map(stage => (
+          <div
+            key={stage}
+            className={`kanbanColumn ${filterStage !== 'all' && filterStage !== stage ? 'dimmed' : ''}`}
+            onDragOver={handleDragOver}
+            onDrop={() => handleDrop(stage)}
+          >
+            <div className="columnHeader">
+              <span className="columnTitle">{STAGE_LABELS[stage]}</span>
+              <span className="columnCount">{getAppsByStage(stage).length}</span>
+            </div>
+            <div className="columnContent">
+              {getAppsByStage(stage).map(app => (
+                <div
+                  key={app.id}
+                  className="jobCard"
+                  draggable
+                  onDragStart={() => handleDragStart(app)}
+                >
+                  <div className="jobCardHeader">
+                    <span className="jobCompany">{app.company}</span>
+                    <button 
+                      className="deleteBtn"
+                      onClick={() => deleteApplication(app.id)}
+                      title="Delete"
+                    >
+                      ×
+                    </button>
+                  </div>
+                  <div className="jobTitle">{app.title}</div>
+                  {app.notes && <div className="jobNotes">{app.notes}</div>}
+                  <div className="jobMeta">
+                    <span className="jobDate">
+                      {app.applied_at 
+                        ? `Applied: ${new Date(app.applied_at).toLocaleDateString()}`
+                        : `Added: ${new Date(app.created_at).toLocaleDateString()}`}
+                    </span>
+                  </div>
+                </div>
+              ))}
+              {getAppsByStage(stage).length === 0 && (
+                <div className="emptyColumn">
+                  {filterStage === 'all' ? `No ${STAGE_LABELS[stage].toLowerCase()} jobs` : 'No matching jobs'}
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Add Job Modal */}
+      {showAddModal && (
+        <AddJobModal 
+          onClose={() => setShowAddModal(false)} 
+          onSubmit={addJob}
+        />
+      )}
+
+      <style jsx>{`
+        .jobsContainer {
+          display: flex;
+          flex-direction: column;
+          gap: 20px;
+        }
+
+        .jobsStats {
+          display: flex;
+          gap: 24px;
+          padding: 16px 20px;
+          background: rgba(255, 255, 255, 0.03);
+          border-radius: 12px;
+          border: 1px solid var(--border);
+        }
+
+        .statItem {
+          display: flex;
+          flex-direction: column;
+        }
+
+        .statValue {
+          font-size: 1.5rem;
+          font-weight: 700;
+          color: var(--text);
+        }
+
+        .statLabel {
+          font-size: 0.8rem;
+          color: var(--text-light);
+        }
+
+        .jobsToolbar {
+          display: flex;
+          align-items: center;
+          gap: 16px;
+          flex-wrap: wrap;
+        }
+
+        .searchBox {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 8px 12px;
+          background: rgba(255, 255, 255, 0.03);
+          border: 1px solid var(--border);
+          border-radius: 8px;
+          flex: 1;
+          min-width: 250px;
+        }
+
+        .searchIcon {
+          font-size: 0.9rem;
+        }
+
+        .searchInput {
+          background: transparent;
+          border: none;
+          color: var(--text);
+          flex: 1;
+          outline: none;
+          font-size: 0.9rem;
+        }
+
+        .searchInput::placeholder {
+          color: var(--text-light);
+        }
+
+        .filterButtons {
+          display: flex;
+          gap: 8px;
+          flex-wrap: wrap;
+        }
+
+        .filterBtn {
+          padding: 6px 12px;
+          background: rgba(255, 255, 255, 0.03);
+          border: 1px solid var(--border);
+          border-radius: 6px;
+          color: var(--text-light);
+          font-size: 0.8rem;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+
+        .filterBtn:hover {
+          background: rgba(255, 255, 255, 0.06);
+        }
+
+        .filterBtn.active {
+          background: rgba(99, 102, 241, 0.2);
+          border-color: rgba(99, 102, 241, 0.5);
+          color: #818cf8;
+        }
+
+        .addJobBtn {
+          padding: 8px 16px;
+          background: var(--primary);
+          border: none;
+          border-radius: 8px;
+          color: white;
+          font-weight: 600;
+          cursor: pointer;
+          transition: opacity 0.2s;
+        }
+
+        .addJobBtn:hover {
+          opacity: 0.9;
+        }
+
+        .kanbanBoard {
+          display: grid;
+          grid-template-columns: repeat(6, 1fr);
+          gap: 12px;
+          overflow-x: auto;
+          padding-bottom: 12px;
+        }
+
+        .kanbanColumn {
+          background: rgba(255, 255, 255, 0.02);
+          border: 1px solid var(--border);
+          border-radius: 10px;
+          min-width: 160px;
+          display: flex;
+          flex-direction: column;
+        }
+
+        .kanbanColumn.dimmed {
+          opacity: 0.4;
+        }
+
+        .columnHeader {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 12px;
+          border-bottom: 1px solid var(--border);
+        }
+
+        .columnTitle {
+          font-weight: 600;
+          font-size: 0.85rem;
+        }
+
+        .columnCount {
+          background: rgba(255, 255, 255, 0.1);
+          padding: 2px 8px;
+          border-radius: 10px;
+          font-size: 0.75rem;
+        }
+
+        .columnContent {
+          padding: 8px;
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          min-height: 200px;
+          max-height: 400px;
+          overflow-y: auto;
+        }
+
+        .jobCard {
+          background: rgba(255, 255, 255, 0.04);
+          border: 1px solid var(--border);
+          border-radius: 8px;
+          padding: 10px;
+          cursor: grab;
+          transition: transform 0.15s, box-shadow 0.15s;
+        }
+
+        .jobCard:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+
+        .jobCard:active {
+          cursor: grabbing;
+        }
+
+        .jobCardHeader {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
+        }
+
+        .jobCompany {
+          font-weight: 600;
+          font-size: 0.9rem;
+          color: var(--text);
+        }
+
+        .deleteBtn {
+          background: none;
+          border: none;
+          color: var(--text-light);
+          cursor: pointer;
+          padding: 0;
+          font-size: 1.1rem;
+          line-height: 1;
+          opacity: 0.5;
+          transition: opacity 0.2s;
+        }
+
+        .deleteBtn:hover {
+          opacity: 1;
+          color: #ef4444;
+        }
+
+        .jobTitle {
+          font-size: 0.8rem;
+          color: var(--text-light);
+          margin-top: 4px;
+        }
+
+        .jobNotes {
+          font-size: 0.75rem;
+          color: var(--text-light);
+          margin-top: 6px;
+          padding-top: 6px;
+          border-top: 1px solid var(--border);
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
+          overflow: hidden;
+        }
+
+        .jobMeta {
+          margin-top: 8px;
+        }
+
+        .jobDate {
+          font-size: 0.7rem;
+          color: var(--text-light);
+          opacity: 0.7;
+        }
+
+        .emptyColumn {
+          text-align: center;
+          padding: 20px 10px;
+          color: var(--text-light);
+          font-size: 0.8rem;
+          opacity: 0.6;
+        }
+
+        @media (max-width: 1200px) {
+          .kanbanBoard {
+            grid-template-columns: repeat(3, 1fr);
+          }
+        }
+
+        @media (max-width: 768px) {
+          .kanbanBoard {
+            grid-template-columns: repeat(2, 1fr);
+          }
+          
+          .jobsToolbar {
+            flex-direction: column;
+            align-items: stretch;
+          }
+        }
+      `}</style>
+    </div>
+  );
+}
+
+interface JobFormData {
+  company: string;
+  title: string;
+  job_url?: string;
+  notes?: string;
+}
+
+function AddJobModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (data: JobFormData) => void }) {
+  const [company, setCompany] = useState('');
+  const [title, setTitle] = useState('');
+  const [jobUrl, setJobUrl] = useState('');
+  const [notes, setNotes] = useState('');
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (company && title) {
+      onSubmit({ company, title, job_url: jobUrl, notes });
+    }
+  };
+
+  return (
+    <div className="modalOverlay" onClick={onClose}>
+      <div className="modalContent" onClick={e => e.stopPropagation()}>
+        <div className="modalHeader">
+          <h3>Add New Job</h3>
+          <button className="closeBtn" onClick={onClose}>×</button>
+        </div>
+        <form onSubmit={handleSubmit}>
+          <div className="formGroup">
+            <label>Company *</label>
+            <input
+              type="text"
+              value={company}
+              onChange={e => setCompany(e.target.value)}
+              placeholder="e.g. Google"
+              required
+            />
+          </div>
+          <div className="formGroup">
+            <label>Job Title *</label>
+            <input
+              type="text"
+              value={title}
+              onChange={e => setTitle(e.target.value)}
+              placeholder="e.g. Senior Software Engineer"
+              required
+            />
+          </div>
+          <div className="formGroup">
+            <label>Job URL</label>
+            <input
+              type="url"
+              value={jobUrl}
+              onChange={e => setJobUrl(e.target.value)}
+              placeholder="https://..."
+            />
+          </div>
+          <div className="formGroup">
+            <label>Notes</label>
+            <textarea
+              value={notes}
+              onChange={e => setNotes(e.target.value)}
+              placeholder="Add any notes..."
+              rows={3}
+            />
+          </div>
+          <div className="modalActions">
+            <button type="button" className="cancelBtn" onClick={onClose}>Cancel</button>
+            <button type="submit" className="submitBtn">Add Job</button>
+          </div>
+        </form>
+      </div>
+
+      <style jsx>{`
+        .modalOverlay {
+          position: fixed;
+          inset: 0;
+          background: rgba(0, 0, 0, 0.7);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 100;
+        }
+
+        .modalContent {
+          background: var(--bg);
+          border: 1px solid var(--border);
+          border-radius: 12px;
+          width: 100%;
+          max-width: 420px;
+          padding: 20px;
+        }
+
+        .modalHeader {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 20px;
+        }
+
+        .modalHeader h3 {
+          margin: 0;
+          font-size: 1.1rem;
+        }
+
+        .closeBtn {
+          background: none;
+          border: none;
+          color: var(--text-light);
+          font-size: 1.5rem;
+          cursor: pointer;
+          padding: 0;
+          line-height: 1;
+        }
+
+        .formGroup {
+          margin-bottom: 16px;
+        }
+
+        .formGroup label {
+          display: block;
+          font-size: 0.85rem;
+          margin-bottom: 6px;
+          color: var(--text-light);
+        }
+
+        .formGroup input,
+        .formGroup textarea {
+          width: 100%;
+          padding: 10px 12px;
+          background: rgba(255, 255, 255, 0.03);
+          border: 1px solid var(--border);
+          border-radius: 8px;
+          color: var(--text);
+          font-size: 0.9rem;
+        }
+
+        .formGroup input:focus,
+        .formGroup textarea:focus {
+          outline: none;
+          border-color: var(--primary);
+        }
+
+        .modalActions {
+          display: flex;
+          gap: 12px;
+          justify-content: flex-end;
+          margin-top: 20px;
+        }
+
+        .cancelBtn {
+          padding: 8px 16px;
+          background: transparent;
+          border: 1px solid var(--border);
+          border-radius: 8px;
+          color: var(--text-light);
+          cursor: pointer;
+        }
+
+        .submitBtn {
+          padding: 8px 16px;
+          background: var(--primary);
+          border: none;
+          border-radius: 8px;
+          color: white;
+          font-weight: 600;
+          cursor: pointer;
+        }
+      `}</style>
+    </div>
+  );
+}

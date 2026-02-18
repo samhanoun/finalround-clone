@@ -28,11 +28,19 @@ const quickActions: QuickAction[] = [
     variant: 'secondary',
   },
   {
-    id: 'apply-jobs',
-    title: 'Apply to Jobs',
-    description: 'Browse and apply to job opportunities',
+    id: 'job-tracker',
+    title: 'Job Tracker',
+    description: 'Track applications and manage your job search pipeline',
     href: '/jobs',
     icon: '💼',
+    variant: 'accent',
+  },
+  {
+    id: 'resume',
+    title: 'Resume Builder',
+    description: 'Upload and optimize your resume for ATS',
+    href: '/resume',
+    icon: '📄',
     variant: 'accent',
   },
 ];
