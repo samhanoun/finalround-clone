@@ -47,17 +47,28 @@ const quickActions: QuickAction[] = [
 
 export function QuickActions() {
   return (
-    <section id="quick-actions">
-      <h2 className="cardTitle" style={{ marginBottom: 16 }}>Quick Actions</h2>
-      <div className={styles.quickActionsGrid}>
+    <section id="quick-actions" aria-labelledby="quick-actions-heading">
+      <h2 className="cardTitle" id="quick-actions-heading" style={{ marginBottom: 16 }}>
+        Quick Actions
+      </h2>
+      <div 
+        className={styles.quickActionsGrid} 
+        role="navigation" 
+        aria-label="Quick actions navigation"
+      >
         {quickActions.map((action) => (
-          <Link key={action.id} href={action.href} className={`${styles.quickActionCard} ${styles[action.variant]}`}>
-            <div className={styles.quickActionIcon}>{action.icon}</div>
+          <Link 
+            key={action.id} 
+            href={action.href} 
+            className={`${styles.quickActionCard} ${styles[action.variant]}`}
+            aria-label={`${action.title}: ${action.description}`}
+          >
+            <div className={styles.quickActionIcon} aria-hidden="true">{action.icon}</div>
             <div className={styles.quickActionContent}>
               <h3 className={styles.quickActionTitle}>{action.title}</h3>
               <p className={styles.quickActionDesc}>{action.description}</p>
             </div>
-            <span className={styles.quickActionArrow}>→</span>
+            <span className={styles.quickActionArrow} aria-hidden="true">→</span>
           </Link>
         ))}
       </div>

@@ -9,11 +9,8 @@ export async function AppShell(props: { title?: string; children: React.ReactNod
 
   return (
     <div>
-      <a className="skipLink" href="#main">
-        Skip to content
-      </a>
-
       <header
+        role="banner"
         style={{
           position: 'sticky',
           top: 0,
@@ -28,15 +25,24 @@ export async function AppShell(props: { title?: string; children: React.ReactNod
           style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0' }}
         >
           <div className="row" style={{ gap: 12 }}>
-            <Link href="/" style={{ fontWeight: 750, letterSpacing: 0.2 }} aria-label="Home">
+            <Link 
+              href="/" 
+              style={{ fontWeight: 750, letterSpacing: 0.2 }} 
+              aria-label="FinalRound Home"
+            >
               FinalRound
             </Link>
-            <span className="badge" aria-hidden>
+            <span className="badge" aria-hidden="true">
               MVP
             </span>
           </div>
 
-          <nav aria-label="Primary" className="row" style={{ gap: 12 }}>
+          <nav 
+            role="navigation" 
+            aria-label="Primary navigation" 
+            className="row" 
+            style={{ gap: 12 }}
+          >
             <Link href="/dashboard">Dashboard</Link>
             <Link href="/jobs">Jobs</Link>
             <Link href="/copilot/live">Live Copilot</Link>
@@ -47,13 +53,21 @@ export async function AppShell(props: { title?: string; children: React.ReactNod
           <div className="row" style={{ justifyContent: 'flex-end' }}>
             {user ? (
               <>
-                <span className="small" style={{ maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                <span 
+                  className="small" 
+                  style={{ maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis' }}
+                  aria-label={`Logged in as ${user.email}`}
+                >
                   {user.email}
                 </span>
                 <SignOutButton />
               </>
             ) : (
-              <Link className="button buttonPrimary" href="/auth">
+              <Link 
+                className="button buttonPrimary" 
+                href="/auth"
+                aria-label="Sign in to your account"
+              >
                 Login
               </Link>
             )}
@@ -61,7 +75,13 @@ export async function AppShell(props: { title?: string; children: React.ReactNod
         </div>
       </header>
 
-      <main id="main" className="container" style={{ padding: '28px 0 64px' }}>
+      <main 
+        id="main-content" 
+        className="container" 
+        role="main"
+        style={{ padding: '28px 0 64px' }}
+        tabIndex={-1}
+      >
         {props.title ? (
           <div className="stack" style={{ marginBottom: 16 }}>
             <h1 style={{ fontSize: '1.8rem', margin: 0 }}>{props.title}</h1>
@@ -71,8 +91,14 @@ export async function AppShell(props: { title?: string; children: React.ReactNod
         {props.children}
       </main>
 
-      <footer className="container" style={{ padding: '18px 0 28px', borderTop: '1px solid var(--border)' }}>
-        <p className="small">Built with Next.js + Supabase. Keep it simple, keep it secure.</p>
+      <footer 
+        role="contentinfo" 
+        className="container" 
+        style={{ padding: '18px 0 28px', borderTop: '1px solid var(--border)' }}
+      >
+        <p className="small">
+          Built with Next.js + Supabase. Keep it simple, keep it secure.
+        </p>
       </footer>
     </div>
   );

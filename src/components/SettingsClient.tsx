@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useId } from 'react';
 
 type Settings = {
   provider: string | null;
@@ -18,6 +18,11 @@ export function SettingsClient(props: { initial: Settings | null }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
+
+  const providerId = useId();
+  const modelId = useId();
+  const temperatureId = useId();
+  const maxTokensId = useId();
 
   async function save() {
     setError(null);
@@ -39,24 +44,29 @@ export function SettingsClient(props: { initial: Settings | null }) {
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.error ?? 'Failed to save');
-      setOk('Saved.');
+      setOk('Settings saved successfully.');
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed');
+      setError(e instanceof Error ? e.message : 'Failed to save settings');
     } finally {
       setSaving(false);
     }
   }
 
   return (
-    <div className="card">
+    <div className="card" role="form" aria-label="LLM preferences settings">
       <div className="cardInner stack">
-        <h2 className="cardTitle">LLM preferences</h2>
+        <h2 className="cardTitle" id="settings-title">LLM preferences</h2>
         <p className="cardDesc">Stored per-user in <span className="mono">llm_settings</span>.</p>
 
         <div className="grid2">
-          <label className="label">
+          <label className="label" htmlFor={providerId}>
             Provider
-            <select className="select" value={provider} onChange={(e) => setProvider(e.target.value)}>
+            <select 
+              className="select" 
+              id={providerId}
+              value={provider} 
+              onChange={(e) => setProvider(e.target.value)}
+            >
               <option value="openai">OpenAI</option>
               <option value="anthropic">Anthropic</option>
               <option value="google">Google</option>
@@ -64,30 +74,79 @@ export function SettingsClient(props: { initial: Settings | null }) {
             </select>
           </label>
 
-          <label className="label">
+          <label className="label" htmlFor={modelId}>
             Model
-            <input className="input" value={model} onChange={(e) => setModel(e.target.value)} />
+            <input 
+              className="input" 
+              id={modelId}
+              value={model} 
+              onChange={(e) => setModel(e.target.value)} 
+            />
           </label>
 
-          <label className="label">
+          <label className="label" htmlFor={temperatureId}>
             Temperature
-            <input className="input" value={temperature} onChange={(e) => setTemperature(e.target.value)} />
+            <input 
+              className="input" 
+              id={temperatureId}
+              type="number"
+              step="0.1"
+              min="0"
+              max="2"
+              value={temperature} 
+              onChange={(e) => setTemperature(e.target.value)} 
+            />
           </label>
 
-          <label className="label">
+          <label className="label" htmlFor={maxTokensId}>
             Max tokens
-            <input className="input" value={maxTokens} onChange={(e) => setMaxTokens(e.target.value)} />
+            <input 
+              className="input" 
+              id={maxTokensId}
+              type="number"
+              min="1"
+              max="32000"
+              value={maxTokens} 
+              onChange={(e) => setMaxTokens(e.target.value)} 
+            />
           </label>
         </div>
 
         <div className="row" style={{ justifyContent: 'flex-end' }}>
-          <button className="button buttonPrimary" onClick={save} disabled={saving} type="button">
+          <button 
+            className="button buttonPrimary" 
+            onClick={save} 
+            disabled={saving} 
+            type="button"
+            aria-describedby={saving ? 'saving-status' : undefined}
+          >
             {saving ? 'Saving…' : 'Save'}
           </button>
+          {saving && (
+            <span id="saving-status" className="srOnly">
+              Saving your settings, please wait...
+            </span>
+          )}
         </div>
 
-        {error ? <div className="error">{error}</div> : null}
-        {ok ? <div className="success">{ok}</div> : null}
+        {error && (
+          <div 
+            className="error" 
+            role="alert"
+            aria-live="assertive"
+          >
+            {error}
+          </div>
+        )}
+        {ok && (
+          <div 
+            className="success" 
+            role="status"
+            aria-live="polite"
+          >
+            {ok}
+          </div>
+        )}
       </div>
     </div>
   );

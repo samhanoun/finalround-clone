@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useId } from 'react';
 import { createClient } from '@/lib/supabase/browser';
 
 type ApplicationStage = 'saved' | 'applied' | 'oa' | 'interview' | 'offer' | 'rejected';
@@ -59,6 +59,10 @@ export function JobsClient() {
   const [filterStage, setFilterStage] = useState<ApplicationStage | 'all'>('all');
   const [showAddModal, setShowAddModal] = useState(false);
   const [draggedItem, setDraggedItem] = useState<JobWithApplication | null>(null);
+  const [announcement, setAnnouncement] = useState('');
+  
+  const searchId = useId();
+  const filterGroupId = useId();
 
   useEffect(() => {
     let mounted = true;
@@ -86,6 +90,11 @@ export function JobsClient() {
     };
   }, [supabase]);
 
+  const announce = (message: string) => {
+    setAnnouncement(message);
+    setTimeout(() => setAnnouncement(''), 1000);
+  };
+
   const refreshApplications = async () => {
     const { data, error } = await supabase
       .from('job_applications')
@@ -100,8 +109,9 @@ export function JobsClient() {
 
   const updateStage = async (appId: string, newStage: ApplicationStage) => {
     const updates: Partial<JobApplication> = { stage: newStage };
+    const app = applications.find(a => a.id === appId);
     
-    if (newStage === 'applied' && !applications.find(a => a.id === appId)?.applied_at) {
+    if (newStage === 'applied' && !app?.applied_at) {
       updates.applied_at = new Date().toISOString();
     }
 
@@ -111,15 +121,18 @@ export function JobsClient() {
       .eq('id', appId);
 
     if (!error) {
+      const oldStage = app?.stage;
       setApplications(prev =>
         prev.map(app =>
           app.id === appId ? { ...app, ...updates, updated_at: new Date().toISOString() } : app
         )
       );
+      announce(`Moved ${app?.title} from ${STAGE_LABELS[oldStage || 'saved']} to ${STAGE_LABELS[newStage]}`);
     }
   };
 
   const deleteApplication = async (appId: string) => {
+    const app = applications.find(a => a.id === appId);
     const { error } = await supabase
       .from('job_applications')
       .delete()
@@ -127,6 +140,7 @@ export function JobsClient() {
 
     if (!error) {
       setApplications(prev => prev.filter(app => app.id !== appId));
+      announce(`Deleted ${app?.title} application`);
     }
   };
 
@@ -148,6 +162,7 @@ export function JobsClient() {
     if (!error) {
       setShowAddModal(false);
       refreshApplications();
+      announce(`Added new job application for ${jobData.title} at ${jobData.company}`);
     }
   };
 
@@ -185,7 +200,7 @@ export function JobsClient() {
 
   if (loading) {
     return (
-      <div style={{ padding: 48, textAlign: 'center' }}>
+      <div style={{ padding: 48, textAlign: 'center' }} role="status" aria-live="polite">
         <p>Loading applications...</p>
       </div>
     );
@@ -193,39 +208,64 @@ export function JobsClient() {
 
   return (
     <div className="jobsContainer">
+      {/* Screen reader announcements */}
+      <div 
+        role="status" 
+        aria-live="polite" 
+        aria-atomic="true" 
+        className="srOnly"
+      >
+        {announcement}
+      </div>
+
       {/* Header Stats */}
-      <div className="jobsStats">
+      <div className="jobsStats" role="region" aria-label="Application statistics">
         <div className="statItem">
-          <span className="statValue">{totalApps}</span>
+          <span className="statValue" aria-label={`${totalApps} total applications`}>{totalApps}</span>
           <span className="statLabel">Total Applications</span>
         </div>
         <div className="statItem">
-          <span className="statValue">{getStageCount('interview') + getStageCount('offer')}</span>
+          <span className="statValue" aria-label={`${getStageCount('interview') + getStageCount('offer')} interviewing`}>
+            {getStageCount('interview') + getStageCount('offer')}
+          </span>
           <span className="statLabel">Interviewing</span>
         </div>
         <div className="statItem">
-          <span className="statValue">{getStageCount('offer')}</span>
+          <span className="statValue" aria-label={`${getStageCount('offer')} offers`}>
+            {getStageCount('offer')}
+          </span>
           <span className="statLabel">Offers</span>
         </div>
       </div>
 
       {/* Search and Filter Bar */}
-      <div className="jobsToolbar">
+      <div className="jobsToolbar" role="search" aria-label="Job applications search and filters">
         <div className="searchBox">
-          <span className="searchIcon">🔍</span>
+          <span className="searchIcon" aria-hidden="true">🔍</span>
           <input
             type="text"
             placeholder="Search by company, title, or notes..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="searchInput"
+            id={searchId}
+            aria-describedby="search-description"
           />
+          <span id="search-description" className="srOnly">
+            Filter job applications by company name, job title, or notes
+          </span>
         </div>
         
-        <div className="filterButtons">
+        <div 
+          className="filterButtons" 
+          role="group" 
+          aria-label="Filter by application stage"
+          id={filterGroupId}
+        >
           <button
             className={`filterBtn ${filterStage === 'all' ? 'active' : ''}`}
             onClick={() => setFilterStage('all')}
+            aria-pressed={filterStage === 'all'}
           >
             All ({totalApps})
           </button>
@@ -234,29 +274,44 @@ export function JobsClient() {
               key={stage}
               className={`filterBtn ${filterStage === stage ? 'active' : ''}`}
               onClick={() => setFilterStage(stage)}
+              aria-pressed={filterStage === stage}
             >
               {STAGE_LABELS[stage]} ({getStageCount(stage)})
             </button>
           ))}
         </div>
 
-        <button className="addJobBtn" onClick={() => setShowAddModal(true)}>
+        <button 
+          className="addJobBtn" 
+          onClick={() => setShowAddModal(true)}
+          aria-label="Add new job application"
+        >
           + Add Job
         </button>
       </div>
 
       {/* Kanban Board */}
-      <div className="kanbanBoard">
+      <div 
+        className="kanbanBoard" 
+        role="region" 
+        aria-label="Job applications board - Drag and drop job applications between columns to change their status"
+      >
         {STAGE_ORDER.map(stage => (
           <div
             key={stage}
             className={`kanbanColumn ${filterStage !== 'all' && filterStage !== stage ? 'dimmed' : ''}`}
             onDragOver={handleDragOver}
             onDrop={() => handleDrop(stage)}
+            role="listbox"
+            aria-label={`${STAGE_LABELS[stage]} stage - ${getAppsByStage(stage).length} applications`}
+            aria-readonly="true"
+            tabIndex={0}
           >
             <div className="columnHeader">
               <span className="columnTitle">{STAGE_LABELS[stage]}</span>
-              <span className="columnCount">{getAppsByStage(stage).length}</span>
+              <span className="columnCount" aria-label={`${getAppsByStage(stage).length} items`}>
+                {getAppsByStage(stage).length}
+              </span>
             </div>
             <div className="columnContent">
               {getAppsByStage(stage).map(app => (
@@ -265,6 +320,9 @@ export function JobsClient() {
                   className="jobCard"
                   draggable
                   onDragStart={() => handleDragStart(app)}
+                  role="option"
+                  aria-selected="false"
+                  aria-label={`${app.title} at ${app.company}. ${app.notes ? `Notes: ${app.notes}. ` : ''}Drag to move to different stage.`}
                 >
                   <div className="jobCardHeader">
                     <span className="jobCompany">{app.company}</span>
@@ -272,6 +330,7 @@ export function JobsClient() {
                       className="deleteBtn"
                       onClick={() => deleteApplication(app.id)}
                       title="Delete"
+                      aria-label={`Delete ${app.title} application at ${app.company}`}
                     >
                       ×
                     </button>
@@ -288,7 +347,7 @@ export function JobsClient() {
                 </div>
               ))}
               {getAppsByStage(stage).length === 0 && (
-                <div className="emptyColumn">
+                <div className="emptyColumn" aria-live="polite">
                   {filterStage === 'all' ? `No ${STAGE_LABELS[stage].toLowerCase()} jobs` : 'No matching jobs'}
                 </div>
               )}
@@ -480,6 +539,11 @@ export function JobsClient() {
           box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
         }
 
+        .jobCard:focus-visible {
+          outline: 3px solid var(--focus-ring);
+          outline-offset: 2px;
+        }
+
         .jobCard:active {
           cursor: grabbing;
         }
@@ -511,6 +575,12 @@ export function JobsClient() {
         .deleteBtn:hover {
           opacity: 1;
           color: #ef4444;
+        }
+
+        .deleteBtn:focus-visible {
+          outline: 2px solid var(--focus-ring);
+          outline-offset: 2px;
+          opacity: 1;
         }
 
         .jobTitle {
@@ -582,6 +652,7 @@ function AddJobModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (da
   const [title, setTitle] = useState('');
   const [jobUrl, setJobUrl] = useState('');
   const [notes, setNotes] = useState('');
+  const modalTitleId = useId();
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -590,18 +661,36 @@ function AddJobModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (da
     }
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      onClose();
+    }
+  };
+
   return (
-    <div className="modalOverlay" onClick={onClose}>
+    <div 
+      className="modalOverlay" 
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby={modalTitleId}
+      onKeyDown={handleKeyDown}
+    >
       <div className="modalContent" onClick={e => e.stopPropagation()}>
         <div className="modalHeader">
-          <h3>Add New Job</h3>
-          <button className="closeBtn" onClick={onClose}>×</button>
+          <h3 id={modalTitleId}>Add New Job</h3>
+          <button 
+            className="closeBtn" 
+            onClick={onClose}
+            aria-label="Close dialog"
+          >×</button>
         </div>
         <form onSubmit={handleSubmit}>
           <div className="formGroup">
-            <label>Company *</label>
+            <label htmlFor="company-input">Company *</label>
             <input
               type="text"
+              id="company-input"
               value={company}
               onChange={e => setCompany(e.target.value)}
               placeholder="e.g. Google"
@@ -609,9 +698,10 @@ function AddJobModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (da
             />
           </div>
           <div className="formGroup">
-            <label>Job Title *</label>
+            <label htmlFor="title-input">Job Title *</label>
             <input
               type="text"
+              id="title-input"
               value={title}
               onChange={e => setTitle(e.target.value)}
               placeholder="e.g. Senior Software Engineer"
@@ -619,17 +709,19 @@ function AddJobModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (da
             />
           </div>
           <div className="formGroup">
-            <label>Job URL</label>
+            <label htmlFor="url-input">Job URL</label>
             <input
               type="url"
+              id="url-input"
               value={jobUrl}
               onChange={e => setJobUrl(e.target.value)}
               placeholder="https://..."
             />
           </div>
           <div className="formGroup">
-            <label>Notes</label>
+            <label htmlFor="notes-input">Notes</label>
             <textarea
+              id="notes-input"
               value={notes}
               onChange={e => setNotes(e.target.value)}
               placeholder="Add any notes..."
@@ -685,6 +777,11 @@ function AddJobModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (da
           line-height: 1;
         }
 
+        .closeBtn:focus-visible {
+          outline: 2px solid var(--focus-ring);
+          outline-offset: 2px;
+        }
+
         .formGroup {
           margin-bottom: 16px;
         }
@@ -713,6 +810,12 @@ function AddJobModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (da
           border-color: var(--primary);
         }
 
+        .formGroup input:focus-visible,
+        .formGroup textarea:focus-visible {
+          outline: 2px solid var(--focus-ring);
+          outline-offset: 2px;
+        }
+
         .modalActions {
           display: flex;
           gap: 12px;
@@ -727,6 +830,12 @@ function AddJobModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (da
           border-radius: 8px;
           color: var(--text-light);
           cursor: pointer;
+        }
+
+        .cancelBtn:focus-visible,
+        .submitBtn:focus-visible {
+          outline: 2px solid var(--focus-ring);
+          outline-offset: 2px;
         }
 
         .submitBtn {

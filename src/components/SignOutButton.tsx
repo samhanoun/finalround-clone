@@ -14,7 +14,12 @@ export function SignOutButton() {
   }
 
   return (
-    <button className="button" type="button" onClick={onClick}>
+    <button 
+      className="button" 
+      type="button" 
+      onClick={onClick}
+      aria-label="Sign out of your account"
+    >
       Sign out
     </button>
   );

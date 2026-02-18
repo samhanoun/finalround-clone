@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useId } from 'react';
 
 type Doc = {
   id: string;
@@ -55,6 +55,15 @@ export function ResumeClient(props: { initialDocs: Doc[]; initialGenerations: Ge
   const [atsResult, setAtsResult] = useState<ATSResult | null>(null);
   const [bulletAnalyses, setBulletAnalyses] = useState<BulletAnalysis[]>([]);
   const [bulletInput, setBulletInput] = useState<string>('');
+
+  // Generate unique IDs for form accessibility
+  const fileInputId = useId();
+  const docSelectId = useId();
+  const jobDescId = useId();
+  const bulletInputId = useId();
+  const uploadBtnId = useId();
+  const atsStatusId = useId();
+  const bulletStatusId = useId();
 
   const historyUrl = useMemo(() => '/api/resume/history', []);
 
@@ -119,7 +128,7 @@ export function ResumeClient(props: { initialDocs: Doc[]; initialGenerations: Ge
     }
   }
 
-  async function download(docId: string) {
+  async function download(docId: string, _docName: string) {
     setError(null);
     setOk(null);
 
@@ -144,6 +153,7 @@ export function ResumeClient(props: { initialDocs: Doc[]; initialGenerations: Ge
       return;
     }
     setError(null);
+    setAtsResult(null);
     setAnalyzing(true);
 
     try {
@@ -218,37 +228,51 @@ export function ResumeClient(props: { initialDocs: Doc[]; initialGenerations: Ge
 
   return (
     <div className="grid2" style={{ alignItems: 'start' }}>
-      <section className="card" aria-label="Upload and analyze">
+      <section className="card" aria-labelledby="resume-builder-heading">
         <div className="cardInner stack">
-          <h2 className="cardTitle">Resume Builder</h2>
+          <h2 className="cardTitle" id="resume-builder-heading">Resume Builder</h2>
           <p className="cardDesc">Upload your resume and optimize it for specific job applications.</p>
 
           <div className="stack">
             {/* Upload Section */}
-            <label className="label">
+            <label className="label" htmlFor={fileInputId}>
               Upload CV (PDF/DOCX)
               <input
                 className="input"
                 type="file"
+                id={fileInputId}
                 accept=".pdf,.docx,.doc"
                 onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-                aria-label="CV file"
+                aria-label="CV file upload"
               />
             </label>
 
             <div className="row" style={{ justifyContent: 'flex-end' }}>
-              <button className="button buttonPrimary" type="button" onClick={upload} disabled={!file || uploading}>
+              <button 
+                className="button buttonPrimary" 
+                type="button" 
+                onClick={upload} 
+                disabled={!file || uploading}
+                id={uploadBtnId}
+                aria-describedby={uploading ? 'upload-status' : undefined}
+              >
                 {uploading ? 'Uploading…' : 'Upload & Parse'}
               </button>
+              {uploading && (
+                <span id="upload-status" className="srOnly">
+                  Uploading file, please wait...
+                </span>
+              )}
             </div>
 
             <hr className="hr" />
 
             {/* Document Selection */}
-            <label className="label">
+            <label className="label" htmlFor={docSelectId}>
               Select document
               <select
                 className="select"
+                id={docSelectId}
                 value={selectedDocId}
                 onChange={(e) => {
                   setSelectedDocId(e.target.value);
@@ -265,24 +289,30 @@ export function ResumeClient(props: { initialDocs: Doc[]; initialGenerations: Ge
             </label>
 
             {/* Job Description */}
-            <label className="label">
+            <label className="label" htmlFor={jobDescId}>
               Job Description
               <textarea
                 className="textarea"
+                id={jobDescId}
                 value={jobDescription}
                 onChange={(e) => setJobDescription(e.target.value)}
                 placeholder="Paste the job description…"
                 rows={5}
+                aria-describedby="job-desc-help"
               />
+              <span id="job-desc-help" className="help">
+                Paste the full job description to enable ATS analysis and keyword optimization
+              </span>
             </label>
 
             {/* Action Buttons */}
-            <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+            <div className="row" style={{ gap: 8, flexWrap: 'wrap' }} role="group" aria-label="Resume actions">
               <button
                 className="button buttonPrimary"
                 type="button"
                 onClick={runATSAnalysis}
                 disabled={!selectedDocId || !jobDescription || analyzing}
+                aria-describedby={analyzing ? atsStatusId : undefined}
               >
                 {analyzing ? 'Analyzing…' : 'Run ATS Analysis'}
               </button>
@@ -304,22 +334,32 @@ export function ResumeClient(props: { initialDocs: Doc[]; initialGenerations: Ge
               </button>
             </div>
 
+            {/* Status for ATS analysis */}
+            {analyzing && (
+              <span id={atsStatusId} className="srOnly">
+                Running ATS analysis, please wait...
+              </span>
+            )}
+
             {/* ATS Results */}
             {atsResult && (
-              <div className="resultBox">
-                <h4>ATS Analysis Results</h4>
+              <div className="resultBox" role="region" aria-labelledby="ats-results-heading">
+                <h4 id="ats-results-heading">ATS Analysis Results</h4>
                 <div className="scoreDisplay">
                   <span className="scoreLabel">Score:</span>
-                  <span className={`scoreValue ${atsResult.atsScore >= 70 ? 'good' : atsResult.atsScore >= 50 ? 'medium' : 'low'}`}>
+                  <span 
+                    className={`scoreValue ${atsResult.atsScore >= 70 ? 'good' : atsResult.atsScore >= 50 ? 'medium' : 'low'}`}
+                    aria-label={`ATS score ${atsResult.atsScore} out of 100`}
+                  >
                     {atsResult.atsScore}%
                   </span>
                 </div>
                 {atsResult.matchedKeywords.length > 0 && (
                   <div className="keywordSection">
                     <strong>Matched Keywords:</strong>
-                    <div className="keywordTags">
+                    <div className="keywordTags" role="list" aria-label="Matched keywords">
                       {atsResult.matchedKeywords.map((k) => (
-                        <span key={k} className="keywordTag matched">{k}</span>
+                        <span key={k} className="keywordTag matched" role="listitem">{k}</span>
                       ))}
                     </div>
                   </div>
@@ -327,9 +367,9 @@ export function ResumeClient(props: { initialDocs: Doc[]; initialGenerations: Ge
                 {atsResult.missingKeywords.length > 0 && (
                   <div className="keywordSection">
                     <strong>Missing Keywords:</strong>
-                    <div className="keywordTags">
+                    <div className="keywordTags" role="list" aria-label="Missing keywords">
                       {atsResult.missingKeywords.slice(0, 10).map((k) => (
-                        <span key={k} className="keywordTag missing">{k}</span>
+                        <span key={k} className="keywordTag missing" role="listitem">{k}</span>
                       ))}
                     </div>
                   </div>
@@ -337,7 +377,7 @@ export function ResumeClient(props: { initialDocs: Doc[]; initialGenerations: Ge
                 {atsResult.suggestions.length > 0 && (
                   <div className="suggestions">
                     <strong>Suggestions:</strong>
-                    <ul>
+                    <ul role="list">
                       {atsResult.suggestions.map((s, i) => (
                         <li key={i}>{s}</li>
                       ))}
@@ -349,17 +389,24 @@ export function ResumeClient(props: { initialDocs: Doc[]; initialGenerations: Ge
 
             {/* Bullet Analysis Section */}
             <hr className="hr" />
-            <h3 style={{ margin: 0, fontSize: '1rem' }}>Bullet Point Rewriter</h3>
-            <label className="label">
+            <h3 style={{ margin: 0, fontSize: '1rem' }} id="bullet-rewriter-heading">Bullet Point Rewriter</h3>
+            <label className="label" htmlFor={bulletInputId}>
               Enter bullet points (one per line)
               <textarea
                 className="textarea"
+                id={bulletInputId}
                 value={bulletInput}
                 onChange={(e) => setBulletInput(e.target.value)}
                 placeholder="Led a team of 5 engineers&#10;Improved system performance&#10;Worked on customer issues"
                 rows={4}
+                aria-describedby={analyzing ? bulletStatusId : undefined}
               />
             </label>
+            {analyzing && (
+              <span id={bulletStatusId} className="srOnly">
+                Analyzing bullet points, please wait...
+              </span>
+            )}
             <button
               className="button"
               type="button"
@@ -370,9 +417,10 @@ export function ResumeClient(props: { initialDocs: Doc[]; initialGenerations: Ge
             </button>
 
             {bulletAnalyses.length > 0 && (
-              <div className="bulletResults">
+              <div className="bulletResults" role="region" aria-labelledby="bullet-results-heading">
+                <h4 id="bullet-results-heading" className="srOnly">Bullet Analysis Results</h4>
                 {bulletAnalyses.map((analysis, i) => (
-                  <div key={i} className="bulletAnalysis">
+                  <div key={i} className="bulletAnalysis" role="article" aria-label={`Analysis ${i + 1} of ${bulletAnalyses.length}`}>
                     <div className="bulletOriginal">
                       <strong>Original:</strong> {analysis.original}
                     </div>
@@ -381,7 +429,10 @@ export function ResumeClient(props: { initialDocs: Doc[]; initialGenerations: Ge
                         <strong>Rewritten:</strong> {analysis.rewritten}
                       </div>
                     )}
-                    <div className={`bulletScore ${analysis.score >= 70 ? 'good' : analysis.score >= 50 ? 'medium' : 'low'}`}>
+                    <div 
+                      className={`bulletScore ${analysis.score >= 70 ? 'good' : analysis.score >= 50 ? 'medium' : 'low'}`}
+                      aria-label={`Score ${analysis.score} out of 100`}
+                    >
                       Score: {analysis.score}/100
                     </div>
                     {analysis.issues.length > 0 && (
@@ -394,32 +445,58 @@ export function ResumeClient(props: { initialDocs: Doc[]; initialGenerations: Ge
               </div>
             )}
 
-            {error ? <div className="error">{error}</div> : null}
-            {ok ? <div className="success">{ok}</div> : null}
+            {error && (
+              <div className="error" role="alert" aria-live="assertive">
+                {error}
+              </div>
+            )}
+            {ok && (
+              <div className="success" role="status" aria-live="polite">
+                {ok}
+              </div>
+            )}
           </div>
         </div>
       </section>
 
-      <aside className="card" aria-label="History">
+      <aside className="card" aria-labelledby="history-heading">
         <div className="cardInner stack">
           <div className="row" style={{ justifyContent: 'space-between' }}>
-            <h2 className="cardTitle">History</h2>
-            <button className="button" type="button" onClick={refreshHistory}>
+            <h2 className="cardTitle" id="history-heading">History</h2>
+            <button 
+              className="button" 
+              type="button" 
+              onClick={refreshHistory}
+              aria-label="Refresh history"
+            >
               Refresh
             </button>
           </div>
 
-          <h3 style={{ margin: 0, fontSize: '1rem' }}>Documents</h3>
-          <ul className="stack" style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+          <h3 style={{ margin: 0, fontSize: '1rem' }} id="documents-heading">Documents</h3>
+          <ul 
+            className="stack" 
+            style={{ listStyle: 'none', padding: 0, margin: 0 }} 
+            role="list" 
+            aria-label="Uploaded documents"
+          >
             {docs.length ? (
               docs.map((d) => (
                 <li key={d.id} className="row" style={{ justifyContent: 'space-between', gap: 12 }}>
-                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <span 
+                    style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                    aria-label={`Document: ${d.filename ?? d.id}${d.ats_score ? `, score ${d.ats_score}%` : ''}`}
+                  >
                     {d.filename ?? d.id}
                     {d.ats_score ? ` (${d.ats_score}%)` : ''}
                   </span>
                   <span className="row" style={{ gap: 8 }}>
-                    <button className="button" type="button" onClick={() => void download(d.id)}>
+                    <button 
+                      className="button" 
+                      type="button" 
+                      onClick={() => void download(d.id, d.filename ?? 'document')}
+                      aria-label={`Download ${d.filename ?? 'document'}`}
+                    >
                       Download
                     </button>
                     <span className="small mono">{new Date(d.created_at).toLocaleString()}</span>
@@ -427,20 +504,25 @@ export function ResumeClient(props: { initialDocs: Doc[]; initialGenerations: Ge
                 </li>
               ))
             ) : (
-              <li className="small">No uploads yet.</li>
+              <li className="small" aria-live="polite">No uploads yet.</li>
             )}
           </ul>
 
           <hr className="hr" />
 
-          <h3 style={{ margin: 0, fontSize: '1rem' }}>Generations</h3>
-          <ul className="stack" style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+          <h3 style={{ margin: 0, fontSize: '1rem' }} id="generations-heading">Generations</h3>
+          <ul 
+            className="stack" 
+            style={{ listStyle: 'none', padding: 0, margin: 0 }} 
+            role="list" 
+            aria-label="Generation history"
+          >
             {gens.length ? (
               gens.map((g) => (
                 <li key={g.id} className="card" style={{ background: 'rgba(255,255,255,0.04)', boxShadow: 'none' }}>
                   <div className="cardInner stack" style={{ gap: 8 }}>
                     <div className="row" style={{ justifyContent: 'space-between' }}>
-                      <span className="badge">{g.status}</span>
+                      <span className="badge" aria-label={`Status: ${g.status}`}>{g.status}</span>
                       <span className="small mono">{new Date(g.created_at).toLocaleString()}</span>
                     </div>
                     <div className="small">Doc: <span className="mono">{g.document_id ?? '—'}</span></div>
@@ -453,7 +535,7 @@ export function ResumeClient(props: { initialDocs: Doc[]; initialGenerations: Ge
                 </li>
               ))
             ) : (
-              <li className="small">No generations yet.</li>
+              <li className="small" aria-live="polite">No generations yet.</li>
             )}
           </ul>
         </div>
