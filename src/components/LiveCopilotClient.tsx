@@ -319,7 +319,6 @@ export function LiveCopilotClient() {
   // SLO compliance tracking - stored in refs for use in event handlers before render
   const sloComplianceRef = useRef<SLOCompliance[]>([]);
   const recentSloMetricsRef = useRef<SLOMetric[]>([]);
-  const [, forceUpdate] = useState(0);
 
   // SLO compliance state for UI display
   const [sloCompliance, setSloCompliance] = useState<SLOCompliance[]>([]);
@@ -536,8 +535,8 @@ export function LiveCopilotClient() {
           setInteractionLatency({ action: 'toggleOverlay', latencyMs });
           // Record to SLO client
           sloClient.recordMetric(SLO_TYPE_OVERLAY_INTERACTION, 'toggleOverlay', latencyMs);
-          setSloCompliance(sloClient.getAllCompliance());
-          setRecentSloMetrics(sloClient.getRecentMetrics());
+          updateSLOCompliance();
+          
           return !prev;
         });
         return;
@@ -553,8 +552,8 @@ export function LiveCopilotClient() {
           setInteractionLatency({ action: 'toggleMute', latencyMs });
           // Record to SLO client
           sloClient.recordMetric(SLO_TYPE_OVERLAY_INTERACTION, 'toggleMute', latencyMs);
-          setSloCompliance(sloClient.getAllCompliance());
-          setRecentSloMetrics(sloClient.getRecentMetrics());
+          updateSLOCompliance();
+          
           return !prev;
         });
         return;
@@ -570,8 +569,8 @@ export function LiveCopilotClient() {
           setInteractionLatency({ action: 'toggleTimer', latencyMs });
           // Record to SLO client
           sloClient.recordMetric(SLO_TYPE_OVERLAY_INTERACTION, 'toggleTimer', latencyMs);
-          setSloCompliance(sloClient.getAllCompliance());
-          setRecentSloMetrics(sloClient.getRecentMetrics());
+          updateSLOCompliance();
+          
           return !prev;
         });
         return;
@@ -587,15 +586,15 @@ export function LiveCopilotClient() {
         setInteractionLatency({ action: 'hideOverlay', latencyMs });
         // Record to SLO client
         sloClient.recordMetric(SLO_TYPE_OVERLAY_INTERACTION, 'hideOverlay', latencyMs);
-        setSloCompliance(sloClient.getAllCompliance());
-        setRecentSloMetrics(sloClient.getRecentMetrics());
+        updateSLOCompliance();
+        
         return;
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [overlayVisible]);
+  }, [overlayVisible, updateSLOCompliance]);
 
   useEffect(() => {
     if (activePanel !== 'analytics' || !selectedHistoryId) {
@@ -818,8 +817,7 @@ export function LiveCopilotClient() {
           const latency = Date.now() - submitTime;
           if (latency > 0) {
             sloClient.recordMetric(SLO_TYPE_TRANSCRIPT_TO_SUGGESTION, 'micToSuggestion', latency);
-            setSloCompliance(sloClient.getAllCompliance());
-            setRecentSloMetrics(sloClient.getRecentMetrics());
+            updateSLOCompliance();
           }
         }
         
@@ -831,7 +829,7 @@ export function LiveCopilotClient() {
       transcriptFlushInFlightRef.current = false;
       setMicSyncing(false);
     }
-  }, [isActive, session?.id]);
+  }, [isActive, session?.id, updateSLOCompliance]);
 
   const enqueueTranscriptChunk = useCallback(
     (chunk: TranscriptChunkInput) => {
@@ -976,8 +974,7 @@ export function LiveCopilotClient() {
         const latency = suggestionArrivalTime - transcriptSubmitTime;
         if (latency > 0) {
           sloClient.recordMetric(SLO_TYPE_TRANSCRIPT_TO_SUGGESTION, 'transcriptSubmitToSuggestion', latency);
-          setSloCompliance(sloClient.getAllCompliance());
-          setRecentSloMetrics(sloClient.getRecentMetrics());
+          updateSLOCompliance();
         }
       }
       
@@ -988,7 +985,7 @@ export function LiveCopilotClient() {
     } finally {
       setSubmitting(false);
     }
-  }, [draftSpeaker, draftText, session?.id, submitting]);
+  }, [draftSpeaker, draftText, session?.id, submitting, updateSLOCompliance]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -1416,8 +1413,8 @@ export function LiveCopilotClient() {
                     const latencyMs = Math.round(performance.now() - start);
                     setInteractionLatency({ action: 'toggleOverlay', latencyMs });
                     sloClient.recordMetric(SLO_TYPE_OVERLAY_INTERACTION, 'toggleOverlay', latencyMs);
-                    setSloCompliance(sloClient.getAllCompliance());
-                    setRecentSloMetrics(sloClient.getRecentMetrics());
+                    updateSLOCompliance();
+                    
                     return !prev;
                   });
                 }}
@@ -1434,8 +1431,8 @@ export function LiveCopilotClient() {
                     const latencyMs = Math.round(performance.now() - start);
                     setInteractionLatency({ action: 'toggleMute', latencyMs });
                     sloClient.recordMetric(SLO_TYPE_OVERLAY_INTERACTION, 'toggleMute', latencyMs);
-                    setSloCompliance(sloClient.getAllCompliance());
-                    setRecentSloMetrics(sloClient.getRecentMetrics());
+                    updateSLOCompliance();
+                    
                     return !prev;
                   });
                 }}
@@ -1452,8 +1449,8 @@ export function LiveCopilotClient() {
                     const latencyMs = Math.round(performance.now() - start);
                     setInteractionLatency({ action: 'toggleTimer', latencyMs });
                     sloClient.recordMetric(SLO_TYPE_OVERLAY_INTERACTION, 'toggleTimer', latencyMs);
-                    setSloCompliance(sloClient.getAllCompliance());
-                    setRecentSloMetrics(sloClient.getRecentMetrics());
+                    updateSLOCompliance();
+                    
                     return !prev;
                   });
                 }}
@@ -1471,8 +1468,8 @@ export function LiveCopilotClient() {
                   const latencyMs = Math.round(performance.now() - start);
                   setInteractionLatency({ action: 'resetTimer', latencyMs });
                   sloClient.recordMetric(SLO_TYPE_OVERLAY_INTERACTION, 'resetTimer', latencyMs);
-                  setSloCompliance(sloClient.getAllCompliance());
-                  setRecentSloMetrics(sloClient.getRecentMetrics());
+                  updateSLOCompliance();
+                  
                 }}
                 disabled={overlayTimerSeconds === 0}
               >
