@@ -3,6 +3,8 @@ import { AppShell } from '@/components/AppShell';
 import { RequireAuth } from '@/components/RequireAuth';
 import { SettingsClient } from '@/components/SettingsClient';
 import { NotificationPreferences } from '@/components/NotificationPreferences';
+import { ProfileSettings } from '@/components/ProfileSettings';
+import { AccountDeletion } from '@/components/AccountDeletion';
 import { createClient } from '@/lib/supabase/server';
 import { UsageWidget } from '@/components/UsageWidget';
 
@@ -36,6 +38,8 @@ export default async function SettingsPage() {
           
           <UsageWidget />
           
+          <ProfileSettings />
+          
           <NotificationPreferences />
 
           <SettingsClient initial={settings ?? null} />
@@ -50,6 +54,8 @@ export default async function SettingsPage() {
               </ul>
             </div>
           </div>
+
+          <AccountDeletion />
         </div>
       </RequireAuth>
     </AppShell>

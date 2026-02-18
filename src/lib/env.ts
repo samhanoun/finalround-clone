@@ -26,6 +26,9 @@ const RawEnvSchema = z.object({
   // Rate limiting (Upstash Redis)
   UPSTASH_REDIS_REST_URL: z.string().url().optional(),
   UPSTASH_REDIS_REST_TOKEN: z.string().min(1).optional(),
+
+  // Cron job authentication
+  CRON_SECRET: z.string().min(32).optional(),
 });
 
 export const env = RawEnvSchema.parse({
@@ -44,6 +47,8 @@ export const env = RawEnvSchema.parse({
 
   UPSTASH_REDIS_REST_URL: process.env.UPSTASH_REDIS_REST_URL,
   UPSTASH_REDIS_REST_TOKEN: process.env.UPSTASH_REDIS_REST_TOKEN,
+
+  CRON_SECRET: process.env.CRON_SECRET,
 });
 
 export function requireEnv(name: keyof typeof env): string {

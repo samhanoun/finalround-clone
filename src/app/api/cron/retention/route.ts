@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { runCopilotRetentionSweep, buildCopilotRetentionCutoffs } from '@/lib/copilotRetention';
+import { requireEnv } from '@/lib/env';
 
 /**
  * Retention Sweep Scheduler API Route
@@ -12,18 +13,23 @@ import { runCopilotRetentionSweep, buildCopilotRetentionCutoffs } from '@/lib/co
  * 
  * Query Parameters:
  * - dryRun: If "false", actually executes deletion. Defaults to true (safe dry-run mode).
+ * - cronKey: Required - must match CRON_SECRET env var for authentication
  * 
  * CRON SETUP:
  * - Vercel: Add to vercel.json:
  *   {
  *     "crons": [
  *       {
- *         "path": "/api/cron/retention",
+ *         "path": "/api/cron/retention?cronKey=YOUR_SECRET_KEY",
  *         "schedule": "0 3 * * *"
  *       }
  *     ]
  *   }
- * - External: Configure your cron service to hit this endpoint daily at 3 AM UTC
+ * - External: Configure your cron service to hit this endpoint with ?cronKey=YOUR_SECRET_KEY
+ * 
+ * SECURITY:
+ * - Requires CRON_SECRET env var to be set (minimum 32 characters)
+ * - Requests without valid cronKey are rejected with 401
  * 
  * DRY-RUN EVIDENCE COLLECTION:
  * - Each execution logs the policy, cutoffs, and deletion counts
@@ -37,7 +43,27 @@ import { runCopilotRetentionSweep, buildCopilotRetentionCutoffs } from '@/lib/co
  */
 
 export async function GET(request: Request) {
+  // Check for CRON_SECRET - require authentication
+  let cronSecret: string;
+  try {
+    cronSecret = requireEnv('CRON_SECRET');
+  } catch {
+    return NextResponse.json(
+      { error: 'Cron endpoint not configured', message: 'CRON_SECRET environment variable not set' },
+      { status: 500 }
+    );
+  }
+
   const { searchParams } = new URL(request.url);
+  const providedKey = searchParams.get('cronKey');
+  
+  if (!providedKey || providedKey !== cronSecret) {
+    return NextResponse.json(
+      { error: 'Unauthorized', message: 'Invalid or missing cronKey parameter' },
+      { status: 401 }
+    );
+  }
+
   const dryRun = searchParams.get('dryRun') !== 'false';
   
   const now = new Date();
