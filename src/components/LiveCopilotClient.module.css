@@ -392,3 +392,64 @@
     justify-content: flex-start;
   }
 }
+
+/* Tablet and mobile responsive */
+@media (max-width: 900px) {
+  .composerControls {
+    grid-template-columns: 1fr;
+  }
+  
+  .composerCard {
+    padding: 10px;
+  }
+}
+
+@media (max-width: 768px) {
+  .controlGrid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+  
+  .feedList {
+    max-height: 300px;
+  }
+  
+  .tabRow {
+    overflow-x: auto;
+    padding-bottom: 8px;
+  }
+  
+  .tabButton {
+    min-width: 100px;
+    font-size: 0.85rem;
+  }
+  
+  .panelHeader {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  
+  .historyScaffold {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 480px) {
+  .metricGrid {
+    grid-template-columns: 1fr;
+  }
+  
+  .metricCard {
+    padding: 8px;
+  }
+  
+  .sessionItemButton {
+    padding: 8px;
+  }
+  
+  .sessionItemTopRow {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}

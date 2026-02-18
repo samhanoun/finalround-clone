@@ -29,6 +29,28 @@ export async function middleware(request: NextRequest) {
   return response;
 }
 
+export function middlewareWithCache(request: NextRequest) {
+  const response = NextResponse.next({ request: { headers: request.headers } });
+  
+  // Add cache control headers for API routes
+  if (request.nextUrl.pathname.startsWith('/api/')) {
+    // GET requests can be cached, others cannot
+    if (request.method === 'GET') {
+      response.headers.set(
+        'Cache-Control',
+        'public, s-maxage=60, stale-while-revalidate=300'
+      );
+    } else {
+      response.headers.set(
+        'Cache-Control',
+        'no-cache, no-store, must-revalidate'
+      );
+    }
+  }
+
+  return response;
+}
+
 export const config = {
   matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
 };

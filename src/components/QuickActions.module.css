@@ -4,6 +4,13 @@
   gap: 12px;
 }
 
+@media (max-width: 480px) {
+  .quickActionsGrid {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+}
+
 .quickActionCard {
   display: flex;
   align-items: center;
@@ -89,4 +96,11 @@
 .quickActionCard:hover .quickActionArrow {
   transform: translateX(4px);
   color: var(--brand);
+}
+
+@media (max-width: 480px) {
+  .quickActionsGrid {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
 }

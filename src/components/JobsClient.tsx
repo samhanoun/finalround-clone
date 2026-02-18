@@ -627,12 +627,56 @@ export function JobsClient() {
 
         @media (max-width: 768px) {
           .kanbanBoard {
-            grid-template-columns: repeat(2, 1fr);
+            grid-template-columns: 1fr;
+            gap: 16px;
           }
           
           .jobsToolbar {
             flex-direction: column;
             align-items: stretch;
+          }
+          
+          .jobsStats {
+            flex-direction: column;
+            gap: 16px;
+            text-align: center;
+          }
+          
+          .searchBox {
+            min-width: 100%;
+          }
+          
+          .filterButtons {
+            overflow-x: auto;
+            flex-wrap: nowrap;
+            padding-bottom: 8px;
+          }
+          
+          .filterBtn {
+            white-space: nowrap;
+          }
+          
+          .modalContent {
+            margin: 16px;
+            max-width: calc(100% - 32px);
+          }
+        }
+
+        @media (max-width: 480px) {
+          .jobsStats {
+            padding: 12px;
+          }
+          
+          .statValue {
+            font-size: 1.25rem;
+          }
+          
+          .columnHeader {
+            padding: 10px;
+          }
+          
+          .jobCard {
+            padding: 8px;
           }
         }
       `}</style>

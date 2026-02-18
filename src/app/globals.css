@@ -536,3 +536,56 @@ a:not(.button):not(.badge):not([class*="nav"]):visited {
     text-decoration: underline 2px;
   }
 }
+
+/* Mobile responsive utilities */
+@media (max-width: 768px) {
+  .container {
+    width: calc(100% - 24px);
+  }
+  
+  h1 {
+    font-size: 1.5rem !important;
+  }
+  
+  h2 {
+    font-size: 1.25rem !important;
+  }
+  
+  .grid2 {
+    grid-template-columns: 1fr;
+  }
+  
+  .row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .cardInner {
+    padding: 12px;
+  }
+  
+  .button {
+    width: 100%;
+    justify-content: center;
+  }
+  
+  .stack {
+    gap: 8px;
+  }
+}
+
+@media (max-width: 480px) {
+  .container {
+    width: calc(100% - 16px);
+  }
+  
+  .badge {
+    font-size: 0.75rem;
+    padding: 3px 8px;
+  }
+  
+  .input, .select, .textarea {
+    padding: 8px 10px;
+    font-size: 0.9rem;
+  }
+}

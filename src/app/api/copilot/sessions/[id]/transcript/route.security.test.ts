@@ -38,8 +38,8 @@ function buildSessionSelect(dataOverride?: Partial<{ id: string; user_id: string
   });
 }
 
-function buildSelectChain(single: jest.Mock) {
-  const chain = {
+function buildSelectChain(single: jest.Mock): { eq: jest.Mock; single: jest.Mock } {
+  const chain: { eq: jest.Mock; single: jest.Mock } = {
     eq: jest.fn(() => chain),
     single,
   };

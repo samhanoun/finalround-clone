@@ -27,6 +27,12 @@
   margin-top: 4px;
 }
 
+@media (max-width: 900px) {
+  .statsGrid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
 @media (max-width: 600px) {
   .statsGrid {
     grid-template-columns: 1fr;
