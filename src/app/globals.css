@@ -15,6 +15,11 @@
   --danger-light: #ff8fb3;
   --success: #1ac273;
   --warning: #ffb347;
+  --blue: #4dd6ff;
+  --red: #ff5c8a;
+  --fg: rgba(255, 255, 255, 0.92);
+  --fgMuted: rgba(255, 255, 255, 0.55);
+  --bgElevated: rgba(255, 255, 255, 0.04);
   --shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
 
   /* Focus colors */
@@ -503,6 +508,27 @@ code {
   color: var(--text);
 }
 
+/* Checkbox label */
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  font-size: 0.95rem;
+  color: var(--text-secondary);
+}
+
+.checkbox-label input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--brand);
+  cursor: pointer;
+}
+
+.checkbox-label:hover {
+  color: var(--text);
+}
+
 /* Live region for dynamic content */
 .liveRegion {
   position: absolute;
@@ -588,4 +614,284 @@ a:not(.button):not(.badge):not([class*="nav"]):visited {
     padding: 8px 10px;
     font-size: 0.9rem;
   }
+}
+
+/* Onboarding Styles */
+.onboarding-container {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+  background: 
+    radial-gradient(1200px 800px at 20% 10%, rgba(124, 92, 255, 0.25), transparent 55%),
+    radial-gradient(900px 700px at 75% 20%, rgba(77, 214, 255, 0.15), transparent 55%),
+    var(--bg);
+}
+
+.onboarding-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 48px;
+  max-width: 720px;
+  width: 100%;
+  box-shadow: var(--shadow);
+  position: relative;
+}
+
+.onboarding-icon {
+  font-size: 4rem;
+  margin-bottom: 16px;
+  text-align: center;
+}
+
+.onboarding-card h1 {
+  text-align: center;
+  font-size: 2rem;
+  margin-bottom: 12px;
+}
+
+.onboarding-description {
+  text-align: center;
+  color: var(--muted);
+  font-size: 1.1rem;
+  margin-bottom: 32px;
+}
+
+.onboarding-features {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+  margin-bottom: 36px;
+}
+
+.feature-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: var(--panel2);
+  border-radius: var(--radius-sm);
+}
+
+.feature-icon {
+  font-size: 1.5rem;
+}
+
+.onboarding-button {
+  width: 100%;
+  padding: 14px 24px;
+  font-size: 1.1rem;
+  margin-top: 24px;
+}
+
+.back-button {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 0.95rem;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  transition: all 0.2s;
+}
+
+.back-button:hover {
+  background: var(--panel2);
+  color: var(--text);
+}
+
+/* Plans Grid */
+.plans-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+@media (max-width: 640px) {
+  .plans-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.plan-card {
+  background: var(--panel2);
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  padding: 24px;
+  cursor: pointer;
+  transition: all 0.2s;
+  position: relative;
+}
+
+.plan-card:hover {
+  border-color: var(--brand);
+  transform: translateY(-2px);
+}
+
+.plan-card.selected {
+  border-color: var(--brand);
+  background: rgba(124, 92, 255, 0.1);
+}
+
+.plan-card.popular {
+  border-color: var(--brand2);
+}
+
+.popular-badge {
+  position: absolute;
+  top: -10px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--brand2);
+  color: var(--bg);
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 4px 12px;
+  border-radius: 12px;
+}
+
+.plan-card h3 {
+  margin: 0 0 8px;
+  font-size: 1.2rem;
+}
+
+.plan-price {
+  font-size: 1.8rem;
+  font-weight: 700;
+  color: var(--brand);
+  margin-bottom: 16px;
+}
+
+.plan-features {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 20px;
+}
+
+.plan-features li {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+
+.plan-select {
+  text-align: center;
+  padding: 10px;
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  color: var(--muted);
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.plan-select.selected {
+  background: var(--brand);
+  color: white;
+}
+
+/* Profile Form */
+.profile-form {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.role-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.role-tag {
+  padding: 8px 14px;
+  background: var(--panel2);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 0.9rem;
+}
+
+.role-tag:hover {
+  border-color: var(--brand);
+}
+
+.role-tag.selected {
+  background: var(--brand);
+  border-color: var(--brand);
+  color: white;
+}
+
+/* Tutorial Steps */
+.tutorial-content {
+  margin-bottom: 24px;
+}
+
+.tutorial-progress {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  margin-bottom: 32px;
+}
+
+.progress-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--panel2);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.progress-dot.active {
+  background: var(--brand);
+  transform: scale(1.2);
+}
+
+.tutorial-step {
+  text-align: center;
+  padding: 32px 16px;
+}
+
+.tutorial-icon {
+  font-size: 4rem;
+  margin-bottom: 16px;
+}
+
+.tutorial-step h3 {
+  font-size: 1.4rem;
+  margin-bottom: 12px;
+}
+
+.tutorial-step p {
+  color: var(--muted);
+  font-size: 1.05rem;
+  max-width: 400px;
+  margin: 0 auto;
+}
+
+.tutorial-nav {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 24px;
+  margin-top: 24px;
+}
+
+.tutorial-count {
+  color: var(--muted);
+  font-size: 0.9rem;
 }

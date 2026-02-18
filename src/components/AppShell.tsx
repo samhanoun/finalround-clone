@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/server';
 import { SignOutButton } from './SignOutButton';
+import { NotificationBell } from './NotificationBell';
 
 export async function AppShell(props: { title?: string; children: React.ReactNode }) {
   const supabase = await createClient();
@@ -50,9 +51,10 @@ export async function AppShell(props: { title?: string; children: React.ReactNod
             <Link href="/settings">Settings</Link>
           </nav>
 
-          <div className="row" style={{ justifyContent: 'flex-end' }}>
+          <div className="row" style={{ justifyContent: 'flex-end', gap: 8 }}>
             {user ? (
               <>
+                <NotificationBell />
                 <span 
                   className="small" 
                   style={{ maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis' }}

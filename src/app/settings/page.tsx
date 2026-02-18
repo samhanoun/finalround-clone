@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { AppShell } from '@/components/AppShell';
 import { RequireAuth } from '@/components/RequireAuth';
 import { SettingsClient } from '@/components/SettingsClient';
+import { NotificationPreferences } from '@/components/NotificationPreferences';
 import { createClient } from '@/lib/supabase/server';
 import { UsageWidget } from '@/components/UsageWidget';
 
@@ -35,6 +36,8 @@ export default async function SettingsPage() {
           
           <UsageWidget />
           
+          <NotificationPreferences />
+
           <SettingsClient initial={settings ?? null} />
 
           <div className="card">
