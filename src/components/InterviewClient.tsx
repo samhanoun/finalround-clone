@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { ShareReport } from './ShareReport';
 
 type Msg = {
   id: string;
@@ -225,6 +226,19 @@ export function InterviewClient(props: {
               <li className="small">No feedback yet.</li>
             )}
           </ul>
+
+          {/* Social Sharing for Interview Reports */}
+          <hr className="hr" />
+          <ShareReport 
+            report={{
+              id: props.sessionId,
+              title: 'Interview Session',
+              sessionId: props.sessionId,
+              score: feedback[0]?.score ?? undefined,
+              notes: feedback[0]?.notes ?? undefined,
+              created_at: new Date().toISOString(),
+            }}
+          />
         </div>
       </aside>
     </div>

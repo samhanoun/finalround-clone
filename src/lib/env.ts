@@ -11,8 +11,15 @@ const RawEnvSchema = z.object({
 
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1).optional(),
 
-  LLM_PROVIDER: z.enum(['openai']).optional(),
+  // LLM Providers
+  LLM_PROVIDER: z.enum(['openai', 'anthropic', 'google', 'auto']).optional(),
   OPENAI_API_KEY: z.string().min(1).optional(),
+  ANTHROPIC_API_KEY: z.string().min(1).optional(),
+  GOOGLE_GENERATIVE_AI_API_KEY: z.string().min(1).optional(),
+
+  // Default model preferences
+  DEFAULT_MODEL: z.string().min(1).optional(),
+  FALLBACK_MODEL: z.string().min(1).optional(),
 
   // Billing (server-only)
   STRIPE_SECRET_KEY: z.string().min(1).optional(),
@@ -38,6 +45,10 @@ export const env = RawEnvSchema.parse({
   SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
   LLM_PROVIDER: process.env.LLM_PROVIDER,
   OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+  ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
+  GOOGLE_GENERATIVE_AI_API_KEY: process.env.GOOGLE_GENERATIVE_AI_API_KEY,
+  DEFAULT_MODEL: process.env.DEFAULT_MODEL,
+  FALLBACK_MODEL: process.env.FALLBACK_MODEL,
 
   STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY,
   STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET,
@@ -58,5 +69,13 @@ export function requireEnv(name: keyof typeof env): string {
 }
 
 export function llmProvider() {
-  return env.LLM_PROVIDER ?? 'openai';
+  return env.LLM_PROVIDER ?? 'auto';
+}
+
+export function defaultModel() {
+  return env.DEFAULT_MODEL ?? 'gpt-4o-mini';
+}
+
+export function fallbackModel() {
+  return env.FALLBACK_MODEL ?? 'claude-haiku-3-5';
 }
