@@ -1,10 +1,11 @@
 # Execution Status — FinalRound Clone
 
-_Last updated: 2026-02-18 (Europe/Paris, post-guardrail + accessibility commits, gap queue refreshed)_
+_Last updated: 2026-02-18 (Europe/Paris, consent gate implementation complete)_
 
 ## 1) Latest integrated commits (master)
 
 ### Newly integrated (latest first)
+- ✅ `e5f89e5` - security: enforce consent gate across copilot ingest/stream paths
 - ✅ `46c64ab` - Add overlay controls and coding copilot no-full-code guardrail
 - ✅ `a053648` - Improve copilot tab accessibility and keyboard navigation
 - ✅ `2d93f13` - Improve live controls and analytics history usability
@@ -17,7 +18,7 @@ _Last updated: 2026-02-18 (Europe/Paris, post-guardrail + accessibility commits,
 - ✅ `dcc925a` - Add copilot analytics data export and delete-all controls
 
 ### Impact snapshot
-- **Security/compliance:** DSAR export + purge-all + safe error envelopes + retention hooks scaffolded.
+- **Security/compliance:** Consent gate now enforced on all ingest/stream paths (T2 complete). DSAR export + purge-all + safe error envelopes + retention hooks scaffolded.
 - **Coding copilot:** No-full-code guardrail now enforced (T10 complete).
 - **Frontend UX:** Overlay controls hardened, accessibility improved, keyboard navigation functional.
 - **API robustness:** contracts tightened, quality tests added, error normalization consistent.
@@ -120,7 +121,7 @@ Legend: ✅ met · 🟡 partial/evidence pending · ⬜ not met
 - ~~T10 coding copilot no-full-code UX controls + disclosures~~ → **COMPLETE**
 
 ### Security now
-- T2 consent gate hardening + revoke race coverage.
+- ~~T2 consent gate hardening + revoke race coverage~~ → **COMPLETE** (e5f89e5)
 - T6 retention scheduler activation + alerting.
 - T9 DSAR fire-drill evidence pack and monthly verification cadence.
 
