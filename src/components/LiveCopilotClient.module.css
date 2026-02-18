@@ -4,6 +4,12 @@
   color: rgba(225, 255, 238, 0.95);
 }
 
+.badgeDanger {
+  border-color: rgba(255, 92, 138, 0.45);
+  background: rgba(255, 92, 138, 0.14);
+  color: rgba(255, 210, 225, 0.95);
+}
+
 .controlGrid {
   display: grid;
   grid-template-columns: 1fr;

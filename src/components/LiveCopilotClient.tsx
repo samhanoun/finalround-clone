@@ -302,6 +302,20 @@ export function LiveCopilotClient() {
   const [settingsError, setSettingsError] = useState<string | null>(null);
   const [settingsSuccess, setSettingsSuccess] = useState<string | null>(null);
 
+  // Overlay controls for T4: hide/show, mute, timer
+  const [overlayVisible, setOverlayVisible] = useState(true);
+  const [overlayMuted, setOverlayMuted] = useState(false);
+  const [overlayTimerRunning, setOverlayTimerRunning] = useState(false);
+  const [overlayTimerSeconds, setOverlayTimerSeconds] = useState(0);
+
+  // T10: Coding copilot "no full code" guardrail
+  const [noFullCodeMode, setNoFullCodeMode] = useState(false);
+  const [noFullCodeAcknowledged, setNoFullCodeAcknowledged] = useState(false);
+
+  // Performance instrumentation for T4: interaction latency tracking
+  const [interactionLatency, setInteractionLatency] = useState<{ action: string; latencyMs: number | null }>({ action: '', latencyMs: null });
+  const lastInteractionRef = useRef<number | null>(null);
+
   const streamRef = useRef<EventSource | null>(null);
   const recognitionRef = useRef<SpeechRecognitionLite | null>(null);
   const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -468,6 +482,82 @@ export function LiveCopilotClient() {
     setSettingsSuccess(null);
   }, [activePanel]);
 
+  // T4: Timer effect for overlay countdown
+  useEffect(() => {
+    let intervalId: ReturnType<typeof setInterval> | null = null;
+    if (overlayTimerRunning) {
+      intervalId = setInterval(() => {
+        setOverlayTimerSeconds((prev) => prev + 1);
+      }, 1000);
+    }
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [overlayTimerRunning]);
+
+  // T4: Hotkey handler for overlay controls (keyboard shortcuts)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ignore if user is typing in an input/textarea
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
+        return;
+      }
+
+      // Track interaction timing for SLO verification
+      const interactionStart = performance.now();
+
+      // Ctrl/Cmd + H: Toggle overlay visibility
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'h') {
+        e.preventDefault();
+        const start = performance.now();
+        setOverlayVisible((prev) => {
+          const end = performance.now();
+          setInteractionLatency({ action: 'toggleOverlay', latencyMs: Math.round(end - start) });
+          return !prev;
+        });
+        return;
+      }
+
+      // Ctrl/Cmd + M: Toggle mute
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'm') {
+        e.preventDefault();
+        const start = performance.now();
+        setOverlayMuted((prev) => {
+          const end = performance.now();
+          setInteractionLatency({ action: 'toggleMute', latencyMs: Math.round(end - start) });
+          return !prev;
+        });
+        return;
+      }
+
+      // Ctrl/Cmd + T: Toggle timer
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 't') {
+        e.preventDefault();
+        const start = performance.now();
+        setOverlayTimerRunning((prev) => {
+          const end = performance.now();
+          setInteractionLatency({ action: 'toggleTimer', latencyMs: Math.round(end - start) });
+          return !prev;
+        });
+        return;
+      }
+
+      // Escape: Hide overlay
+      if (e.key === 'Escape' && overlayVisible) {
+        e.preventDefault();
+        const start = performance.now();
+        setOverlayVisible(false);
+        const end = performance.now();
+        setInteractionLatency({ action: 'hideOverlay', latencyMs: Math.round(end - start) });
+        return;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [overlayVisible]);
+
   useEffect(() => {
     if (activePanel !== 'analytics' || !selectedHistoryId) {
       setHistoryReport(null);
@@ -591,6 +681,8 @@ export function LiveCopilotClient() {
           metadata: {
             mode,
             beta: true,
+            // T10: Include noFullCode guardrail setting in session metadata
+            noFullCodeMode: mode === 'coding' ? noFullCodeMode : false,
           },
         }),
       });
@@ -1235,6 +1327,111 @@ export function LiveCopilotClient() {
             </p>
           ) : (
             <p className="small" style={{ margin: 0 }}>No active session yet.</p>
+          )}
+
+          {/* T4: Overlay controls with hotkey hints and performance instrumentation */}
+          <section className={styles.settingsCard} aria-label="Overlay controls">
+            <div className={styles.panelHeader}>
+              <h3 className={styles.sectionTitle} style={{ margin: 0 }}>Overlay controls</h3>
+              <span className="small">Hotkeys: Ctrl+H (hide/show), Ctrl+M (mute), Ctrl+T (timer)</span>
+            </div>
+            <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+              <button
+                className="button"
+                type="button"
+                onClick={() => setOverlayVisible((prev) => !prev)}
+                aria-pressed={overlayVisible}
+              >
+                {overlayVisible ? 'Hide Overlay' : 'Show Overlay'}
+              </button>
+              <button
+                className="button"
+                type="button"
+                onClick={() => setOverlayMuted((prev) => !prev)}
+                aria-pressed={overlayMuted}
+              >
+                {overlayMuted ? 'Unmute' : 'Mute'}
+              </button>
+              <button
+                className="button"
+                type="button"
+                onClick={() => {
+                  setOverlayTimerRunning((prev) => !prev);
+                }}
+                aria-pressed={overlayTimerRunning}
+              >
+                {overlayTimerRunning ? 'Pause Timer' : 'Start Timer'}
+              </button>
+              <button
+                className="button"
+                type="button"
+                onClick={() => {
+                  setOverlayTimerSeconds(0);
+                  setOverlayTimerRunning(false);
+                }}
+                disabled={overlayTimerSeconds === 0}
+              >
+                Reset Timer
+              </button>
+              <span className="badge" style={{ fontSize: '1rem', padding: '6px 12px' }}>
+                {Math.floor(overlayTimerSeconds / 60).toString().padStart(2, '0')}:{(overlayTimerSeconds % 60).toString().padStart(2, '0')}
+              </span>
+              {overlayMuted && <span className="badge badgeDanger">Muted</span>}
+            </div>
+            {/* Performance metrics display for SLO verification */}
+            {interactionLatency.latencyMs !== null && (
+              <p className="small" style={{ margin: '8px 0 0' }}>
+                Last interaction: <strong>{interactionLatency.action}</strong> — <strong>{interactionLatency.latencyMs}ms</strong>
+                {interactionLatency.latencyMs <= 100 ? (
+                  <span className="success" style={{ marginLeft: 8 }}>✓ Within SLO (&lt;100ms)</span>
+                ) : (
+                  <span className="error" style={{ marginLeft: 8 }}>⚠ Exceeds SLO (&lt;100ms)</span>
+                )}
+              </p>
+            )}
+          </section>
+
+          {/* T10: Coding copilot "no full code" guardrail */}
+          {mode === 'coding' && (
+            <section className={styles.settingsCard} aria-label="Coding copilot guardrail settings">
+              <div className={styles.panelHeader}>
+                <h3 className={styles.sectionTitle} style={{ margin: 0 }}>Coding guardrail</h3>
+              </div>
+              <label className="row" style={{ gap: 8, alignItems: 'center', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={noFullCodeMode}
+                  onChange={(e) => {
+                    setNoFullCodeMode(e.target.checked);
+                    if (!e.target.checked) setNoFullCodeAcknowledged(false);
+                  }}
+                  disabled={!isActive}
+                />
+                <span>Enable &quot;no full code&quot; mode</span>
+                <span className="badge">{noFullCodeMode ? 'ON' : 'OFF'}</span>
+              </label>
+              {noFullCodeMode && !noFullCodeAcknowledged && (
+                <div className={styles.actionCard} style={{ marginTop: 8, borderColor: 'rgba(255, 191, 91, 0.45)', background: 'rgba(255, 191, 91, 0.08)' }}>
+                  <p className="small" style={{ margin: 0 }}>
+                    <strong>Learning mode:</strong> When enabled, the copilot will provide hints and guidance but will not show complete solutions.
+                    This helps you learn by working through problems rather than copying answers.
+                  </p>
+                  <label className="row" style={{ gap: 8, alignItems: 'center', marginTop: 8 }}>
+                    <input
+                      type="checkbox"
+                      checked={noFullCodeAcknowledged}
+                      onChange={(e) => setNoFullCodeAcknowledged(e.target.checked)}
+                    />
+                    <span className="small">I understand that full solutions will be blocked in this mode</span>
+                  </label>
+                </div>
+              )}
+              {noFullCodeMode && noFullCodeAcknowledged && (
+                <p className="small success" style={{ margin: '8px 0 0' }}>
+                  ✓ &quot;No full code&quot; mode active — hints and guidance only
+                </p>
+              )}
+            </section>
           )}
 
           <div className={styles.composerCard}>
