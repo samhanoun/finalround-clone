@@ -1,0 +1,83 @@
+{
+  "common": {
+    "appName": "FinalRound",
+    "loading": "Carregando...",
+    "save": "Salvar",
+    "cancel": "Cancelar",
+    "delete": "Excluir",
+    "edit": "Editar",
+    "back": "Voltar",
+    "next": "Próximo",
+    "previous": "Anterior",
+    "submit": "Enviar",
+    "error": "Erro",
+    "success": "Sucesso",
+    "warning": "Aviso",
+    "info": "Informação"
+  },
+  "nav": {
+    "dashboard": "Painel",
+    "interview": "Entrevista",
+    "jobs": "Vagas",
+    "resume": "Currículo",
+    "settings": "Configurações",
+    "copilot": "Copiloto"
+  },
+  "dashboard": {
+    "welcome": "Bem-vindo ao FinalRound",
+    "subtitle": "Seu assistente de entrevista com IA",
+    "recentActivity": "Atividade Recente",
+    "quickActions": "Ações Rápidas",
+    "usage": "Uso"
+  },
+  "settings": {
+    "title": "Configurações",
+    "profile": "Perfil",
+    "language": "Idioma",
+    "languageDescription": "Selecione seu idioma preferido",
+    "notifications": "Notificações",
+    "account": "Conta",
+    "security": "Segurança",
+    "securityNotes": "Notas de segurança (MVP)",
+    "securityNote1": "As rotas de API requerem autenticação e validam payloads com Zod.",
+    "securityNote2": "RLS isola dados por usuário; armazenamento é privado.",
+    "securityNote3": "As chaves de API do provedor permanecem do lado do servidor (variáveis de ambiente Vercel).",
+    "dangerZone": "Zona de Perigo",
+    "deleteAccount": "Excluir Conta"
+  },
+  "languages": {
+    "en": "Inglês",
+    "es": "Espanhol",
+    "fr": "Francês",
+    "de": "Alemão",
+    "pt": "Português"
+  },
+  "auth": {
+    "signIn": "Entrar",
+    "signOut": "Sair",
+    "signUp": "Cadastrar",
+    "email": "E-mail",
+    "password": "Senha",
+    "confirmPassword": "Confirmar Senha"
+  },
+  "interview": {
+    "start": "Iniciar Entrevista",
+    "end": "Encerrar Entrevista",
+    "recording": "Gravando",
+    "questions": "Perguntas",
+    "report": "Relatório"
+  },
+  "jobs": {
+    "title": "Vagas",
+    "addJob": "Adicionar Vaga",
+    "company": "Empresa",
+    "position": "Cargo",
+    "status": "Status"
+  },
+  "resume": {
+    "title": "Construtor de Currículo",
+    "upload": "Enviar Currículo",
+    "generate": "Gerar Currículo",
+    "download": "Baixar"
+  }
+}

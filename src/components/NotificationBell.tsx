@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/browser';
+import { Link } from '@/i18n/routing';
 
 interface Notification {
   id: string;
@@ -295,12 +296,13 @@ export function NotificationBell() {
               textAlign: 'center',
             }}
           >
-            <a
-              href="/settings#notifications"
+            <Link
+              href="/settings"
+              scroll={false}
               style={{ fontSize: '0.85rem', color: 'var(--blue)' }}
             >
               Notification settings →
-            </a>
+            </Link>
           </div>
         </div>
       )}

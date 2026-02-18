@@ -83,7 +83,7 @@ export async function POST(request: Request) {
 // Generate share URLs for different platforms
 export async function PUT(request: Request) {
   const body = await request.json();
-  const { share_type, platform, content_title, content_url, content_summary } = body;
+  const { platform, content_title, content_url, content_summary } = body;
 
   if (!platform || !content_title) {
     return NextResponse.json({ error: 'Platform and content title are required' }, { status: 400 });

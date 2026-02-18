@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useState, useId } from 'react';
 import { useToastHook } from '@/components/Toast';
+import { Link } from '@/i18n/routing';
 
 export function DashboardClient() {
   const router = useRouter();
@@ -52,9 +53,9 @@ export function DashboardClient() {
               >
                 {loading ? 'Creating…' : 'New session'}
               </button>
-              <a className="button" href="/dashboard#sessions" aria-label="View your interview sessions">
+              <Link className="button" href="/dashboard" scroll={false} aria-label="View your interview sessions">
                 View sessions
-              </a>
+              </Link>
             </div>
             {error && (
               <div 
@@ -79,16 +80,16 @@ export function DashboardClient() {
             <h2 className="cardTitle" id="resume-heading">Resume Builder</h2>
             <p className="cardDesc">Upload a CV, paste a job description, and request variants.</p>
             <div className="row">
-              <a 
+              <Link 
                 className="button buttonPrimary" 
                 href="/resume"
                 aria-label="Open Resume Builder"
               >
                 Open Resume Builder
-              </a>
-              <a className="button" href="/dashboard#resume" aria-label="View your resume history">
+              </Link>
+              <Link className="button" href="/dashboard" scroll={false} aria-label="View your resume history">
                 View history
-              </a>
+              </Link>
             </div>
           </div>
         </div>

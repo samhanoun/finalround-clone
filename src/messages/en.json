@@ -1,0 +1,83 @@
+{
+  "common": {
+    "appName": "FinalRound",
+    "loading": "Loading...",
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "back": "Back",
+    "next": "Next",
+    "previous": "Previous",
+    "submit": "Submit",
+    "error": "Error",
+    "success": "Success",
+    "warning": "Warning",
+    "info": "Info"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "interview": "Interview",
+    "jobs": "Jobs",
+    "resume": "Resume",
+    "settings": "Settings",
+    "copilot": "Copilot"
+  },
+  "dashboard": {
+    "welcome": "Welcome to FinalRound",
+    "subtitle": "Your AI-powered interview assistant",
+    "recentActivity": "Recent Activity",
+    "quickActions": "Quick Actions",
+    "usage": "Usage"
+  },
+  "settings": {
+    "title": "Settings",
+    "profile": "Profile",
+    "language": "Language",
+    "languageDescription": "Select your preferred language",
+    "notifications": "Notifications",
+    "account": "Account",
+    "security": "Security",
+    "securityNotes": "Security notes (MVP)",
+    "securityNote1": "API routes require auth and validate payloads with Zod.",
+    "securityNote2": "RLS isolates per-user data; storage is private.",
+    "securityNote3": "Provider API keys stay server-side (Vercel env vars).",
+    "dangerZone": "Danger Zone",
+    "deleteAccount": "Delete Account"
+  },
+  "languages": {
+    "en": "English",
+    "es": "Spanish",
+    "fr": "French",
+    "de": "German",
+    "pt": "Portuguese"
+  },
+  "auth": {
+    "signIn": "Sign In",
+    "signOut": "Sign Out",
+    "signUp": "Sign Up",
+    "email": "Email",
+    "password": "Password",
+    "confirmPassword": "Confirm Password"
+  },
+  "interview": {
+    "start": "Start Interview",
+    "end": "End Interview",
+    "recording": "Recording",
+    "questions": "Questions",
+    "report": "Report"
+  },
+  "jobs": {
+    "title": "Jobs",
+    "addJob": "Add Job",
+    "company": "Company",
+    "position": "Position",
+    "status": "Status"
+  },
+  "resume": {
+    "title": "Resume Builder",
+    "upload": "Upload Resume",
+    "generate": "Generate Resume",
+    "download": "Download"
+  }
+}

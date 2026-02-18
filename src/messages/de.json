@@ -1,0 +1,83 @@
+{
+  "common": {
+    "appName": "FinalRound",
+    "loading": "Laden...",
+    "save": "Speichern",
+    "cancel": "Abbrechen",
+    "delete": "Löschen",
+    "edit": "Bearbeiten",
+    "back": "Zurück",
+    "next": "Weiter",
+    "previous": "Zurück",
+    "submit": "Absenden",
+    "error": "Fehler",
+    "success": "Erfolg",
+    "warning": "Warnung",
+    "info": "Information"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "interview": "Interview",
+    "jobs": "Stellen",
+    "resume": "Lebenslauf",
+    "settings": "Einstellungen",
+    "copilot": "Copilot"
+  },
+  "dashboard": {
+    "welcome": "Willkommen bei FinalRound",
+    "subtitle": "Ihr KI-gestützter Interview-Assistent",
+    "recentActivity": "Letzte Aktivität",
+    "quickActions": "Schnellaktionen",
+    "usage": "Nutzung"
+  },
+  "settings": {
+    "title": "Einstellungen",
+    "profile": "Profil",
+    "language": "Sprache",
+    "languageDescription": "Wählen Sie Ihre bevorzugte Sprache",
+    "notifications": "Benachrichtigungen",
+    "account": "Konto",
+    "security": "Sicherheit",
+    "securityNotes": "Sicherheitshinweise (MVP)",
+    "securityNote1": "API-Routen erfordern Authentifizierung und validieren Payloads mit Zod.",
+    "securityNote2": "RLS isoliert Benutzerdaten; Speicher ist privat.",
+    "securityNote3": "Anbieter-API-Schlüssel bleiben serverseitig (Vercel-Umgebungsvariablen).",
+    "dangerZone": "Gefahrenzone",
+    "deleteAccount": "Konto löschen"
+  },
+  "languages": {
+    "en": "Englisch",
+    "es": "Spanisch",
+    "fr": "Französisch",
+    "de": "Deutsch",
+    "pt": "Portugiesisch"
+  },
+  "auth": {
+    "signIn": "Anmelden",
+    "signOut": "Abmelden",
+    "signUp": "Registrieren",
+    "email": "E-Mail",
+    "password": "Passwort",
+    "confirmPassword": "Passwort bestätigen"
+  },
+  "interview": {
+    "start": "Interview starten",
+    "end": "Interview beenden",
+    "recording": "Aufnahme",
+    "questions": "Fragen",
+    "report": "Bericht"
+  },
+  "jobs": {
+    "title": "Stellen",
+    "addJob": "Stelle hinzufügen",
+    "company": "Unternehmen",
+    "position": "Position",
+    "status": "Status"
+  },
+  "resume": {
+    "title": "Lebenslauf-Generator",
+    "upload": "Lebenslauf hochladen",
+    "generate": "Lebenslauf erstellen",
+    "download": "Herunterladen"
+  }
+}

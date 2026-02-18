@@ -17,7 +17,7 @@ export async function GET() {
   }
 
   // Get or create referral code
-  let { data: referralCode, error: codeError } = await supabase
+  const { data: existingCode, error: codeError } = await supabase
     .from('referral_codes')
     .select('*')
     .eq('user_id', user.id)
@@ -27,8 +27,10 @@ export async function GET() {
     return NextResponse.json({ error: codeError.message }, { status: 500 });
   }
 
+  let referralCodeData = existingCode;
+
   // Create new referral code if none exists
-  if (!referralCode) {
+  if (!referralCodeData) {
     const newCode = generateReferralCode();
     
     const { data: newReferralCode, error: insertError } = await supabase
@@ -44,7 +46,7 @@ export async function GET() {
       return NextResponse.json({ error: insertError.message }, { status: 500 });
     }
     
-    referralCode = newReferralCode;
+    referralCodeData = newReferralCode;
   }
 
   // Get referral tracking data
@@ -59,7 +61,7 @@ export async function GET() {
   }
 
   return NextResponse.json({
-    referral_code: referralCode,
+    referral_code: referralCodeData,
     referrals: referrals || [],
   });
 }
@@ -78,7 +80,7 @@ export async function POST(request: Request) {
   // Get referrer user ID from code
   const { data: referralCode, error: codeError } = await supabase
     .from('referral_codes')
-    .select('user_id')
+    .select('*')
     .eq('code', code.toUpperCase())
     .single();
 
@@ -87,7 +89,7 @@ export async function POST(request: Request) {
   }
 
   // Check if this referral already exists
-  const { data: existingTracking, error: existingError } = await supabase
+  const { data: existingTracking } = await supabase
     .from('referral_tracking')
     .select('*')
     .eq('referral_code', code.toUpperCase())
@@ -117,9 +119,10 @@ export async function POST(request: Request) {
     }
 
     // Increment referral count
+    const currentCount = (referralCode as { referral_count?: number }).referral_count || 0;
     await supabase
       .from('referral_codes')
-      .update({ referral_count: (referralCode.referral_count || 0) + 1 })
+      .update({ referral_count: currentCount + 1 })
       .eq('user_id', referralCode.user_id);
 
     return NextResponse.json({ tracking });

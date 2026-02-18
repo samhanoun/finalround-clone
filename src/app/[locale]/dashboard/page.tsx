@@ -9,6 +9,8 @@ import { AnalyticsReconciliation } from '@/components/AnalyticsReconciliation';
 import { DashboardStats } from '@/components/DashboardStats';
 import { RecentActivity } from '@/components/RecentActivity';
 import { QuickActions } from '@/components/QuickActions';
+import { BadgesList } from '@/components/BadgesList';
+import { ReferralPanel } from '@/components/ReferralPanel';
 
 export default async function DashboardPage() {
   const supabase = await createClient();
@@ -54,6 +56,12 @@ export default async function DashboardPage() {
           <UsageWidget />
 
           <AnalyticsReconciliation />
+
+          {/* Social Features: Badges & Referrals */}
+          <div className="grid2">
+            <BadgesList />
+            <ReferralPanel />
+          </div>
 
           <DashboardClient />
 

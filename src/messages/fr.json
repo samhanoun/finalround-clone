@@ -1,0 +1,83 @@
+{
+  "common": {
+    "appName": "FinalRound",
+    "loading": "Chargement...",
+    "save": "Enregistrer",
+    "cancel": "Annuler",
+    "delete": "Supprimer",
+    "edit": "Modifier",
+    "back": "Retour",
+    "next": "Suivant",
+    "previous": "Précédent",
+    "submit": "Soumettre",
+    "error": "Erreur",
+    "success": "Succès",
+    "warning": "Avertissement",
+    "info": "Information"
+  },
+  "nav": {
+    "dashboard": "Tableau de bord",
+    "interview": "Entretien",
+    "jobs": "Emplois",
+    "resume": "CV",
+    "settings": "Paramètres",
+    "copilot": "Copilote"
+  },
+  "dashboard": {
+    "welcome": "Bienvenue sur FinalRound",
+    "subtitle": "Votre assistant d'entretien alimenté par l'IA",
+    "recentActivity": "Activité Récente",
+    "quickActions": "Actions Rapides",
+    "usage": "Utilisation"
+  },
+  "settings": {
+    "title": "Paramètres",
+    "profile": "Profil",
+    "language": "Langue",
+    "languageDescription": "Sélectionnez votre langue préférée",
+    "notifications": "Notifications",
+    "account": "Compte",
+    "security": "Sécurité",
+    "securityNotes": "Notes de sécurité (MVP)",
+    "securityNote1": "Les routes API nécessitent une authentification et valident les payloads avec Zod.",
+    "securityNote2": "RLS isole les données par utilisateur; le stockage est privé.",
+    "securityNote3": "Les clés API du fournisseur restent côté serveur (variables d'environnement Vercel).",
+    "dangerZone": "Zone Dangereuse",
+    "deleteAccount": "Supprimer le Compte"
+  },
+  "languages": {
+    "en": "Anglais",
+    "es": "Espagnol",
+    "fr": "Français",
+    "de": "Allemand",
+    "pt": "Portugais"
+  },
+  "auth": {
+    "signIn": "Connexion",
+    "signOut": "Déconnexion",
+    "signUp": "Inscription",
+    "email": "Email",
+    "password": "Mot de passe",
+    "confirmPassword": "Confirmer le mot de passe"
+  },
+  "interview": {
+    "start": "Démarrer l'Entretien",
+    "end": "Terminer l'Entretien",
+    "recording": "Enregistrement",
+    "questions": "Questions",
+    "report": "Rapport"
+  },
+  "jobs": {
+    "title": "Emplois",
+    "addJob": "Ajouter un Emploi",
+    "company": "Entreprise",
+    "position": "Poste",
+    "status": "Statut"
+  },
+  "resume": {
+    "title": "Constructeur de CV",
+    "upload": "Télécharger le CV",
+    "generate": "Générer le CV",
+    "download": "Télécharger"
+  }
+}

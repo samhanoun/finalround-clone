@@ -5,16 +5,19 @@ import { SettingsClient } from '@/components/SettingsClient';
 import { NotificationPreferences } from '@/components/NotificationPreferences';
 import { ProfileSettings } from '@/components/ProfileSettings';
 import { AccountDeletion } from '@/components/AccountDeletion';
+import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { createClient } from '@/lib/supabase/server';
 import { UsageWidget } from '@/components/UsageWidget';
+import { getTranslations } from 'next-intl/server';
 
 export default async function SettingsPage() {
+  const t = await getTranslations('settings');
   const supabase = await createClient();
   const { data: userData } = await supabase.auth.getUser();
 
   if (!userData.user) {
     return (
-      <AppShell title="Settings">
+      <AppShell title={t('title')}>
         <RequireAuth>
           <div />
         </RequireAuth>
@@ -29,16 +32,25 @@ export default async function SettingsPage() {
     .maybeSingle();
 
   return (
-    <AppShell title="Settings">
+    <AppShell title={t('title')}>
       <RequireAuth>
         <div className="stack">
           <p className="help">
-            <Link href="/dashboard">← Back to dashboard</Link>
+            <Link href="/dashboard">← {t('common.back', { defaultValue: 'Back to dashboard' })}</Link>
           </p>
           
           <UsageWidget />
           
           <ProfileSettings />
+          
+          {/* Language Settings */}
+          <div className="card">
+            <div className="cardInner stack">
+              <h2 className="cardTitle">{t('language')}</h2>
+              <p className="help">{t('languageDescription')}</p>
+              <LanguageSwitcher />
+            </div>
+          </div>
           
           <NotificationPreferences />
 
@@ -46,11 +58,11 @@ export default async function SettingsPage() {
 
           <div className="card">
             <div className="cardInner stack">
-              <h2 className="cardTitle">Security notes (MVP)</h2>
+              <h2 className="cardTitle">{t('securityNotes')}</h2>
               <ul className="stack" style={{ paddingLeft: 18, margin: 0 }}>
-                <li>API routes require auth and validate payloads with Zod.</li>
-                <li>RLS isolates per-user data; storage is private.</li>
-                <li>Provider API keys stay server-side (Vercel env vars).</li>
+                <li>{t('securityNote1')}</li>
+                <li>{t('securityNote2')}</li>
+                <li>{t('securityNote3')}</li>
               </ul>
             </div>
           </div>

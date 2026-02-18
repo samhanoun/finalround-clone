@@ -1,0 +1,83 @@
+{
+  "common": {
+    "appName": "FinalRound",
+    "loading": "Cargando...",
+    "save": "Guardar",
+    "cancel": "Cancelar",
+    "delete": "Eliminar",
+    "edit": "Editar",
+    "back": "Volver",
+    "next": "Siguiente",
+    "previous": "Anterior",
+    "submit": "Enviar",
+    "error": "Error",
+    "success": "Éxito",
+    "warning": "Advertencia",
+    "info": "Información"
+  },
+  "nav": {
+    "dashboard": "Panel",
+    "interview": "Entrevista",
+    "jobs": "Empleos",
+    "resume": "Currículum",
+    "settings": "Configuración",
+    "copilot": "Copiloto"
+  },
+  "dashboard": {
+    "welcome": "Bienvenido a FinalRound",
+    "subtitle": "Tu asistente de entrevistas con IA",
+    "recentActivity": "Actividad Reciente",
+    "quickActions": "Acciones Rápidas",
+    "usage": "Uso"
+  },
+  "settings": {
+    "title": "Configuración",
+    "profile": "Perfil",
+    "language": "Idioma",
+    "languageDescription": "Selecciona tu idioma preferido",
+    "notifications": "Notificaciones",
+    "account": "Cuenta",
+    "security": "Seguridad",
+    "securityNotes": "Notas de seguridad (MVP)",
+    "securityNote1": "Las rutas de API requieren autenticación y validan payloads con Zod.",
+    "securityNote2": "RLS aísla los datos por usuario; el almacenamiento es privado.",
+    "securityNote3": "Las claves API del proveedor permanecen del lado del servidor (vars de entorno de Vercel).",
+    "dangerZone": "Zona de Peligro",
+    "deleteAccount": "Eliminar Cuenta"
+  },
+  "languages": {
+    "en": "Inglés",
+    "es": "Español",
+    "fr": "Francés",
+    "de": "Alemán",
+    "pt": "Portugués"
+  },
+  "auth": {
+    "signIn": "Iniciar Sesión",
+    "signOut": "Cerrar Sesión",
+    "signUp": "Registrarse",
+    "email": "Correo Electrónico",
+    "password": "Contraseña",
+    "confirmPassword": "Confirmar Contraseña"
+  },
+  "interview": {
+    "start": "Iniciar Entrevista",
+    "end": "Finalizar Entrevista",
+    "recording": "Grabando",
+    "questions": "Preguntas",
+    "report": "Informe"
+  },
+  "jobs": {
+    "title": "Empleos",
+    "addJob": "Agregar Empleo",
+    "company": "Empresa",
+    "position": "Puesto",
+    "status": "Estado"
+  },
+  "resume": {
+    "title": "Constructor de Currículum",
+    "upload": "Subir Currículum",
+    "generate": "Generar Currículum",
+    "download": "Descargar"
+  }
+}
