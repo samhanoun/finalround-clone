@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import { jsonError } from '@/lib/api';
 import { rateLimit } from '@/lib/rateLimit';
-import { calculateATSScore, suggestKeywords } from '@/lib/atsScoring';
+import { extractJobKeywords, suggestKeywords } from '@/lib/atsScoring';
 
 const BodySchema = z.object({
   jobDescription: z.string().min(1),
@@ -11,11 +11,11 @@ const BodySchema = z.object({
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: Promise<{ docId: string }> }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const { docId } = await params;
+  const { id } = await params;
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
-  const rl = await rateLimit({ key: `resume_analyze:post:${ip}`, limit: 20, windowMs: 60_000 });
+  const rl = await rateLimit({ key: `resume_keywords:post:${ip}`, limit: 20, windowMs: 60_000 });
   if (!rl.ok) return NextResponse.json({ error: 'rate_limited' }, { status: 429 });
 
   const parse = BodySchema.safeParse(await req.json().catch(() => null));
@@ -29,7 +29,7 @@ export async function POST(
   const { data: doc, error: docError } = await supabase
     .from('resume_documents')
     .select('id, user_id, parsed_text, keywords')
-    .eq('id', docId)
+    .eq('id', id)
     .eq('user_id', userData.user.id)
     .single();
 
@@ -44,31 +44,37 @@ export async function POST(
     return jsonError(400, 'document_not_parsed', 'Please upload a document first or wait for parsing to complete');
   }
 
-  // Calculate ATS score
-  const atsResult = calculateATSScore(doc.parsed_text, parse.data.jobDescription);
+  // Extract keywords from job description
+  const jobKeywords = extractJobKeywords(parse.data.jobDescription);
   
-  // Get suggested keywords
-  const suggested = suggestKeywords(doc.parsed_text, parse.data.jobDescription);
+  // Get suggestions
+  const suggestions = suggestKeywords(doc.parsed_text, parse.data.jobDescription);
 
-  // Update the document with ATS score and keywords
+  // Get current keywords in the resume
+  const currentKeywords = doc.keywords || [];
+
+  // Categorize keywords
+  const categorized = {
+    found: jobKeywords.filter((k) => currentKeywords.includes(k.toLowerCase())),
+    missing: suggestions,
+    allFromJob: jobKeywords,
+  };
+
+  // Update document with keywords
   await supabase
     .from('resume_documents')
     .update({
-      ats_score: atsResult.score,
-      keywords: atsResult.matchedKeywords,
+      keywords: [...new Set([...currentKeywords, ...jobKeywords])],
     })
-    .eq('id', docId);
-
-  // Also update the generations table with this analysis if needed
-  // For now, return the analysis directly
+    .eq('id', id);
 
   return NextResponse.json({
-    atsScore: atsResult.score,
-    matchedKeywords: atsResult.matchedKeywords,
-    missingKeywords: atsResult.missingKeywords,
-    keywordMatches: atsResult.keywordMatches,
-    suggestions: atsResult.suggestions,
-    formatIssues: atsResult.formatIssues,
-    suggestedKeywords: suggested,
+    jobKeywords,
+    currentKeywords,
+    suggestedKeywords: suggestions,
+    categorized,
+    recommendation: suggestions.length > 0
+      ? `Add ${suggestions.length} missing keywords to improve ATS score`
+      : 'Your resume already contains all relevant keywords',
   });
 }

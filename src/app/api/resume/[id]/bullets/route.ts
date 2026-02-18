@@ -13,9 +13,9 @@ const BodySchema = z.object({
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: Promise<{ docId: string }> }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const { docId } = await params;
+  const { id } = await params;
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
   const rl = await rateLimit({ key: `resume_bullets:post:${ip}`, limit: 20, windowMs: 60_000 });
   if (!rl.ok) return NextResponse.json({ error: 'rate_limited' }, { status: 429 });
@@ -31,7 +31,7 @@ export async function POST(
   const { error: docError } = await supabase
     .from('resume_documents')
     .select('id, user_id')
-    .eq('id', docId)
+    .eq('id', id)
     .eq('user_id', userData.user.id)
     .single();
 
