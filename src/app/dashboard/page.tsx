@@ -4,6 +4,7 @@ import { RequireAuth } from '@/components/RequireAuth';
 import { createClient } from '@/lib/supabase/server';
 import { DashboardClient } from '@/components/DashboardClient';
 import { UsageWidget } from '@/components/UsageWidget';
+import { AnalyticsReconciliation } from '@/components/AnalyticsReconciliation';
 
 export default async function DashboardPage() {
   const supabase = await createClient();
@@ -28,6 +29,8 @@ export default async function DashboardPage() {
           <p className="help">Welcome{data.user?.email ? `, ${data.user.email}` : ''}.</p>
 
           <UsageWidget />
+
+          <AnalyticsReconciliation />
 
           <DashboardClient />
 

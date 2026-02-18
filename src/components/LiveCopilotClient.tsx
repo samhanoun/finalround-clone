@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import styles from './LiveCopilotClient.module.css';
 import { formatCopilotActionError } from './liveCopilotDataControls';
+import { sloClient, SLO_TYPE_OVERLAY_INTERACTION, SLO_TYPE_TRANSCRIPT_TO_SUGGESTION, getStatusEmoji, formatLatency, type SLOCompliance, type SLOMetric } from '@/lib/sloClient';
 
 interface SpeechRecognitionAlternativeLite {
   transcript: string;
@@ -314,7 +315,28 @@ export function LiveCopilotClient() {
 
   // Performance instrumentation for T4: interaction latency tracking
   const [interactionLatency, setInteractionLatency] = useState<{ action: string; latencyMs: number | null }>({ action: '', latencyMs: null });
-  const lastInteractionRef = useRef<number | null>(null);
+
+  // SLO compliance tracking - stored in refs for use in event handlers before render
+  const sloComplianceRef = useRef<SLOCompliance[]>([]);
+  const recentSloMetricsRef = useRef<SLOMetric[]>([]);
+  const [, forceUpdate] = useState(0);
+
+  // SLO compliance state for UI display
+  const [sloCompliance, setSloCompliance] = useState<SLOCompliance[]>([]);
+  const [recentSloMetrics, setRecentSloMetrics] = useState<SLOMetric[]>([]);
+  
+  // Helper to update SLO compliance (both refs and state)
+  const updateSLOCompliance = useCallback(() => {
+    const compliance = sloClient.getAllCompliance();
+    const metrics = sloClient.getRecentMetrics();
+    sloComplianceRef.current = compliance;
+    recentSloMetricsRef.current = metrics;
+    setSloCompliance(compliance);
+    setRecentSloMetrics(metrics);
+  }, []);
+
+  // Transcript timestamps for latency tracking
+  const transcriptTimestampsRef = useRef<Map<string, number>>(new Map());
 
   const streamRef = useRef<EventSource | null>(null);
   const recognitionRef = useRef<SpeechRecognitionLite | null>(null);
@@ -504,16 +526,18 @@ export function LiveCopilotClient() {
         return;
       }
 
-      // Track interaction timing for SLO verification
-      const interactionStart = performance.now();
-
       // Ctrl/Cmd + H: Toggle overlay visibility
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'h') {
         e.preventDefault();
         const start = performance.now();
         setOverlayVisible((prev) => {
           const end = performance.now();
-          setInteractionLatency({ action: 'toggleOverlay', latencyMs: Math.round(end - start) });
+          const latencyMs = Math.round(end - start);
+          setInteractionLatency({ action: 'toggleOverlay', latencyMs });
+          // Record to SLO client
+          sloClient.recordMetric(SLO_TYPE_OVERLAY_INTERACTION, 'toggleOverlay', latencyMs);
+          setSloCompliance(sloClient.getAllCompliance());
+          setRecentSloMetrics(sloClient.getRecentMetrics());
           return !prev;
         });
         return;
@@ -525,7 +549,12 @@ export function LiveCopilotClient() {
         const start = performance.now();
         setOverlayMuted((prev) => {
           const end = performance.now();
-          setInteractionLatency({ action: 'toggleMute', latencyMs: Math.round(end - start) });
+          const latencyMs = Math.round(end - start);
+          setInteractionLatency({ action: 'toggleMute', latencyMs });
+          // Record to SLO client
+          sloClient.recordMetric(SLO_TYPE_OVERLAY_INTERACTION, 'toggleMute', latencyMs);
+          setSloCompliance(sloClient.getAllCompliance());
+          setRecentSloMetrics(sloClient.getRecentMetrics());
           return !prev;
         });
         return;
@@ -537,7 +566,12 @@ export function LiveCopilotClient() {
         const start = performance.now();
         setOverlayTimerRunning((prev) => {
           const end = performance.now();
-          setInteractionLatency({ action: 'toggleTimer', latencyMs: Math.round(end - start) });
+          const latencyMs = Math.round(end - start);
+          setInteractionLatency({ action: 'toggleTimer', latencyMs });
+          // Record to SLO client
+          sloClient.recordMetric(SLO_TYPE_OVERLAY_INTERACTION, 'toggleTimer', latencyMs);
+          setSloCompliance(sloClient.getAllCompliance());
+          setRecentSloMetrics(sloClient.getRecentMetrics());
           return !prev;
         });
         return;
@@ -549,7 +583,12 @@ export function LiveCopilotClient() {
         const start = performance.now();
         setOverlayVisible(false);
         const end = performance.now();
-        setInteractionLatency({ action: 'hideOverlay', latencyMs: Math.round(end - start) });
+        const latencyMs = Math.round(end - start);
+        setInteractionLatency({ action: 'hideOverlay', latencyMs });
+        // Record to SLO client
+        sloClient.recordMetric(SLO_TYPE_OVERLAY_INTERACTION, 'hideOverlay', latencyMs);
+        setSloCompliance(sloClient.getAllCompliance());
+        setRecentSloMetrics(sloClient.getRecentMetrics());
         return;
       }
     };
@@ -756,6 +795,9 @@ export function LiveCopilotClient() {
     try {
       while (queue.length > 0 && session?.id) {
         const batch = queue.splice(0, 8);
+        // Track submission time for SLO
+        const submitTime = Date.now();
+        
         const res = await fetch(`/api/copilot/sessions/${session.id}/transcript`, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
@@ -770,6 +812,17 @@ export function LiveCopilotClient() {
 
         setTranscript((prev) => appendUniqueEvents(prev, Array.isArray(json.events) ? json.events : []));
         setSuggestions((prev) => appendUniqueEvents(prev, Array.isArray(json.suggestions) ? json.suggestions : []));
+        
+        // Track transcript-to-suggestion latency for mic input
+        if (Array.isArray(json.suggestions) && json.suggestions.length > 0) {
+          const latency = Date.now() - submitTime;
+          if (latency > 0) {
+            sloClient.recordMetric(SLO_TYPE_TRANSCRIPT_TO_SUGGESTION, 'micToSuggestion', latency);
+            setSloCompliance(sloClient.getAllCompliance());
+            setRecentSloMetrics(sloClient.getRecentMetrics());
+          }
+        }
+        
         setLastMicSyncAt(new Date().toISOString());
       }
     } catch (e) {
@@ -888,6 +941,9 @@ export function LiveCopilotClient() {
     setError(null);
     setSubmitting(true);
 
+    // Track transcript submission time for SLO measurement
+    const transcriptSubmitTime = Date.now();
+
     try {
       const res = await fetch(`/api/copilot/sessions/${session.id}/transcript`, {
         method: 'POST',
@@ -908,8 +964,23 @@ export function LiveCopilotClient() {
       const json = (await res.json().catch(() => ({}))) as TranscriptIngestionResponse;
       if (!res.ok) throw new Error(json.error ?? 'Failed to submit transcript event');
 
+      const submitTimeKey = `submit-${transcriptSubmitTime}`;
+      transcriptTimestampsRef.current.set(submitTimeKey, transcriptSubmitTime);
+
       setTranscript((prev) => appendUniqueEvents(prev, Array.isArray(json.events) ? json.events : []));
       setSuggestions((prev) => appendUniqueEvents(prev, Array.isArray(json.suggestions) ? json.suggestions : []));
+      
+      // Track transcript-to-suggestion latency if suggestions arrived
+      if (Array.isArray(json.suggestions) && json.suggestions.length > 0) {
+        const suggestionArrivalTime = Date.now();
+        const latency = suggestionArrivalTime - transcriptSubmitTime;
+        if (latency > 0) {
+          sloClient.recordMetric(SLO_TYPE_TRANSCRIPT_TO_SUGGESTION, 'transcriptSubmitToSuggestion', latency);
+          setSloCompliance(sloClient.getAllCompliance());
+          setRecentSloMetrics(sloClient.getRecentMetrics());
+        }
+      }
+      
       setLastMicSyncAt(new Date().toISOString());
       setDraftText('');
     } catch (e) {
@@ -1339,7 +1410,17 @@ export function LiveCopilotClient() {
               <button
                 className="button"
                 type="button"
-                onClick={() => setOverlayVisible((prev) => !prev)}
+                onClick={() => {
+                  const start = performance.now();
+                  setOverlayVisible((prev) => {
+                    const latencyMs = Math.round(performance.now() - start);
+                    setInteractionLatency({ action: 'toggleOverlay', latencyMs });
+                    sloClient.recordMetric(SLO_TYPE_OVERLAY_INTERACTION, 'toggleOverlay', latencyMs);
+                    setSloCompliance(sloClient.getAllCompliance());
+                    setRecentSloMetrics(sloClient.getRecentMetrics());
+                    return !prev;
+                  });
+                }}
                 aria-pressed={overlayVisible}
               >
                 {overlayVisible ? 'Hide Overlay' : 'Show Overlay'}
@@ -1347,7 +1428,17 @@ export function LiveCopilotClient() {
               <button
                 className="button"
                 type="button"
-                onClick={() => setOverlayMuted((prev) => !prev)}
+                onClick={() => {
+                  const start = performance.now();
+                  setOverlayMuted((prev) => {
+                    const latencyMs = Math.round(performance.now() - start);
+                    setInteractionLatency({ action: 'toggleMute', latencyMs });
+                    sloClient.recordMetric(SLO_TYPE_OVERLAY_INTERACTION, 'toggleMute', latencyMs);
+                    setSloCompliance(sloClient.getAllCompliance());
+                    setRecentSloMetrics(sloClient.getRecentMetrics());
+                    return !prev;
+                  });
+                }}
                 aria-pressed={overlayMuted}
               >
                 {overlayMuted ? 'Unmute' : 'Mute'}
@@ -1356,7 +1447,15 @@ export function LiveCopilotClient() {
                 className="button"
                 type="button"
                 onClick={() => {
-                  setOverlayTimerRunning((prev) => !prev);
+                  const start = performance.now();
+                  setOverlayTimerRunning((prev) => {
+                    const latencyMs = Math.round(performance.now() - start);
+                    setInteractionLatency({ action: 'toggleTimer', latencyMs });
+                    sloClient.recordMetric(SLO_TYPE_OVERLAY_INTERACTION, 'toggleTimer', latencyMs);
+                    setSloCompliance(sloClient.getAllCompliance());
+                    setRecentSloMetrics(sloClient.getRecentMetrics());
+                    return !prev;
+                  });
                 }}
                 aria-pressed={overlayTimerRunning}
               >
@@ -1366,8 +1465,14 @@ export function LiveCopilotClient() {
                 className="button"
                 type="button"
                 onClick={() => {
+                  const start = performance.now();
                   setOverlayTimerSeconds(0);
                   setOverlayTimerRunning(false);
+                  const latencyMs = Math.round(performance.now() - start);
+                  setInteractionLatency({ action: 'resetTimer', latencyMs });
+                  sloClient.recordMetric(SLO_TYPE_OVERLAY_INTERACTION, 'resetTimer', latencyMs);
+                  setSloCompliance(sloClient.getAllCompliance());
+                  setRecentSloMetrics(sloClient.getRecentMetrics());
                 }}
                 disabled={overlayTimerSeconds === 0}
               >
@@ -1388,6 +1493,75 @@ export function LiveCopilotClient() {
                   <span className="error" style={{ marginLeft: 8 }}>⚠ Exceeds SLO (&lt;100ms)</span>
                 )}
               </p>
+            )}
+          </section>
+
+          {/* PRD T4: Real-time SLO compliance status display */}
+          <section className={styles.settingsCard} aria-label="SLO compliance status">
+            <div className={styles.panelHeader}>
+              <h3 className={styles.sectionTitle} style={{ margin: 0 }}>SLO Compliance</h3>
+              <span className="small">Real-time performance</span>
+            </div>
+            <div className={styles.metricGrid}>
+              {sloCompliance.map((compliance) => {
+                const isOverlay = compliance.type === 'overlay_interaction';
+                const targetLabel = isOverlay ? 'Overlay Interaction' : 'Transcript → Suggestion';
+                const targetSlo = isOverlay ? '<100ms' : '<3s';
+                
+                return (
+                  <div key={compliance.type} className={styles.metricCard}>
+                    <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span className="small" style={{ fontWeight: 600 }}>{targetLabel}</span>
+                      <span className={`badge ${compliance.currentStatus === 'healthy' ? styles.badgeActive : compliance.currentStatus === 'warning' ? '' : styles.badgeDanger}`}>
+                        {getStatusEmoji(compliance.currentStatus)} {compliance.currentStatus}
+                      </span>
+                    </div>
+                    {compliance.totalSamples > 0 ? (
+                      <>
+                        <div className="row" style={{ gap: 12, marginTop: 4 }}>
+                          <span className="small">p50: <strong>{formatLatency(compliance.p50)}</strong></span>
+                          <span className="small">p95: <strong>{formatLatency(compliance.p95)}</strong></span>
+                        </div>
+                        <div className={styles.progressTrack} style={{ marginTop: 6 }}>
+                          <span
+                            className={`${styles.progressFill} ${compliance.p95 <= (isOverlay ? 100 : 3000) ? styles.progressFillhigh : compliance.p95 <= (isOverlay ? 150 : 4000) ? styles.progressFillmedium : styles.progressFilllow}`}
+                            style={{ width: `${Math.min(100, (compliance.withinTarget / compliance.totalSamples) * 100)}%` }}
+                          />
+                        </div>
+                        <span className="small" style={{ color: 'var(--muted)' }}>
+                          {compliance.withinTarget}/{compliance.totalSamples} within SLO ({targetSlo})
+                        </span>
+                      </>
+                    ) : (
+                      <p className="small" style={{ margin: '4px 0 0', color: 'var(--muted)' }}>
+                        No samples yet. Interact to collect metrics.
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            {/* Recent metrics mini-display */}
+            {recentSloMetrics.length > 0 && (
+              <div style={{ marginTop: 8 }}>
+                <span className="small" style={{ display: 'block', marginBottom: 4 }}>Recent:</span>
+                <div className="row" style={{ gap: 4, flexWrap: 'wrap' }}>
+                  {recentSloMetrics.slice(-5).reverse().map((metric, idx) => (
+                    <span
+                      key={`${metric.timestamp}-${idx}`}
+                      className="badge"
+                      style={{
+                        fontSize: '0.75rem',
+                        padding: '2px 6px',
+                        borderColor: metric.status === 'healthy' ? 'rgba(26, 194, 115, 0.5)' : metric.status === 'warning' ? 'rgba(255, 191, 91, 0.5)' : 'rgba(255, 92, 138, 0.5)',
+                      }}
+                      title={`${metric.action}: ${metric.latencyMs}ms`}
+                    >
+                      {formatLatency(metric.latencyMs)}
+                    </span>
+                  ))}
+                </div>
+              </div>
             )}
           </section>
 
