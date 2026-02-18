@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server';
 import { rateLimit } from '@/lib/rateLimit';
 import { isSessionHeartbeatExpired, withHeartbeatMetadata } from '@/lib/copilotSession';
 import { buildEventCursor, filterEventsAfterCursor, parseEventCursor } from '@/lib/copilotStreamCursor';
+import { checkIngestConsent } from '@/lib/copilotConsent';
 
 interface Params {
   params: Promise<{ id: string }>;
@@ -64,6 +65,9 @@ export async function GET(req: NextRequest, { params }: Params) {
 
   if (sessionError || !session) return jsonError(404, 'session_not_found');
   if (session.user_id !== userData.user.id) return jsonError(404, 'session_not_found');
+
+  const consentCheck = checkIngestConsent(session);
+  if (!consentCheck.allowed) return jsonError(403, consentCheck.reason);
 
   const encoder = new TextEncoder();
   const resumeCursor = parseEventCursor(req.headers.get('last-event-id'));

@@ -9,6 +9,16 @@ import { sanitizeCopilotText } from '@/lib/copilotSecurity';
 import { isSessionHeartbeatExpired, withHeartbeatMetadata } from '@/lib/copilotSession';
 import { buildSuggestionPrompt, parseSuggestionContent } from '@/lib/copilotSuggestion';
 import { sessionExpiredResponse } from '@/lib/copilotApiResponse';
+import { checkIngestConsent } from '@/lib/copilotConsent';
+import {
+  startLatencyTracking,
+  startStage,
+  endStage,
+  getLatencyTimings,
+  clearLatencyTracking,
+  latencyTimingsToMetadata,
+  logLatencyMetrics,
+} from '@/lib/copilotLatency';
 
 interface Params {
   params: Promise<{ id: string }>;
@@ -47,9 +57,17 @@ export async function POST(req: NextRequest, { params }: Params) {
   if (!parse.success) return jsonError(400, 'invalid_body', parse.error.flatten());
 
   const { id } = await params;
+  
+  // Start latency tracking for the pipeline (P0 T3)
+  startLatencyTracking(requestId, id);
+  startStage(requestId, 'ingest');
+  
   const supabase = await createClient();
   const { data: userData, error: userError } = await supabase.auth.getUser();
-  if (userError || !userData.user) return jsonError(401, 'unauthorized');
+  if (userError || !userData.user) {
+    clearLatencyTracking(requestId);
+    return jsonError(401, 'unauthorized');
+  }
 
   const { data: session, error: sessionError } = await supabase
     .from('copilot_sessions')
@@ -57,8 +75,14 @@ export async function POST(req: NextRequest, { params }: Params) {
     .eq('id', id)
     .single<{ id: string; user_id: string; status: string; started_at: string; metadata: Record<string, unknown> | null }>();
 
-  if (sessionError || !session) return jsonError(404, 'session_not_found');
-  if (session.user_id !== userData.user.id) return jsonError(404, 'session_not_found');
+  if (sessionError || !session) {
+    clearLatencyTracking(requestId);
+    return jsonError(404, 'session_not_found');
+  }
+  if (session.user_id !== userData.user.id) {
+    clearLatencyTracking(requestId);
+    return jsonError(404, 'session_not_found');
+  }
 
   if (isSessionHeartbeatExpired(session)) {
     const nowIso = new Date().toISOString();
@@ -76,10 +100,24 @@ export async function POST(req: NextRequest, { params }: Params) {
       .eq('user_id', userData.user.id)
       .eq('status', 'active');
 
+    clearLatencyTracking(requestId);
     return sessionExpiredResponse(session, nowIso);
   }
 
-  if (session.status !== 'active') return jsonError(409, 'session_not_active');
+  if (session.status !== 'active') {
+    clearLatencyTracking(requestId);
+    return jsonError(409, 'session_not_active');
+  }
+
+  // P0 T2: Consent gate enforcement
+  const consentCheck = checkIngestConsent(session);
+  if (!consentCheck.allowed) {
+    clearLatencyTracking(requestId);
+    return jsonError(403, consentCheck.reason);
+  }
+
+  endStage(requestId, 'ingest');
+  startStage(requestId, 'transcript_parse');
 
   const cleanedInput = sanitizeCopilotText(parse.data.text);
 
@@ -92,6 +130,9 @@ export async function POST(req: NextRequest, { params }: Params) {
       prompt_injection: cleanedInput.hasPromptInjection,
     },
   };
+
+  endStage(requestId, 'transcript_parse');
+  startStage(requestId, 'suggestion_persist');
 
   const { data: createdEvent, error: insertError } = await supabase
     .from('copilot_events')
@@ -109,6 +150,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       sessionId: id,
       code: insertError?.code ?? null,
     });
+    clearLatencyTracking(requestId);
     return internalError(requestId);
   }
 
@@ -119,13 +161,27 @@ export async function POST(req: NextRequest, { params }: Params) {
     !cleanedInput.hasPromptInjection;
 
   if (!shouldSuggest) {
+    endStage(requestId, 'suggestion_persist');
+    startStage(requestId, 'delivery');
+    
+    const timings = getLatencyTimings(requestId);
+    const latencyMeta = timings ? latencyTimingsToMetadata(timings) : {};
+    
+    endStage(requestId, 'delivery');
+    logLatencyMetrics(getLatencyTimings(requestId)!, { skipped_suggestion: true });
+    clearLatencyTracking(requestId);
+
     return NextResponse.json({
       event: createdEvent,
       suggestion: null,
       blocked: cleanedInput.hasPromptInjection,
       redactions: cleanedInput.redactions,
+      ...latencyMeta,
     }, { status: 201 });
   }
+
+  endStage(requestId, 'suggestion_persist');
+  startStage(requestId, 'context_retrieval');
 
   const { data: transcriptRows } = await supabase
     .from('copilot_events')
@@ -147,9 +203,13 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   const mode = typeof payload.mode === 'string' ? payload.mode : 'general';
 
+  endStage(requestId, 'context_retrieval');
+  startStage(requestId, 'llm_inference');
+
   try {
     if (llmProvider() !== 'openai') {
       logCopilotRouteError('/api/copilot/sessions/[id]/events', requestId, 'unsupported_provider');
+      clearLatencyTracking(requestId);
       return jsonError(400, 'unsupported_provider');
     }
 
@@ -167,6 +227,9 @@ export async function POST(req: NextRequest, { params }: Params) {
 
     const content = completion.choices[0]?.message?.content ?? '{}';
     const parsedSuggestion = parseSuggestionContent(content, mode);
+
+    endStage(requestId, 'llm_inference');
+    startStage(requestId, 'suggestion_persist');
 
     const suggestionPayload: EventPayload = {
       category: 'answer',
@@ -212,10 +275,21 @@ export async function POST(req: NextRequest, { params }: Params) {
         sessionId: id,
         code: suggestionError.code ?? null,
       });
+      clearLatencyTracking(requestId);
       return internalError(requestId);
     }
 
-    return NextResponse.json({ event: createdEvent, suggestion: suggestionEvent }, { status: 201 });
+    endStage(requestId, 'suggestion_persist');
+    startStage(requestId, 'delivery');
+
+    const timings = getLatencyTimings(requestId);
+    const latencyMeta = timings ? latencyTimingsToMetadata(timings) : {};
+    
+    endStage(requestId, 'delivery');
+    logLatencyMetrics(timings!);
+    clearLatencyTracking(requestId);
+
+    return NextResponse.json({ event: createdEvent, suggestion: suggestionEvent, ...latencyMeta }, { status: 201 });
   } catch (e) {
     logCopilotRouteError('/api/copilot/sessions/[id]/events', requestId, 'llm_suggestion_failed', {
       sessionId: id,
@@ -245,6 +319,13 @@ export async function POST(req: NextRequest, { params }: Params) {
         code: fallbackError.code ?? null,
       });
     }
+
+    // Log latency metrics even on error path
+    const timings = getLatencyTimings(requestId);
+    if (timings) {
+      logLatencyMetrics(timings, { error: 'llm_suggestion_failed' });
+    }
+    clearLatencyTracking(requestId);
 
     return NextResponse.json(
       {
