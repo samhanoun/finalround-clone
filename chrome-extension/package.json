@@ -1,0 +1,16 @@
+{
+  "name": "finalround-copilot-extension",
+  "version": "0.1.0",
+  "description": "FinalRound AI Interview Copilot Chrome Extension",
+  "scripts": {
+    "build": "npm run build:ts && npm run copy:assets",
+    "build:ts": "tsc",
+    "copy:assets": "node scripts/copy-assets.js",
+    "watch": "tsc --watch",
+    "lint": "eslint . --ext .ts"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.0.260",
+    "typescript": "^5.3.0"
+  }
+}

@@ -43,6 +43,14 @@ const quickActions: QuickAction[] = [
     icon: '📄',
     variant: 'accent',
   },
+  {
+    id: 'analytics',
+    title: 'Analytics',
+    description: 'View conversion funnel and cohort analysis',
+    href: '/analytics',
+    icon: '📊',
+    variant: 'secondary',
+  },
 ];
 
 export function QuickActions() {
