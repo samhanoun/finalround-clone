@@ -1,0 +1,71 @@
+{
+  "name": "FinalRound - Interview Copilot",
+  "short_name": "FinalRound",
+  "description": "Interview Copilot + Resume Builder - Ace your next interview with AI-powered assistance",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0b0f19",
+  "theme_color": "#0b0f19",
+  "orientation": "portrait-primary",
+  "scope": "/",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "badge"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "badge"
+    }
+  ],
+  "categories": ["productivity", "education", "business"],
+  "shortcuts": [
+    {
+      "name": "Start Interview",
+      "short_name": "Interview",
+      "description": "Start a new interview session",
+      "url": "/dashboard/interview/new",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "My Resumes",
+      "short_name": "Resumes",
+      "description": "View your saved resumes",
+      "url": "/dashboard/resume",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Cover Letters",
+      "short_name": "Letters",
+      "description": "View your cover letters",
+      "url": "/dashboard/cover-letters",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    }
+  ],
+  "prefer_related_applications": false,
+  "protocol_handlers": [
+    {
+      "protocol": "finalround",
+      "url": "/%s"
+    }
+  ],
+  "launch_handler": {
+    "client_mode": "auto"
+  }
+}

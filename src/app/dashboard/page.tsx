@@ -1,3 +1,4 @@
+import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { AppShell } from '@/components/AppShell';
 import { RequireAuth } from '@/components/RequireAuth';
@@ -12,6 +13,19 @@ import { QuickActions } from '@/components/QuickActions';
 export default async function DashboardPage() {
   const supabase = await createClient();
   const { data } = await supabase.auth.getUser();
+
+  // Check if onboarding is completed
+  if (data.user) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('onboarding_completed')
+      .eq('id', data.user.id)
+      .single();
+
+    if (!profile?.onboarding_completed) {
+      redirect('/onboarding');
+    }
+  }
 
   const { data: sessions } = await supabase
     .from('interview_sessions')

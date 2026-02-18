@@ -27,12 +27,16 @@ function AuthForm() {
       if (mode === 'signup') {
         const { error } = await supabase.auth.signUp({ email, password });
         if (error) throw error;
+        
+        // After signup, redirect to onboarding
+        router.push('/onboarding');
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
+        
+        // Check if onboarding is completed before going to dashboard
+        router.push(next);
       }
-
-      router.push(next);
       router.refresh();
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Auth failed';

@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Offline - FinalRound</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    :root {
+      --bg-primary: #0b0f19;
+      --bg-secondary: #151b2b;
+      --bg-tertiary: #1e2738;
+      --text-primary: #f0f4f8;
+      --text-secondary: #94a3b8;
+      --accent: #3b82f6;
+      --accent-hover: #2563eb;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+      text-align: center;
+    }
+
+    .container {
+      max-width: 480px;
+    }
+
+    .icon {
+      width: 120px;
+      height: 120px;
+      margin-bottom: 2rem;
+      opacity: 0.8;
+    }
+
+    h1 {
+      font-size: 2rem;
+      font-weight: 700;
+      margin-bottom: 1rem;
+      background: linear-gradient(135deg, var(--text-primary) 0%, var(--text-secondary) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    p {
+      color: var(--text-secondary);
+      font-size: 1.125rem;
+      line-height: 1.6;
+      margin-bottom: 2rem;
+    }
+
+    .card {
+      background: var(--bg-secondary);
+      border-radius: 16px;
+      padding: 1.5rem;
+      margin-bottom: 2rem;
+      border: 1px solid var(--bg-tertiary);
+    }
+
+    .card h2 {
+      font-size: 1rem;
+      font-weight: 600;
+      margin-bottom: 0.75rem;
+      color: var(--text-primary);
+    }
+
+    .card ul {
+      list-style: none;
+      text-align: left;
+    }
+
+    .card li {
+      color: var(--text-secondary);
+      font-size: 0.875rem;
+      padding: 0.5rem 0;
+      padding-left: 1.5rem;
+      position: relative;
+    }
+
+    .card li::before {
+      content: '✓';
+      position: absolute;
+      left: 0;
+      color: var(--accent);
+    }
+
+    .button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0.875rem 2rem;
+      font-size: 1rem;
+      font-weight: 600;
+      border-radius: 12px;
+      border: none;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      text-decoration: none;
+      gap: 0.5rem;
+    }
+
+    .button-primary {
+      background: var(--accent);
+      color: white;
+    }
+
+    .button-primary:hover {
+      background: var(--accent-hover);
+      transform: translateY(-1px);
+    }
+
+    .button-secondary {
+      background: var(--bg-tertiary);
+      color: var(--text-primary);
+      margin-left: 1rem;
+    }
+
+    .button-secondary:hover {
+      background: #2a3447;
+    }
+
+    .spinner {
+      width: 20px;
+      height: 20px;
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    .status {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      color: var(--text-secondary);
+      font-size: 0.875rem;
+      margin-top: 1rem;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #ef4444;
+      animation: pulse 2s infinite;
+    }
+
+    .status-dot.online {
+      background: #22c55e;
+    }
+
+    @keyframes pulse {
+      0%, 100% {
+        opacity: 1;
+      }
+      50% {
+        opacity: 0.5;
+      }
+    }
+
+    @media (max-width: 480px) {
+      h1 {
+        font-size: 1.5rem;
+      }
+
+      p {
+        font-size: 1rem;
+      }
+
+      .button {
+        width: 100%;
+        margin-left: 0;
+        margin-top: 0.5rem;
+      }
+
+      .buttons {
+        display: flex;
+        flex-direction: column;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+      <path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z" />
+      <path d="M12 6v6l4 2" />
+      <path d="M3.27 6.96l1.47 1.47" />
+      <path d="M2 12s3-5 10-5 10 5 10 5-3 5-10 5-10-5-10-5z" />
+    </svg>
+
+    <h1>You're Offline</h1>
+    <p>Don't worry! Your interview progress is saved locally. Connect to the internet to continue where you left off.</p>
+
+    <div class="card">
+      <h2>While you wait</h2>
+      <ul>
+        <li>Review your saved interview notes</li>
+        <li>Check your resume content</li>
+        <li>Practice common interview questions</li>
+        <li>Your data will sync automatically</li>
+      </ul>
+    </div>
+
+    <div class="buttons">
+      <button class="button button-primary" onclick="retryConnection()">
+        <span id="retry-text">Try Again</span>
+        <div id="retry-spinner" class="spinner" style="display: none;"></div>
+      </button>
+      <a href="/" class="button button-secondary">Go to Homepage</a>
+    </div>
+
+    <div class="status">
+      <div class="status-dot" id="status-dot"></div>
+      <span id="status-text">Checking connection...</span>
+    </div>
+  </div>
+
+  <script>
+    const statusDot = document.getElementById('status-dot');
+    const statusText = document.getElementById('status-text');
+    const retryText = document.getElementById('retry-text');
+    const retrySpinner = document.getElementById('retry-spinner');
+
+    function updateOnlineStatus() {
+      if (navigator.onLine) {
+        statusDot.classList.add('online');
+        statusText.textContent = 'Back online! Redirecting...';
+        
+        // Refresh the page to retry
+        setTimeout(() => {
+          window.location.reload();
+        }, 1500);
+      } else {
+        statusDot.classList.remove('online');
+        statusText.textContent = 'No internet connection';
+      }
+    }
+
+    function retryConnection() {
+      retryText.textContent = 'Retrying...';
+      retrySpinner.style.display = 'block';
+      
+      // Force a network request to check connection
+      fetch('/api/health', { method: 'HEAD', cache: 'no-store' })
+        .then(() => {
+          window.location.reload();
+        })
+        .catch(() => {
+          retryText.textContent = 'Try Again';
+          retrySpinner.style.display = 'none';
+          statusText.textContent = 'Still offline. Please check your connection.';
+        });
+    }
+
+    // Listen for online/offline events
+    window.addEventListener('online', updateOnlineStatus);
+    window.addEventListener('offline', updateOnlineStatus);
+
+    // Check initial status
+    updateOnlineStatus();
+  </script>
+</body>
+</html>
