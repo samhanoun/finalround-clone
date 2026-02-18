@@ -6,13 +6,12 @@ const ReportDimensionSchema = z.object({
   recommendation: z.string().default(''),
 });
 
+// PRD-aligned rubric: clarity, confidence, relevance, structure
 const RubricSchema = z.object({
-  communication: ReportDimensionSchema,
-  technical_accuracy: ReportDimensionSchema,
-  problem_solving: ReportDimensionSchema,
+  clarity: ReportDimensionSchema,
+  confidence: ReportDimensionSchema,
+  relevance: ReportDimensionSchema,
   structure: ReportDimensionSchema,
-  ownership: ReportDimensionSchema,
-  role_fit: ReportDimensionSchema,
 });
 
 export const MockInterviewReportSchema = z.object({
@@ -83,29 +82,27 @@ export function fallbackMockInterviewReport(mode: string): MockInterviewReport {
     mode,
     overall_score: 64,
     hiring_signal: 'lean_no_hire' as const,
-    summary: 'Candidate stayed engaged and showed baseline competency, with room to improve depth and structure.',
+    summary: 'Candidate stayed engaged and showed baseline competency, with room to improve clarity, confidence, relevance, and structure.',
     strengths: [
       'Stayed engaged and completed the full mock interview.',
       'Communicated clearly enough to keep answers understandable.',
-      'Demonstrated baseline ownership of prior work examples.',
+      'Provided relevant examples that addressed the questions.',
     ],
     weaknesses: [
-      'Answers need tighter structure and stronger role-specific examples.',
-      'Technical trade-offs were not always explicit or prioritized.',
-      'Impact metrics were limited, reducing evidence of depth.',
+      'Answers need tighter structure and clearer organization.',
+      'Confidence could be improved with more concrete examples.',
+      'Relevance to role requirements could be stronger.',
     ],
     next_steps: [
-      'P1: Practice concise STAR responses and measurable outcomes for core role questions.',
-      'P2: For each technical answer, compare at least two alternatives and justify the choice.',
-      'P3: Prepare 3 quantified impact stories aligned to target role requirements.',
+      'P1: Practice structured responses using STAR or similar frameworks.',
+      'P2: Prepare quantified impact stories aligned to target role requirements.',
+      'P3: Rehearse answers to build confidence and reduce hesitation.',
     ],
     rubric: {
-      communication: { score: 3, evidence: '', recommendation: 'Tighten verbal structure and reduce filler.' },
-      technical_accuracy: { score: 3, evidence: '', recommendation: 'Use more precise terminology and validation details.' },
-      problem_solving: { score: 3, evidence: '', recommendation: 'Make reasoning explicit and compare alternatives.' },
-      structure: { score: 2, evidence: '', recommendation: 'Lead with an answer, then support with 2-3 points.' },
-      ownership: { score: 3, evidence: '', recommendation: 'Quantify personal impact and decision-making scope.' },
-      role_fit: { score: 3, evidence: '', recommendation: 'Map examples directly to job requirements.' },
+      clarity: { score: 3, evidence: '', recommendation: 'Speak more clearly and avoid filler words.' },
+      confidence: { score: 3, evidence: '', recommendation: 'Project more confidence through tone and pacing.' },
+      relevance: { score: 3, evidence: '', recommendation: 'Ensure answers directly address the question asked.' },
+      structure: { score: 2, evidence: '', recommendation: 'Lead with an answer, then support with 2-3 organized points.' },
     },
   };
 
@@ -142,12 +139,10 @@ export function normalizeMockInterviewReport(input: unknown, mode: string): Mock
     weaknesses,
     next_steps: nextSteps,
     rubric: {
-      communication: normalizeDimension(maybeRubric.communication, base.rubric.communication),
-      technical_accuracy: normalizeDimension(maybeRubric.technical_accuracy, base.rubric.technical_accuracy),
-      problem_solving: normalizeDimension(maybeRubric.problem_solving, base.rubric.problem_solving),
+      clarity: normalizeDimension(maybeRubric.clarity, base.rubric.clarity),
+      confidence: normalizeDimension(maybeRubric.confidence, base.rubric.confidence),
+      relevance: normalizeDimension(maybeRubric.relevance, base.rubric.relevance),
       structure: normalizeDimension(maybeRubric.structure, base.rubric.structure),
-      ownership: normalizeDimension(maybeRubric.ownership, base.rubric.ownership),
-      role_fit: normalizeDimension(maybeRubric.role_fit, base.rubric.role_fit),
     },
   };
 
