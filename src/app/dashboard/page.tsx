@@ -5,6 +5,9 @@ import { createClient } from '@/lib/supabase/server';
 import { DashboardClient } from '@/components/DashboardClient';
 import { UsageWidget } from '@/components/UsageWidget';
 import { AnalyticsReconciliation } from '@/components/AnalyticsReconciliation';
+import { DashboardStats } from '@/components/DashboardStats';
+import { RecentActivity } from '@/components/RecentActivity';
+import { QuickActions } from '@/components/QuickActions';
 
 export default async function DashboardPage() {
   const supabase = await createClient();
@@ -27,6 +30,12 @@ export default async function DashboardPage() {
       <RequireAuth>
         <div className="stack">
           <p className="help">Welcome{data.user?.email ? `, ${data.user.email}` : ''}.</p>
+
+          <QuickActions />
+
+          <DashboardStats />
+
+          <RecentActivity />
 
           <UsageWidget />
 

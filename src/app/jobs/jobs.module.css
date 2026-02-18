@@ -1,0 +1,27 @@
+.comingSoon {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  text-align: center;
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 12px;
+  border: 1px dashed var(--border);
+}
+
+.comingSoonIcon {
+  font-size: 3rem;
+  margin-bottom: 16px;
+}
+
+.comingSoon h3 {
+  margin: 0 0 8px;
+  font-size: 1.25rem;
+  color: var(--text);
+}
+
+.comingSoon p {
+  margin: 0;
+  max-width: 300px;
+}

@@ -1,0 +1,92 @@
+.quickActionsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 12px;
+}
+
+.quickActionCard {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  text-decoration: none;
+  transition: all 0.2s ease;
+}
+
+.quickActionCard:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  text-decoration: none;
+}
+
+.quickActionCard.primary {
+  border-color: rgba(124, 92, 255, 0.4);
+  background: linear-gradient(135deg, rgba(124, 92, 255, 0.15) 0%, rgba(124, 92, 255, 0.05) 100%);
+}
+
+.quickActionCard.primary:hover {
+  border-color: var(--brand);
+}
+
+.quickActionCard.secondary {
+  border-color: rgba(77, 214, 255, 0.4);
+  background: linear-gradient(135deg, rgba(77, 214, 255, 0.15) 0%, rgba(77, 214, 255, 0.05) 100%);
+}
+
+.quickActionCard.secondary:hover {
+  border-color: var(--brand2);
+}
+
+.quickActionCard.accent {
+  border-color: rgba(26, 194, 115, 0.4);
+  background: linear-gradient(135deg, rgba(26, 194, 115, 0.15) 0%, rgba(26, 194, 115, 0.05) 100%);
+}
+
+.quickActionCard.accent:hover {
+  border-color: #1ac26e;
+}
+
+.quickActionIcon {
+  font-size: 1.8rem;
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  flex-shrink: 0;
+}
+
+.quickActionContent {
+  flex: 1;
+  min-width: 0;
+}
+
+.quickActionTitle {
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 0 0 4px;
+  color: var(--text);
+}
+
+.quickActionDesc {
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin: 0;
+  line-height: 1.4;
+}
+
+.quickActionArrow {
+  font-size: 1.2rem;
+  color: var(--muted);
+  transition: transform 0.2s ease;
+}
+
+.quickActionCard:hover .quickActionArrow {
+  transform: translateX(4px);
+  color: var(--brand);
+}
