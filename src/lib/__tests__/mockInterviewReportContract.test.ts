@@ -45,14 +45,12 @@ function assertPrdAcceptanceShape(report: ReturnType<typeof normalizeMockIntervi
   expect(report.next_steps[1]).toMatch(/^P2:/);
   expect(report.next_steps[2]).toMatch(/^P3:/);
 
-  // Rubric: all 6 dimensions present with valid scores
+  // Rubric: all 4 PRD-aligned dimensions present with valid scores
   const dimensions = [
-    'communication',
-    'technical_accuracy',
-    'problem_solving',
+    'clarity',
+    'confidence',
+    'relevance',
     'structure',
-    'ownership',
-    'role_fit',
   ] as const;
 
   for (const dim of dimensions) {
@@ -157,10 +155,10 @@ describe('mockInterviewReport contract tests (PRD T5)', () => {
 
     it('rubric score out of range gets clamped', () => {
       const report = normalizeMockInterviewReport(
-        { rubric: { communication: { score: 10, evidence: 'Great' } } },
+        { rubric: { clarity: { score: 10, evidence: 'Great' } } },
         'general',
       );
-      expect(report.rubric.communication.score).toBe(5);
+      expect(report.rubric.clarity.score).toBe(5);
     });
 
     it('rubric score 0 gets clamped to 1', () => {

@@ -24,7 +24,7 @@ describe('mockInterviewReport normalization', () => {
     const normalized = normalizeMockInterviewReport(
       {
         rubric: {
-          communication: { score: 5, evidence: 'Concise answers with clear sequencing' },
+          clarity: { score: 5, evidence: 'Concise answers with clear sequencing' },
         },
       },
       'general',
@@ -32,8 +32,8 @@ describe('mockInterviewReport normalization', () => {
 
     const fallback = fallbackMockInterviewReport('general');
 
-    expect(normalized.rubric.communication.score).toBe(5);
-    expect(normalized.rubric.communication.recommendation).toBe(fallback.rubric.communication.recommendation);
-    expect(normalized.rubric.technical_accuracy.recommendation).toBe(fallback.rubric.technical_accuracy.recommendation);
+    expect(normalized.rubric.clarity.score).toBe(5);
+    expect(normalized.rubric.clarity.recommendation).toBe(fallback.rubric.clarity.recommendation);
+    expect(normalized.rubric.confidence.recommendation).toBe(fallback.rubric.confidence.recommendation);
   });
 });
