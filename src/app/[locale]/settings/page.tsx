@@ -6,9 +6,11 @@ import { NotificationPreferences } from '@/components/NotificationPreferences';
 import { ProfileSettings } from '@/components/ProfileSettings';
 import { AccountDeletion } from '@/components/AccountDeletion';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
+import { VideoConferencingSettings } from '@/components/VideoConferencingSettings';
 import { createClient } from '@/lib/supabase/server';
 import { UsageWidget } from '@/components/UsageWidget';
 import { getTranslations } from 'next-intl/server';
+import { getVideoConferencingSettings } from '@/lib/videoConferencing';
 
 export default async function SettingsPage() {
   const t = await getTranslations('settings');
@@ -30,6 +32,9 @@ export default async function SettingsPage() {
     .select('provider,model,temperature,max_tokens')
     .eq('user_id', userData.user.id)
     .maybeSingle();
+
+  // Fetch video conferencing settings
+  const videoSettings = await getVideoConferencingSettings(supabase, userData.user.id);
 
   return (
     <AppShell title={t('title')}>
@@ -55,6 +60,9 @@ export default async function SettingsPage() {
           <NotificationPreferences />
 
           <SettingsClient initial={settings ?? null} />
+
+          {/* Video Conferencing Settings */}
+          <VideoConferencingSettings initial={videoSettings} />
 
           <div className="card">
             <div className="cardInner stack">
