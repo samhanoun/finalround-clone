@@ -12,5 +12,5 @@ export default async function TeamsPage() {
 
   const { organization, role } = await getUserOrganizationContext(supabase);
 
-  return <TeamsClient userId={user.id} initialOrganization={organization} role={role} />;
+  return <TeamsClient initialOrganization={organization} role={role} />;
 }

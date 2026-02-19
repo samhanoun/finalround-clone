@@ -38,6 +38,7 @@ export async function sendEmail(options: EmailOptions): Promise<boolean> {
   };
 
   try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await sgMail.send(msg as any);
     console.log(`Email sent: ${options.subject} to ${options.to}`);
     return true;
@@ -48,16 +49,16 @@ export async function sendEmail(options: EmailOptions): Promise<boolean> {
 }
 
 // Helper to render React Email templates
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function renderEmail<T>(Component: React.ComponentType<T>, props: T): Promise<string> {
-  const element = React.createElement(Component as any, props as any);
+export async function renderEmail<T extends object>(Component: React.ComponentType<T>, props: T): Promise<string> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const element = React.createElement(Component as any, props);
   return await render(element, {
     plainText: true,
   });
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function renderEmailHtml<T>(Component: React.ComponentType<T>, props: T): Promise<string> {
-  const element = React.createElement(Component as any, props as any);
+export async function renderEmailHtml<T extends object>(Component: React.ComponentType<T>, props: T): Promise<string> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const element = React.createElement(Component as any, props);
   return await render(element);
 }

@@ -1,6 +1,7 @@
 /**
  * Build script - copies assets and prepares extension for loading
  */
+/* eslint-disable @typescript-eslint/no-require-imports */
 const fs = require('fs');
 const path = require('path');
 
@@ -18,7 +19,6 @@ dirs.forEach(dir => {
 const htmlFiles = ['popup/popup.html'];
 htmlFiles.forEach(file => {
   const src = path.join(__dirname, file);
-  const dest = path.join(__dirname, file);
   if (fs.existsSync(src)) {
     console.log(`Copied: ${file}`);
   }

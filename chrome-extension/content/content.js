@@ -135,7 +135,7 @@ class ContentScript {
      * Setup mutation observer for dynamic content
      */
     setupMutationObserver() {
-        const observer = new MutationObserver((mutations) => {
+        const observer = new MutationObserver((_mutations) => {
             // Check if we need to re-inject or adjust overlay
             if (this.overlay?.isVisibleState()) {
                 this.overlay.reposition();

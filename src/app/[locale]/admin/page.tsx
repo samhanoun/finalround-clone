@@ -66,8 +66,7 @@ export default function AdminDashboard() {
   const [fraudFlags, setFraudFlags] = useState<FraudFlag[]>([]);
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
+  const [page] = useState(1);
 
   const fetchData = useCallback(async () => {
     setLoading(true);

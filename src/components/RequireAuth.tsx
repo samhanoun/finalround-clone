@@ -33,7 +33,7 @@ export function RequireAuth(props: { children: React.ReactNode }) {
     return (
       <div className="card">
         <div className="cardInner stack">
-          <h2 className="cardTitle">You're not logged in</h2>
+          <h2 className="cardTitle">You&apos;re not logged in</h2>
           <p className="cardDesc">Please login to continue.</p>
           <div className="row">
             <Link className="button buttonPrimary" href="/auth">

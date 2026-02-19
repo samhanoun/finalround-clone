@@ -3,7 +3,7 @@
  * Handles extension lifecycle, message routing, and storage coordination
  */
 
-import { StorageManager, ExtensionSettings, SessionState, SessionConfig, AnalyticsEvent } from './storage';
+import { StorageManager, ExtensionSettings, SessionConfig, AnalyticsEvent } from './storage';
 
 // Default extension state
 const DEFAULT_STATE = {

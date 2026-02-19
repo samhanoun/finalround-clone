@@ -88,7 +88,7 @@ export function detectPlatform(url: string): PlatformDetectionResult {
  * Get user video conferencing settings
  */
 export async function getVideoConferencingSettings(
-  supabase: SupabaseClient<any>,
+  supabase: SupabaseClient,
   userId: string
 ): Promise<VideoConferencingSettings | null> {
   const { data, error } = await supabase
@@ -112,7 +112,7 @@ export async function getVideoConferencingSettings(
  * Create default video conferencing settings for a user
  */
 export async function createVideoConferencingSettings(
-  supabase: SupabaseClient<any>,
+  supabase: SupabaseClient,
   userId: string
 ): Promise<VideoConferencingSettings> {
   const defaultSettings = createDefaultSettings(userId);
@@ -132,7 +132,7 @@ export async function createVideoConferencingSettings(
  * Update video conferencing settings
  */
 export async function updateVideoConferencingSettings(
-  supabase: SupabaseClient<any>,
+  supabase: SupabaseClient,
   userId: string,
   updates: Partial<VideoConferencingSettings>
 ): Promise<VideoConferencingSettings> {
@@ -152,7 +152,7 @@ export async function updateVideoConferencingSettings(
  * Create a new video session record
  */
 export async function createVideoSession(
-  supabase: SupabaseClient<any>,
+  supabase: SupabaseClient,
   userId: string,
   platform: VideoPlatform | 'unknown',
   sessionInfo?: {
@@ -183,7 +183,7 @@ export async function createVideoSession(
  * Update video session state (screen share / audio capture)
  */
 export async function updateVideoSessionState(
-  supabase: SupabaseClient<any>,
+  supabase: SupabaseClient,
   sessionId: string,
   updates: {
     screen_share_active?: boolean;
@@ -215,7 +215,7 @@ export async function updateVideoSessionState(
  * End a video session
  */
 export async function endVideoSession(
-  supabase: SupabaseClient<any>,
+  supabase: SupabaseClient,
   sessionId: string
 ): Promise<VideoSession> {
   const endedAt = new Date().toISOString();
@@ -266,7 +266,7 @@ export async function endVideoSession(
  * Get active video session for user
  */
 export async function getActiveVideoSession(
-  supabase: SupabaseClient<any>,
+  supabase: SupabaseClient,
   userId: string
 ): Promise<VideoSession | null> {
   const { data, error } = await supabase
@@ -292,7 +292,7 @@ export async function getActiveVideoSession(
  * Record screen share event
  */
 export async function recordScreenShareEvent(
-  supabase: SupabaseClient<any>,
+  supabase: SupabaseClient,
   sessionId: string,
   userId: string,
   eventType: 'started' | 'stopped' | 'pause' | 'resume',
@@ -324,7 +324,7 @@ export async function recordScreenShareEvent(
  * Record audio event
  */
 export async function recordAudioEvent(
-  supabase: SupabaseClient<any>,
+  supabase: SupabaseClient,
   sessionId: string,
   userId: string,
   eventType: 'start' | 'stop' | 'data' | 'error',

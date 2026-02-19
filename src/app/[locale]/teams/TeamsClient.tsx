@@ -10,14 +10,13 @@ const supabase = createClient(
 );
 
 interface TeamsClientProps {
-  userId: string;
   initialOrganization: Organization | null;
   role: OrganizationRole | null;
 }
 
 type TabType = 'members' | 'invitations' | 'analytics' | 'settings' | 'sso';
 
-export default function TeamsClient({ userId, initialOrganization, role }: TeamsClientProps) {
+export default function TeamsClient({ initialOrganization, role }: TeamsClientProps) {
   const [activeTab, setActiveTab] = useState<TabType>('members');
   const [organization, setOrganization] = useState<Organization | null>(initialOrganization);
   const [members, setMembers] = useState<OrganizationMember[]>([]);
@@ -39,6 +38,7 @@ export default function TeamsClient({ userId, initialOrganization, role }: Teams
     } else {
       loadOrganizations();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [organization]);
 
   async function loadOrganizations() {
