@@ -8,7 +8,7 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    const supabase = getServerOrganizationClient();
+    const supabase = await getServerOrganizationClient();
 
     // Check access
     const hasAccess = await checkOrganizationAccess(supabase, id, ['owner', 'admin', 'member', 'viewer']);
@@ -35,7 +35,7 @@ export async function PATCH(
 ) {
   try {
     const { id } = await params;
-    const supabase = getServerOrganizationClient();
+    const supabase = await getServerOrganizationClient();
 
     // Only owners can update organization
     const hasAccess = await checkOrganizationAccess(supabase, id, ['owner']);
@@ -75,7 +75,7 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
-    const supabase = getServerOrganizationClient();
+    const supabase = await getServerOrganizationClient();
 
     // Only owners can delete organization
     const hasAccess = await checkOrganizationAccess(supabase, id, ['owner']);

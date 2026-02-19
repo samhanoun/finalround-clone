@@ -15,7 +15,7 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    const supabase = getServerOrganizationClient();
+    const supabase = await getServerOrganizationClient();
 
     const hasAccess = await checkOrganizationAccess(supabase, id, ['owner', 'admin', 'member', 'viewer']);
     if (!hasAccess) {
@@ -37,7 +37,7 @@ export async function PATCH(
 ) {
   try {
     const { id } = await params;
-    const supabase = getServerOrganizationClient();
+    const supabase = await getServerOrganizationClient();
 
     // Only admins can manage members
     const hasAccess = await checkOrganizationAccess(supabase, id, ['owner', 'admin']);

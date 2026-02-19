@@ -3,7 +3,7 @@ import { getServerOrganizationClient, getUserOrganizationContext } from '@/lib/o
 import TeamsClient from './TeamsClient';
 
 export default async function TeamsPage() {
-  const supabase = getServerOrganizationClient();
+  const supabase = await getServerOrganizationClient();
   const { data: { user } } = await supabase.auth.getUser();
 
   if (!user) {

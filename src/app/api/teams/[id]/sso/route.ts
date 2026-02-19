@@ -20,7 +20,7 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    const supabase = getServerOrganizationClient();
+    const supabase = await getServerOrganizationClient();
 
     const hasAccess = await checkOrganizationAccess(supabase, id, ['owner', 'admin']);
     if (!hasAccess) {
@@ -59,7 +59,7 @@ export async function POST(
 ) {
   try {
     const { id } = await params;
-    const supabase = getServerOrganizationClient();
+    const supabase = await getServerOrganizationClient();
 
     // Only owners can configure SSO
     const hasAccess = await checkOrganizationAccess(supabase, id, ['owner']);
@@ -143,7 +143,7 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
-    const supabase = getServerOrganizationClient();
+    const supabase = await getServerOrganizationClient();
 
     const hasAccess = await checkOrganizationAccess(supabase, id, ['owner']);
     if (!hasAccess) {

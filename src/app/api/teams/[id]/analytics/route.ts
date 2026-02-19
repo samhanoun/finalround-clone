@@ -13,7 +13,7 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    const supabase = getServerOrganizationClient();
+    const supabase = await getServerOrganizationClient();
 
     const hasAccess = await checkOrganizationAccess(supabase, id, ['owner', 'admin', 'member']);
     if (!hasAccess) {

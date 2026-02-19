@@ -14,7 +14,7 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    const supabase = getServerOrganizationClient();
+    const supabase = await getServerOrganizationClient();
 
     const hasAccess = await checkOrganizationAccess(supabase, id, ['owner', 'admin']);
     if (!hasAccess) {
@@ -36,7 +36,7 @@ export async function POST(
 ) {
   try {
     const { id } = await params;
-    const supabase = getServerOrganizationClient();
+    const supabase = await getServerOrganizationClient();
 
     // Check if user can invite
     const hasAccess = await checkOrganizationAccess(supabase, id, ['owner', 'admin']);
@@ -88,7 +88,7 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
-    const supabase = getServerOrganizationClient();
+    const supabase = await getServerOrganizationClient();
 
     const hasAccess = await checkOrganizationAccess(supabase, id, ['owner', 'admin']);
     if (!hasAccess) {

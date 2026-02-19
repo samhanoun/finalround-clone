@@ -5,7 +5,7 @@ import { requireEnv } from '@/lib/env';
 // GET /api/teams - List user's organizations
 export async function GET(request: NextRequest) {
   try {
-    const supabase = getServerOrganizationClient();
+    const supabase = await getServerOrganizationClient();
     const { data: { user } } = await supabase.auth.getUser();
 
     if (!user) {
@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
 // POST /api/teams - Create new organization
 export async function POST(request: NextRequest) {
   try {
-    const supabase = getServerOrganizationClient();
+    const supabase = await getServerOrganizationClient();
     const body = await request.json();
     const { name, slug, plan } = body;
 

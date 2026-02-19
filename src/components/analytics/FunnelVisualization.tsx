@@ -93,7 +93,7 @@ export function FunnelVisualization() {
               <XAxis type="number" tickFormatter={formatNumber} />
               <YAxis dataKey="name" type="category" width={100} />
               <Tooltip 
-                formatter={(value: number) => [value.toLocaleString(), 'Users']}
+                formatter={(value) => [Number(value).toLocaleString(), 'Users']}
                 contentStyle={{ borderRadius: '8px', border: '1px solid #e5e7eb' }}
               />
               <Bar dataKey="users" fill="#3b82f6" radius={[0, 4, 4, 0]} />

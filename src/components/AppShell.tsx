@@ -1,5 +1,7 @@
+'use client';
+
 import Link from 'next/link';
-import { createClient } from '@/lib/supabase/server';
+import { createClient } from '@/lib/supabase/browser';
 import { SignOutButton } from './SignOutButton';
 import { NotificationBell } from './NotificationBell';
 

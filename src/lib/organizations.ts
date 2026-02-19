@@ -81,8 +81,8 @@ export interface SAMLConnection {
 }
 
 // Helper to get server client
-export function getServerOrganizationClient() {
-  const cookieStore = cookies();
+export async function getServerOrganizationClient() {
+  const cookieStore = await cookies();
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -165,7 +165,7 @@ export async function getUserOrganizations(
     .eq('status', 'active');
 
   if (error) return [];
-  return data?.map(d => d.organizations).filter(Boolean) || [];
+  return data?.map((d: { organizations: Organization | null }) => d.organizations).filter(Boolean) || [];
 }
 
 // Team Members
@@ -183,15 +183,17 @@ export async function getOrganizationMembers(
   
   // If we have members, fetch their profile data
   if (data && data.length > 0) {
-    const userIds = data.map(m => m.user_id);
+    const userIds = data.map((m: { user_id: string }) => m.user_id);
     const { data: profiles } = await supabase
       .from('profiles')
       .select('id, email, full_name, avatar_url')
       .in('id', userIds);
     
-    const profileMap = new Map(profiles?.map(p => [p.id, p]) || []);
+    const profileMap = new Map<string, { id: string; email?: string; full_name?: string; avatar_url?: string }>(
+      profiles?.map((p: { id: string; email?: string; full_name?: string; avatar_url?: string }) => [p.id, p]) || []
+    );
     
-    return data.map(member => ({
+    return data.map((member: OrganizationMember) => ({
       ...member,
       user_email: profileMap.get(member.user_id)?.email,
       user_full_name: profileMap.get(member.user_id)?.full_name,
@@ -360,7 +362,7 @@ export async function getTeamStats(
     .eq('organization_id', organizationId);
 
   const totalMembers = members?.length || 0;
-  const activeMembers = members?.filter(m => m.status === 'active').length || 0;
+  const activeMembers = members?.filter((m: { status: string }) => m.status === 'active').length || 0;
 
   // Get pending invitations
   const { count: pendingInvitations } = await supabase
@@ -376,7 +378,7 @@ export async function getTeamStats(
     .select('user_id')
     .eq('organization_id', organizationId);
 
-  const userIds = orgMembers?.map(m => m.user_id) || [];
+  const userIds = orgMembers?.map((m: { user_id: string }) => m.user_id) || [];
   
   let totalInterviews = 0;
   let interviewsThisMonth = 0;

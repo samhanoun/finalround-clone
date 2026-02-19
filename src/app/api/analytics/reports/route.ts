@@ -33,7 +33,7 @@ export async function GET() {
       {
         id: '1',
         user_id: user.id,
-        report_type: 'weekly',
+        report_type: 'full',
         frequency: 'weekly',
         email: user.email || '',
         enabled: true,

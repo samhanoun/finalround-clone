@@ -35,13 +35,13 @@ const DEFAULT_METRICS: DashboardMetric[] = [
   { id: '6', name: 'Retention (Week 4)', value: 42, change: 3.2, changeType: 'positive', format: 'percent' },
 ];
 
-const TIME_SERIES_DATA = [
-  { date: '2024-01', users: 800, sessions: 1800, revenue: 4200 },
-  { date: '2024-02', users: 920, sessions: 2100, revenue: 5100 },
-  { date: '2024-03', users: 1050, sessions: 2500, revenue: 6300 },
-  { date: '2024-04', users: 1180, sessions: 2900, revenue: 7200 },
-  { date: '2024-05', users: 1250, sessions: 3200, revenue: 8100 },
-  { date: '2024-06', users: 1320, sessions: 3420, revenue: 8900 },
+const TIME_SERIES_DATA: TimeSeriesPoint[] = [
+  { date: '2024-01', value: 800 },
+  { date: '2024-02', value: 920 },
+  { date: '2024-03', value: 1050 },
+  { date: '2024-04', value: 1180 },
+  { date: '2024-05', value: 1250 },
+  { date: '2024-06', value: 1320 },
 ];
 
 const PIE_DATA = [
@@ -201,7 +201,7 @@ export function CustomDashboard({
                 outerRadius={80}
                 paddingAngle={5}
                 dataKey="value"
-                label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                label={({ name, percent }) => `${name} ${((percent || 0) * 100).toFixed(0)}%`}
               >
                 {PIE_DATA.map((entry, index) => (
                   <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />

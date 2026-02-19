@@ -128,7 +128,7 @@ export function CohortAnalysis() {
               <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
               <XAxis dataKey="name" tick={{ fontSize: 12 }} />
               <YAxis domain={[0, 100]} tickFormatter={(v) => `${v}%`} />
-              <Tooltip formatter={(value: number) => [`${value.toFixed(1)}%`, 'Retention']} />
+              <Tooltip formatter={(value) => [`${Number(value).toFixed(1)}%`, 'Retention']} />
               <Legend />
               {weekLabels.slice(0, 5).map((label, idx) => (
                 <Line 
