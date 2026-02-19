@@ -1,4 +1,4 @@
-# FinalRound Clone — AI Interview & Job Search Copilot Platform
+# Apex Round — AI Interview & Job Search Copilot Platform
 
 <p align="center">
   <a href="https://nextjs.org">
@@ -15,7 +15,7 @@
   </a>
 </p>
 
-> AI-powered interview preparation platform with real-time copilot, mock interviews, resume optimization, and job tracking.
+> AI-powered interview preparation platform with real-time copilot, mock interviews, resume optimization, and job tracking. **Your unfair advantage.**
 
 ## ✨ Features
 
@@ -40,8 +40,8 @@
 ### 1. Clone & Install
 
 ```bash
-git clone https://github.com/your-org/finalround-clone.git
-cd finalround-clone
+git clone https://github.com/your-org/apex-round.git
+cd apex-round
 npm install
 ```
 
@@ -109,7 +109,7 @@ Open [http://localhost:3000](http://localhost:3000)
 ## 📁 Project Structure
 
 ```
-finalround-clone/
+apex-round/
 ├── src/
 │   ├── app/                    # Next.js App Router
 │   │   ├── api/               # API routes

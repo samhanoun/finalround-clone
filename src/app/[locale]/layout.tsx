@@ -24,13 +24,13 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: 'FinalRound (MVP)',
-  description: 'Interview Copilot + Resume Builder (Next.js + Supabase)',
+  title: 'Apex Round',
+  description: 'Your unfair advantage. Interview Copilot + Resume Builder (Next.js + Supabase)',
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
-    title: 'FinalRound',
+    title: 'Apex Round',
   },
   icons: {
     icon: [
