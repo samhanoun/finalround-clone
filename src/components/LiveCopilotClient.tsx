@@ -4,33 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent a
 import styles from './LiveCopilotClient.module.css';
 import { formatCopilotActionError } from './liveCopilotDataControls';
 import { sloClient, SLO_TYPE_OVERLAY_INTERACTION, SLO_TYPE_TRANSCRIPT_TO_SUGGESTION, getStatusEmoji, formatLatency, type SLOCompliance, type SLOMetric } from '@/lib/sloClient';
-
-interface SpeechRecognitionAlternativeLite {
-  transcript: string;
-}
-
-interface SpeechRecognitionResultLite {
-  isFinal: boolean;
-  0: SpeechRecognitionAlternativeLite;
-}
-
-interface SpeechRecognitionEventLite extends Event {
-  results: ArrayLike<SpeechRecognitionResultLite>;
-  resultIndex?: number;
-}
-
-interface SpeechRecognitionLite extends EventTarget {
-  continuous: boolean;
-  interimResults: boolean;
-  lang: string;
-  start: () => void;
-  stop: () => void;
-  onresult: ((event: SpeechRecognitionEventLite) => void) | null;
-  onerror: ((event: Event) => void) | null;
-  onend: (() => void) | null;
-}
-
-type SpeechRecognitionCtor = new () => SpeechRecognitionLite;
+import { AudioSourcesPanel } from './copilot/AudioSourcesPanel';
+import { useAudioCapture } from './copilot/useAudioCapture';
 
 type CopilotMode = 'general' | 'coding' | 'phone' | 'video';
 
@@ -271,8 +246,7 @@ export function LiveCopilotClient() {
   const [submitting, setSubmitting] = useState(false);
   const [draftText, setDraftText] = useState('');
   const [draftSpeaker, setDraftSpeaker] = useState<'interviewer' | 'candidate'>('interviewer');
-  const [listening, setListening] = useState(false);
-  const [micPreview, setMicPreview] = useState('');
+  const audio = useAudioCapture();
   const [micSyncing, setMicSyncing] = useState(false);
   const [lastMicSyncAt, setLastMicSyncAt] = useState<string | null>(null);
   const [summary, setSummary] = useState<{ content: string; strengths: string[]; weaknesses: string[]; next_steps: string[] } | null>(null);
@@ -338,7 +312,6 @@ export function LiveCopilotClient() {
   const transcriptTimestampsRef = useRef<Map<string, number>>(new Map());
 
   const streamRef = useRef<EventSource | null>(null);
-  const recognitionRef = useRef<SpeechRecognitionLite | null>(null);
   const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const transcriptQueueRef = useRef<TranscriptChunkInput[]>([]);
   const transcriptFlushTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -355,8 +328,6 @@ export function LiveCopilotClient() {
         clearInterval(heartbeatRef.current);
         heartbeatRef.current = null;
       }
-      recognitionRef.current?.stop();
-      recognitionRef.current = null;
       transcriptQueueRef.current = [];
       if (transcriptFlushTimeoutRef.current) {
         clearTimeout(transcriptFlushTimeoutRef.current);
@@ -707,7 +678,6 @@ export function LiveCopilotClient() {
     setTranscript([]);
     setSuggestions([]);
     setSummary(null);
-    setMicPreview('');
     setLastMicSyncAt(null);
 
     try {
@@ -761,24 +731,12 @@ export function LiveCopilotClient() {
         clearTimeout(transcriptFlushTimeoutRef.current);
         transcriptFlushTimeoutRef.current = null;
       }
-      setMicPreview('');
       setMicSyncing(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to stop session');
     } finally {
       setSubmitting(false);
     }
-  }
-
-  function getSpeechRecognitionCtor(): SpeechRecognitionCtor | null {
-    if (typeof window === 'undefined') return null;
-
-    const withSpeech = window as Window & {
-      SpeechRecognition?: SpeechRecognitionCtor;
-      webkitSpeechRecognition?: SpeechRecognitionCtor;
-    };
-
-    return withSpeech.SpeechRecognition ?? withSpeech.webkitSpeechRecognition ?? null;
   }
 
   const flushTranscriptQueue = useCallback(async () => {
@@ -863,75 +821,11 @@ export function LiveCopilotClient() {
     }
   }, [flushTranscriptQueue, isActive, session?.id]);
 
-  const startListening = useCallback(() => {
-    if (!session?.id || !isActive) return;
-
-    const Ctor = getSpeechRecognitionCtor();
-    if (!Ctor) {
-      setError('Browser speech recognition not supported. Use manual transcript input.');
-      return;
-    }
-
-    setError(null);
-    const recognition = new Ctor();
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    recognition.lang = 'en-US';
-
-    recognition.onresult = (event) => {
-      const finalChunks: string[] = [];
-      const interimChunks: string[] = [];
-      const startIndex = Number.isInteger(event.resultIndex) ? (event.resultIndex as number) : 0;
-
-      for (let i = startIndex; i < event.results.length; i += 1) {
-        const result = event.results[i];
-        const alt = result[0];
-        const nextText = alt?.transcript?.trim();
-        if (!nextText) continue;
-
-        if (result.isFinal) {
-          finalChunks.push(nextText);
-        } else {
-          interimChunks.push(nextText);
-        }
-      }
-
-      setMicPreview(interimChunks.join(' ').trim());
-
-      for (const text of finalChunks) {
-        enqueueTranscriptChunk({
-          speaker: draftSpeaker,
-          text,
-          isFinal: true,
-          autoSuggest: draftSpeaker === 'interviewer',
-          clientTimestamp: new Date().toISOString(),
-        });
-      }
-    };
-
-    recognition.onerror = () => {
-      setError('Mic transcription failed. You can continue with manual input.');
-      setListening(false);
-      setMicPreview('');
-    };
-
-    recognition.onend = () => {
-      setListening(false);
-      setMicPreview('');
-    };
-
-    recognition.start();
-    recognitionRef.current = recognition;
-    setListening(true);
-  }, [draftSpeaker, enqueueTranscriptChunk, isActive, session?.id]);
-
-  const stopListening = useCallback(() => {
-    recognitionRef.current?.stop();
-    recognitionRef.current = null;
-    setListening(false);
-    setMicPreview('');
-    void flushTranscriptQueue();
-  }, [flushTranscriptQueue]);
+  // Release the mic and the shared tab as soon as the session stops or expires.
+  const stopAudio = audio.stop;
+  useEffect(() => {
+    if (!isActive) stopAudio();
+  }, [isActive, stopAudio]);
 
   const submitTranscriptEvent = useCallback(async () => {
     if (!session?.id || !draftText.trim() || submitting) return;
@@ -1001,10 +895,11 @@ export function LiveCopilotClient() {
 
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'm') {
         event.preventDefault();
-        if (listening) {
-          stopListening();
-        } else {
-          startListening();
+        // The keypress counts as the user gesture the screen-share prompt needs.
+        if (audio.status === 'live') {
+          audio.stop();
+        } else if (audio.status !== 'starting') {
+          void audio.start();
         }
       }
 
@@ -1016,7 +911,7 @@ export function LiveCopilotClient() {
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [activePanel, isActive, listening, session?.id, startListening, stopListening, submitTranscriptEvent, submitting]);
+  }, [activePanel, audio, isActive, session?.id, submitTranscriptEvent, submitting]);
 
   function injectFillerLine() {
     setDraftSpeaker('candidate');
@@ -1605,11 +1500,13 @@ export function LiveCopilotClient() {
             </section>
           )}
 
+          <AudioSourcesPanel capture={audio} disabled={!isActive} />
+
           <div className={styles.composerCard}>
             <div className={styles.composerHeader}>
               <h3 className={styles.sectionTitle}>Transcript composer</h3>
               <div className={styles.chipRow}>
-                <span className="badge">Mic {listening ? 'on' : 'off'}</span>
+                <span className="badge">Audio {audio.status === 'live' ? 'live' : 'off'}</span>
                 <span className="badge">{micSyncing ? 'Transcribing…' : 'Synced'}</span>
                 {lastMicSyncAt ? <span className="small mono">{new Date(lastMicSyncAt).toLocaleTimeString()}</span> : null}
               </div>
@@ -1620,7 +1517,7 @@ export function LiveCopilotClient() {
                 value={draftSpeaker}
                 onChange={(e) => setDraftSpeaker(e.target.value as 'interviewer' | 'candidate')}
                 disabled={!isActive || submitting}
-                aria-label="Transcript speaker"
+                aria-label="Speaker for the typed line"
               >
                 <option value="interviewer">Interviewer</option>
                 <option value="candidate">Candidate</option>
@@ -1632,9 +1529,6 @@ export function LiveCopilotClient() {
                 disabled={!isActive || !draftText.trim() || submitting}
               >
                 {submitting && isActive ? 'Sending…' : 'Send line'}
-              </button>
-              <button className="button" type="button" onClick={listening ? stopListening : startListening} disabled={!isActive || submitting}>
-                {listening ? 'Stop mic' : 'Start mic'}
               </button>
               <button className="button" type="button" onClick={injectFillerLine} disabled={!isActive || submitting}>
                 Add 10-sec filler
@@ -1653,13 +1547,8 @@ export function LiveCopilotClient() {
               disabled={!isActive || submitting}
             />
             <p className="small" style={{ margin: 0 }}>
-              Shortcuts: Ctrl/Cmd+Enter send · Ctrl/Cmd+M mic toggle · Ctrl/Cmd+K focus composer
+              Shortcuts: Ctrl/Cmd+Enter send · Ctrl/Cmd+M start/stop listening · Ctrl/Cmd+K focus composer
             </p>
-            {listening ? (
-              <p className="small" style={{ margin: 0 }}>
-                Live mic preview: {micPreview || 'Listening…'}
-              </p>
-            ) : null}
           </div>
 
           {error ? <div className="error" role="status" aria-live="polite">{error}</div> : null}

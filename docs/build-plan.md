@@ -161,6 +161,12 @@ Size: **S** ≤ 1 day · **M** 2–3 days · **L** 4+ days. Every step ends with
 - New hook `src/components/copilot/useAudioCapture.ts`. Remove the Web Speech path and the manual speaker dropdown from [`LiveCopilotClient.tsx`](../src/components/LiveCopilotClient.tsx).
 - ✅ **Done when:** in a Meet call in a Chrome tab, level meters move independently for you and the interviewer.
 
+> **Status (2026-10-19): built; the real-call check is still yours.**
+> - Added [`capture.ts`](../src/lib/audio/capture.ts), [`pcm16-capture-worklet.js`](../public/worklets/pcm16-capture-worklet.js), [`useAudioCapture`](../src/components/copilot/useAudioCapture.ts) and [`AudioSourcesPanel`](../src/components/copilot/AudioSourcesPanel.tsx) with two level meters. The share prompt is requested before the mic, because Chrome only allows it straight from the click. Capture stops when the session ends or the user stops sharing.
+> - Web Speech removed. Deviation from the plan: the speaker dropdown stays, but only for typed lines (the "10-sec filler" button needs it to send a line as the candidate).
+> - Verified: 17 new unit tests (worklet DSP, meter math, capture flow with mocked browser APIs). The worklet also ran in headless Chromium's real audio engine: 16 kHz output from both 16 kHz and 48 kHz contexts, 50 ms frames, channels independent. Full suite 231/231, `tsc` and `next build` pass.
+> - Not verified: the real share prompt in a live Meet call. Expect one lint warning (`enqueueTranscriptChunk` unused) until Step 2 feeds STT finals into it.
+
 ### Step 2: Streaming STT (M)
 
 - New `src/app/api/stt/token/route.ts`: authenticated route that mints a **short-lived** Deepgram token server-side so the API key never reaches the browser (rate-limited, checks an active session and quota). 🔶 Check the current Deepgram docs for the temporary-token endpoint and the browser WebSocket auth method.
