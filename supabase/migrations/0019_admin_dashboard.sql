@@ -89,66 +89,98 @@ alter table public.fraud_flags enable row level security;
 alter table public.daily_usage_stats enable row level security;
 alter table public.admin_users enable row level security;
 
--- Support tickets policies
-create policy "support_tickets_select_authenticated" on public.support_tickets
+-- Admin checks run as the function owner so policies that consult admin_users
+-- don't recurse into admin_users' own RLS.
+create or replace function public.is_admin()
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select exists (select 1 from public.admin_users where user_id = auth.uid());
+$$;
+
+create or replace function public.is_super_admin()
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select exists (select 1 from public.admin_users where user_id = auth.uid() and role = 'super_admin');
+$$;
+
+revoke execute on function public.is_admin() from public, anon;
+revoke execute on function public.is_super_admin() from public, anon;
+grant execute on function public.is_admin() to authenticated;
+grant execute on function public.is_super_admin() to authenticated;
+
+-- Support tickets policies (owner or admin)
+create policy "support_tickets_select_own_or_admin" on public.support_tickets
 for select to authenticated
-using (true);
+using (user_id = (select auth.uid()) or (select public.is_admin()));
 
-create policy "support_tickets_insert_authenticated" on public.support_tickets
+create policy "support_tickets_insert_own" on public.support_tickets
 for insert to authenticated
-with check (true);
+with check (user_id = (select auth.uid()));
 
-create policy "support_tickets_update_authenticated" on public.support_tickets
+create policy "support_tickets_update_own_or_admin" on public.support_tickets
 for update to authenticated
-using (true);
+using (user_id = (select auth.uid()) or (select public.is_admin()))
+with check (user_id = (select auth.uid()) or (select public.is_admin()));
 
--- Support messages policies
-create policy "support_messages_select_authenticated" on public.support_messages
+-- Support messages policies (ticket owner or admin)
+create policy "support_messages_select_own_or_admin" on public.support_messages
 for select to authenticated
-using (true);
+using (
+  (select public.is_admin())
+  or exists (
+    select 1 from public.support_tickets t
+    where t.id = ticket_id and t.user_id = (select auth.uid())
+  )
+);
 
-create policy "support_messages_insert_authenticated" on public.support_messages
+create policy "support_messages_insert_own_or_admin" on public.support_messages
 for insert to authenticated
-with check (true);
+with check (
+  (select public.is_admin())
+  or (
+    user_id = (select auth.uid())
+    and is_from_admin = false
+    and exists (
+      select 1 from public.support_tickets t
+      where t.id = ticket_id and t.user_id = (select auth.uid())
+    )
+  )
+);
 
 -- Fraud flags policies (admin only)
 create policy "fraud_flags_select_admin" on public.fraud_flags
 for select to authenticated
-using (
-  exists (select 1 from public.admin_users where user_id = auth.uid())
-);
+using ((select public.is_admin()));
 
 create policy "fraud_flags_update_admin" on public.fraud_flags
 for update to authenticated
-using (
-  exists (select 1 from public.admin_users where user_id = auth.uid())
-);
+using ((select public.is_admin()));
 
 create policy "fraud_flags_insert_admin" on public.fraud_flags
 for insert to authenticated
-with check (
-  exists (select 1 from public.admin_users where user_id = auth.uid())
-);
+with check ((select public.is_admin()));
 
 -- Daily usage stats (admin only)
 create policy "daily_usage_stats_select_admin" on public.daily_usage_stats
 for select to authenticated
-using (
-  exists (select 1 from public.admin_users where user_id = auth.uid())
-);
+using ((select public.is_admin()));
 
 -- Admin users (self + admin)
 create policy "admin_users_select" on public.admin_users
 for select to authenticated
-using (
-  exists (select 1 from public.admin_users where user_id = auth.uid())
-);
+using (user_id = (select auth.uid()) or (select public.is_admin()));
 
 create policy "admin_users_insert" on public.admin_users
 for insert to authenticated
-with check (
-  exists (select 1 from public.admin_users where user_id = auth.uid() and role = 'super_admin')
-);
+with check ((select public.is_super_admin()));
 
 -- Updated_at triggers
 drop trigger if exists set_support_tickets_updated_at on public.support_tickets;

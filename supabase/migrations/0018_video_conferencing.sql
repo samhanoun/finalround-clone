@@ -135,15 +135,11 @@ for all to authenticated
 using (user_id = auth.uid())
 with check (user_id = auth.uid());
 
--- Video sessions policies
+-- Video sessions policies (the `for all` policies below also cover reads)
 create policy "video_sessions_crud_own" on public.video_sessions
 for all to authenticated
 using (user_id = auth.uid())
 with check (user_id = auth.uid());
-
-create policy "video_sessions_read_own" on public.video_sessions
-for read to authenticated
-using (user_id = auth.uid());
 
 -- Audio events policies
 create policy "video_audio_events_crud_own" on public.video_audio_events
@@ -151,19 +147,11 @@ for all to authenticated
 using (user_id = auth.uid())
 with check (user_id = auth.uid());
 
-create policy "video_audio_events_read_own" on public.video_audio_events
-for read to authenticated
-using (user_id = auth.uid());
-
 -- Screen share events policies
 create policy "video_screen_share_events_crud_own" on public.video_screen_share_events
 for all to authenticated
 using (user_id = auth.uid())
 with check (user_id = auth.uid());
-
-create policy "video_screen_share_events_read_own" on public.video_screen_share_events
-for read to authenticated
-using (user_id = auth.uid());
 
 -- Indexes
 create index if not exists video_conferencing_settings_user_id_idx

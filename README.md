@@ -85,16 +85,7 @@ supabase db push
 
 1. Go to [Supabase Dashboard](https://supabase.com/dashboard)
 2. Open **SQL Editor**
-3. Run migrations in order from `supabase/migrations/`:
-   - `0001_init.sql`
-   - `0002_mvp_spec.sql`
-   - `0003_pro_plan_quotas.sql`
-   - `0004_stripe_billing.sql`
-   - `0005_subscription_sync.sql`
-   - `0006_storage_resumes_policies.sql`
-   - `0007_copilot_foundation.sql`
-   - `0008_free_plan_limits.sql`
-   - `0008_interview_questions_reports.sql`
+3. Run every file in `supabase/migrations/` in filename order (`0001_init.sql` through `0022_integrations.sql`). Each version number is unique, so `supabase db push` applies the same order.
 
 ### 4. Run Development Server
 

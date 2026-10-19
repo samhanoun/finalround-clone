@@ -7,7 +7,9 @@ import { requireEnv } from '@/lib/env';
 // Handle internationalization
 const intlMiddleware = createMiddleware(routing);
 
-export async function middleware(request: NextRequest) {
+// Next 16 "proxy" (formerly middleware). It must live in src/ because the app
+// router is in src/app; at the repo root it was never loaded.
+export async function proxy(request: NextRequest) {
   // Run intl middleware first for locale routing
   const intlResponse = intlMiddleware(request);
   

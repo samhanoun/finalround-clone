@@ -1,14 +1,23 @@
 'use client';
 
 import Link from 'next/link';
+import { useEffect, useState } from 'react';
+import type { User } from '@supabase/supabase-js';
 import { createClient } from '@/lib/supabase/browser';
 import { SignOutButton } from './SignOutButton';
 import { NotificationBell } from './NotificationBell';
 
-export async function AppShell(props: { title?: string; children: React.ReactNode }) {
-  const supabase = await createClient();
-  const { data } = await supabase.auth.getUser();
-  const user = data.user;
+export function AppShell(props: { title?: string; children: React.ReactNode }) {
+  const [user, setUser] = useState<User | null>(null);
+
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getUser().then(({ data }) => setUser(data.user));
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+    return () => subscription.unsubscribe();
+  }, []);
 
   return (
     <div>

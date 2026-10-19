@@ -26,6 +26,8 @@ add column if not exists parse_error text;
 create index if not exists resume_documents_user_version_idx on public.resume_documents(user_id, version desc);
 
 -- Create index for generations with job description
-create index if not exists resume_generations_job_desc_idx on public.resume_generations using gin(job_description);
+-- Plain text has no default GIN operator class, so index the full-text vector instead.
+create index if not exists resume_generations_job_desc_idx on public.resume_generations
+  using gin (to_tsvector('english', coalesce(job_description, '')));
 
 -- Update RLS policies if needed (they should still work with new columns)

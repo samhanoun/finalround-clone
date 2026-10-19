@@ -38,7 +38,15 @@ const RawEnvSchema = z.object({
   CRON_SECRET: z.string().min(32).optional(),
 });
 
-export const env = RawEnvSchema.parse({
+// `KEY=` lines in .env files arrive as '', which would fail the min(1)/url()
+// checks at import time; treat them as unset instead.
+function blankToUndefined<T extends Record<string, string | undefined>>(values: T): T {
+  return Object.fromEntries(
+    Object.entries(values).map(([key, value]) => [key, value?.trim() === '' ? undefined : value]),
+  ) as T;
+}
+
+export const env = RawEnvSchema.parse(blankToUndefined({
   NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
   NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
   NEXT_PUBLIC_BETA_LIVE_COPILOT: process.env.NEXT_PUBLIC_BETA_LIVE_COPILOT,
@@ -60,7 +68,7 @@ export const env = RawEnvSchema.parse({
   UPSTASH_REDIS_REST_TOKEN: process.env.UPSTASH_REDIS_REST_TOKEN,
 
   CRON_SECRET: process.env.CRON_SECRET,
-});
+}));
 
 export function requireEnv(name: keyof typeof env): string {
   const val = env[name];

@@ -53,7 +53,8 @@ const nextConfig: NextConfig = {
           },
           {
             key: 'Permissions-Policy',
-            value: 'camera=(), microphone=(), geolocation=()',
+            // The live copilot captures the mic and the meeting tab's audio (getDisplayMedia).
+            value: 'camera=(), microphone=(self), display-capture=(self), geolocation=()',
           },
           {
             key: 'Cache-Control',
@@ -63,16 +64,8 @@ const nextConfig: NextConfig = {
           },
         ],
       },
-      {
-        // Static assets can be cached aggressively
-        source: '/_next/static/:path*',
-        headers: [
-          {
-            key: 'Cache-Control',
-            value: 'public, max-age=31536000, immutable',
-          },
-        ],
-      },
+      // /_next/static is left to Next.js: it already serves hashed production
+      // assets as immutable, and forcing that in dev pins stale chunks.
       {
         // Images can be cached for a long time
         source: '/:path*.(:glob).(:ext)',
