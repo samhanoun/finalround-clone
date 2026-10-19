@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { requireAdmin } from '@/lib/adminAuth';
+import { MANAGE_ROLES, requireAdmin } from '@/lib/adminAuth';
 
 export async function GET(request: NextRequest) {
   try {
@@ -64,7 +64,7 @@ export async function GET(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   try {
-    const auth = await requireAdmin();
+    const auth = await requireAdmin(MANAGE_ROLES);
     if (!auth.ok) return auth.response;
 
     const supabase = createAdminClient();

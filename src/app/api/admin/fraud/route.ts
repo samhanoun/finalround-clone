@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { requireAdmin } from '@/lib/adminAuth';
+import { MANAGE_ROLES, requireAdmin } from '@/lib/adminAuth';
 
 export async function GET(request: NextRequest) {
   try {
-    const auth = await requireAdmin();
+    const auth = await requireAdmin(MANAGE_ROLES);
     if (!auth.ok) return auth.response;
 
     const supabase = createAdminClient();
@@ -91,12 +91,12 @@ export async function GET(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   try {
-    const auth = await requireAdmin();
+    const auth = await requireAdmin(MANAGE_ROLES);
     if (!auth.ok) return auth.response;
 
     const supabase = createAdminClient();
     const body = await request.json();
-    const { flag_id, action, data, resolved_by } = body;
+    const { flag_id, action, data } = body;
 
     if (!flag_id || !action) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
@@ -108,7 +108,7 @@ export async function PATCH(request: NextRequest) {
           .from('fraud_flags')
           .update({ 
             resolved: true,
-            resolved_by: resolved_by,
+            resolved_by: auth.userId,
             resolved_at: new Date().toISOString()
           })
           .eq('id', flag_id);
@@ -180,7 +180,7 @@ export async function PATCH(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const auth = await requireAdmin();
+    const auth = await requireAdmin(MANAGE_ROLES);
     if (!auth.ok) return auth.response;
 
     const supabase = createAdminClient();

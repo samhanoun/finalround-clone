@@ -4,6 +4,9 @@ import { createClient } from '@/lib/supabase/server';
 
 export type AdminRole = 'admin' | 'super_admin' | 'support_agent';
 
+/** Roles allowed to change users, subscriptions and fraud data. support_agent is read/tickets only. */
+export const MANAGE_ROLES: AdminRole[] = ['admin', 'super_admin'];
+
 export type AdminCheck =
   | { ok: true; userId: string; role: AdminRole }
   | { ok: false; response: NextResponse };

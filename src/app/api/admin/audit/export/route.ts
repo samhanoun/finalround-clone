@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAdmin } from '@/lib/adminAuth';
+import { MANAGE_ROLES, requireAdmin } from '@/lib/adminAuth';
 import { exportAuditLogs, AuditAction, AuditResourceType } from '@/lib/audit';
 
 export async function GET(request: NextRequest) {
   try {
-    const auth = await requireAdmin();
+    const auth = await requireAdmin(MANAGE_ROLES);
     if (!auth.ok) return auth.response;
 
     const { searchParams } = new URL(request.url);
