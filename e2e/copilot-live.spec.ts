@@ -12,8 +12,10 @@ import { ANSWER_PIECES, KEYS, PORTS, QUESTION, RESUME, USER } from './fakes/conf
  */
 
 const REAL = process.env.E2E_REAL === '1';
-const EMAIL = REAL ? process.env.E2E_EMAIL ?? '' : USER.email;
-const PASSWORD = REAL ? process.env.E2E_PASSWORD ?? '' : USER.password;
+// Real mode signs in as the test user from the environment (see e2e/README.md).
+const login = REAL
+  ? { email: process.env.E2E_EMAIL ?? '', secret: process.env.E2E_PASSWORD ?? '' }
+  : { email: USER.email, secret: USER.password };
 
 const fake = {
   supabase: `http://127.0.0.1:${PORTS.supabase}`,
@@ -49,13 +51,13 @@ test.describe('live copilot loop', () => {
   });
 
   test('interviewer audio → transcript → question → streamed answer', async ({ page, request }) => {
-    test.skip(REAL && (!EMAIL || !PASSWORD), 'E2E_REAL=1 needs E2E_EMAIL and E2E_PASSWORD for a test user.');
+    test.skip(REAL && (!login.email || !login.secret), 'E2E_REAL=1 needs a test user in the environment (see e2e/README.md).');
 
     // Sign in and land on the live page.
     await page.goto('/en/auth?next=/en/copilot/live');
     const form = page.getByRole('form', { name: 'Auth form' });
-    await form.getByLabel('Email').fill(EMAIL);
-    await form.getByLabel('Password').fill(PASSWORD);
+    await form.getByLabel('Email').fill(login.email);
+    await form.getByLabel('Password').fill(login.secret);
     await form.getByRole('button', { name: 'Login' }).click();
     await page.waitForURL('**/copilot/live');
 
