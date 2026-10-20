@@ -95,6 +95,8 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000)
 
+`npm run dev` starts a custom Node server (`server.ts`) that runs Next.js and the live speech-to-text relay on one port. Use `npm run dev:next` for plain Next.js without live transcription.
+
 ---
 
 ## 📁 Project Structure
@@ -245,17 +247,17 @@ npm test -- rateLimit.test.ts
 
 ## 🚢 Deployment
 
-### Vercel (Recommended)
+### Node host (required for live transcription)
 
-1. Push code to GitHub
-2. Import project in Vercel
-3. Configure environment variables
-4. Deploy
+Live transcription streams audio through a WebSocket relay in the custom server (`server.ts`), so deploy to a host that runs a long-lived Node process (Render, Fly.io, Railway, a VPS or Docker). Vercel doesn't run custom servers.
 
 ```bash
-# Or deploy via CLI
-vercel deploy --prod
+npm ci
+npm run build   # Next.js build + compiles server.ts into .server/
+npm start       # serves on $PORT (default 3000)
 ```
+
+Also set `DEEPGRAM_API_KEY` (ideally a member-role key in a dedicated Deepgram project with a spending cap).
 
 ### Environment Variables for Production
 

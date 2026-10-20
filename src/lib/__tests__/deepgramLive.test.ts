@@ -1,14 +1,9 @@
-import {
-  LiveTranscriber,
-  SttTokenError,
-  type LiveSttStatus,
-  type SttToken,
-  type TranscriptResult,
-} from '@/lib/stt/deepgramLive';
+import { LiveTranscriber, type LiveSttStatus, type TranscriptResult } from '@/lib/stt/deepgramLive';
+import { RELAY_CLOSE } from '@/lib/stt/relayProtocol';
 import type { CaptureFrame } from '@/lib/audio/capture';
 
 const FRAME_SAMPLES = 800; // 50 ms at 16 kHz
-const TOKEN: SttToken = { token: 'tmp-token', listenUrl: 'wss://example.test/v1/listen?channels=2' };
+const RELAY_URL = 'ws://localhost:3000/api/stt/stream?session=7f1c2a9e-3b4d-4c5e-8f60-1a2b3c4d5e6f';
 
 class FakeSocket {
   static instances: FakeSocket[] = [];
@@ -20,10 +15,7 @@ class FakeSocket {
   onclose: ((event: CloseEvent) => void) | null = null;
   onerror: ((event: Event) => void) | null = null;
 
-  constructor(
-    readonly url: string,
-    readonly protocols: string[],
-  ) {
+  constructor(readonly url: string) {
     FakeSocket.instances.push(this);
   }
 
@@ -46,9 +38,9 @@ class FakeSocket {
     this.onmessage?.({ data: JSON.stringify(message) } as MessageEvent);
   }
 
-  drop(code = 1006) {
+  drop(code = 1006, reason = '') {
     this.readyState = 3;
-    this.onclose?.({ code, reason: '' } as CloseEvent);
+    this.onclose?.({ code, reason } as CloseEvent);
   }
 
   /** First sample of each audio frame sent; test frames carry their id there. */
@@ -85,11 +77,11 @@ async function flush() {
   await jest.advanceTimersByTimeAsync(0);
 }
 
-function setup(getToken: () => Promise<SttToken> = async () => TOKEN, options: Record<string, unknown> = {}) {
+function setup(getUrl: () => string = () => RELAY_URL, options: Record<string, unknown> = {}) {
   const transcriber = new LiveTranscriber({
-    getToken,
+    getUrl,
     random: () => 0,
-    createSocket: (url, protocols) => new FakeSocket(url, protocols),
+    createSocket: (url) => new FakeSocket(url),
     ...options,
   });
   const statuses: Array<[LiveSttStatus, string | null]> = [];
@@ -109,7 +101,7 @@ afterEach(() => {
 });
 
 describe('LiveTranscriber', () => {
-  it('opens one socket with the short-lived token and flushes audio captured while connecting', async () => {
+  it('opens one socket to the relay (no credentials in the browser) and flushes audio captured while connecting', async () => {
     const { transcriber, statuses } = setup();
     transcriber.start();
     transcriber.sendFrame(frame(1));
@@ -117,8 +109,7 @@ describe('LiveTranscriber', () => {
     await flush();
 
     const socket = FakeSocket.instances[0];
-    expect(socket.url).toBe(TOKEN.listenUrl);
-    expect(socket.protocols).toEqual(['bearer', 'tmp-token']);
+    expect(socket.url).toBe(RELAY_URL);
     expect(socket.binaryType).toBe('arraybuffer');
 
     socket.open();
@@ -191,8 +182,8 @@ describe('LiveTranscriber', () => {
   });
 
   it('reconnects after a drop, replays only unfinalized audio and drops words already delivered', async () => {
-    const getToken = jest.fn(async () => TOKEN);
-    const { transcriber, statuses, received } = setup(getToken);
+    const getUrl = jest.fn(() => RELAY_URL);
+    const { transcriber, statuses, received } = setup(getUrl);
     transcriber.start();
     await flush();
     const first = FakeSocket.instances[0];
@@ -210,7 +201,7 @@ describe('LiveTranscriber', () => {
     transcriber.sendFrame(frame(21));
 
     await jest.advanceTimersByTimeAsync(250);
-    expect(getToken).toHaveBeenCalledTimes(2);
+    expect(getUrl).toHaveBeenCalledTimes(2);
     const second = FakeSocket.instances[1];
     second.open();
     expect(statuses.at(-1)?.[0]).toBe('live');
@@ -262,50 +253,60 @@ describe('LiveTranscriber', () => {
     expect(received.map((r) => r.text)).toEqual(['Next', 'question.']);
   });
 
-  it('stops for good when the server refuses a token', async () => {
-    const getToken = jest.fn(async () => {
-      throw new SttTokenError('quota', false);
-    });
-    const { transcriber, statuses } = setup(getToken);
+  it.each([
+    [RELAY_CLOSE.quotaExceeded, 'You have used all your copilot minutes for now.'],
+    [RELAY_CLOSE.sessionEnded, 'This copilot session has ended or expired.'],
+    [RELAY_CLOSE.unauthorized, 'You were signed out. Sign in again to keep transcribing.'],
+    [RELAY_CLOSE.replaced, 'Live transcription moved to another tab or window.'],
+  ])('stops for good when the relay closes with %i', async (code, message) => {
+    const { transcriber, statuses } = setup();
     transcriber.start();
     await flush();
-    await jest.advanceTimersByTimeAsync(10_000);
-
-    expect(getToken).toHaveBeenCalledTimes(1);
-    expect(statuses.at(-1)).toEqual(['error', 'quota']);
-    expect(FakeSocket.instances).toHaveLength(0);
-  });
-
-  it('keeps retrying while the token request fails because the network is down', async () => {
-    let calls = 0;
-    const getToken = jest.fn(async () => {
-      calls += 1;
-      if (calls < 9) throw new SttTokenError('offline', true);
-      return TOKEN;
-    });
-    const { transcriber } = setup(getToken);
-    transcriber.start();
-    await flush();
-    await jest.advanceTimersByTimeAsync(60_000);
-
-    expect(getToken).toHaveBeenCalledTimes(9);
-    expect(transcriber.getStatus()).toBe('connecting');
     FakeSocket.instances[0].open();
-    expect(transcriber.getStatus()).toBe('live');
+    FakeSocket.instances[0].drop(code, 'reason from server');
+    await jest.advanceTimersByTimeAsync(30_000);
+
+    expect(FakeSocket.instances).toHaveLength(1);
+    expect(statuses.at(-1)).toEqual(['error', message]);
   });
 
-  it('gives up after Deepgram refuses the socket several times in a row', async () => {
-    const getToken = jest.fn(async () => TOKEN);
-    const { transcriber, statuses } = setup(getToken, { maxRejectedConnects: 3 });
+  it('reconnects when the relay reports a Deepgram failure', async () => {
+    const { transcriber, statuses } = setup();
     transcriber.start();
-    for (let attempt = 0; attempt < 3; attempt++) {
+    await flush();
+    FakeSocket.instances[0].open();
+    FakeSocket.instances[0].drop(RELAY_CLOSE.upstreamFailed);
+    expect(statuses.at(-1)?.[0]).toBe('reconnecting');
+
+    await jest.advanceTimersByTimeAsync(250);
+    expect(FakeSocket.instances).toHaveLength(2);
+  });
+
+  it('waits the longest backoff when the relay rate-limits reconnects', async () => {
+    const { transcriber } = setup();
+    transcriber.start();
+    await flush();
+    FakeSocket.instances[0].drop(RELAY_CLOSE.rateLimited);
+
+    await jest.advanceTimersByTimeAsync(7_999);
+    expect(FakeSocket.instances).toHaveLength(1);
+    await jest.advanceTimersByTimeAsync(1);
+    expect(FakeSocket.instances).toHaveLength(2);
+  });
+
+  it('keeps retrying while the server is unreachable (Wi-Fi down)', async () => {
+    const { transcriber, statuses } = setup();
+    transcriber.start();
+    for (let attempt = 0; attempt < 12; attempt++) {
       await flush();
-      FakeSocket.instances[attempt].drop(1006);
-      await jest.advanceTimersByTimeAsync(10_000);
+      FakeSocket.instances[attempt].drop(1006); // never opened
+      await jest.advanceTimersByTimeAsync(8_000);
     }
 
-    expect(getToken).toHaveBeenCalledTimes(3);
-    expect(statuses.at(-1)?.[0]).toBe('error');
+    expect(FakeSocket.instances.length).toBeGreaterThanOrEqual(12);
+    expect(statuses.at(-1)).toEqual(['connecting', "Can't reach the live transcription server. Reconnecting…"]);
+    FakeSocket.instances.at(-1)!.open();
+    expect(transcriber.getStatus()).toBe('live');
   });
 
   it('asks Deepgram to flush on stop, delivers the last results, then closes', async () => {

@@ -25,7 +25,7 @@ const RawEnvSchema = z.object({
   COPILOT_GATE_MODEL: z.string().min(1).optional(),
   COPILOT_ANSWER_MODEL: z.string().min(1).optional(),
 
-  // Speech-to-text (server-only; browsers get short-lived tokens)
+  // Speech-to-text (server-only; used by the STT relay in server.ts)
   DEEPGRAM_API_KEY: z.string().min(1).optional(),
   DEEPGRAM_MODEL: z.string().regex(/^[a-z0-9._-]+$/i).optional(),
   DEEPGRAM_LANGUAGE: z.string().regex(/^[a-z]{2,3}(-[a-z0-9]{2,8})?$|^multi$/i).optional(),

@@ -184,6 +184,19 @@ Size: **S** ≤ 1 day · **M** 2–3 days · **L** 4+ days. Every step ends with
 > - Not verified: real Deepgram (`DEEPGRAM_API_KEY` is empty in `.env.local`), the ~300 ms interim and ≤ 1 s final targets, and a 60-minute call.
 > - Blockers for that test: the **free plan has 0 copilot minutes**, so starting a session needs a Pro `subscriptions` row, and Pro's per-session cap is **30 minutes**, below the 60-minute acceptance run. Raise the cap or test with a custom plan.
 > - Known gaps: words spoken in the second before you press Stop session can be dropped (the transcript queue clears when the session ends); `@deepgram/sdk` is now unused and can be removed from `package.json`.
+> - **Security follow-up: resolved 2026-10-20 with a server-side relay.** A security review found two problems with sending Deepgram tokens to the browser:
+>   1. A token is only checked when the socket opens, so a modified client could keep streaming after its session ended or its minutes ran out.
+>   2. Deepgram's temporary tokens work on `/listen`, `/speak`, `/read` and `/agent` with any parameters (confirmed in Deepgram's docs).
+>
+>   **The fix:** audio now goes browser → our server → Deepgram, and `/api/stt/token` is gone.
+>   - **Where it runs:** you chose a custom Node server. [`server.ts`](../server.ts) runs Next.js and the relay on one port, `npm run dev` and `npm start` use it (`npm run dev:next` is plain Next with no transcription), and it is built with `tsc -p tsconfig.server.json` into `.server/`. **It can't run on Vercel**: deploy to a Node host such as Render, Fly, Railway or Docker.
+>   - **Connecting:** [`sttRelay.ts`](../src/server/sttRelay.ts) checks the Origin header and the Supabase session cookie. The user must own the session, which must be active with a fresh heartbeat and consent; minutes must be left; and each user is limited to 12 connections a minute. Only then does it open Deepgram, with our key and fixed parameters.
+>   - **While streaming:** the browser can send only PCM16 audio and `KeepAlive` / `Finalize` / `CloseStream`. The relay re-checks the session every 15 s and the quota every 60 s, and closes the stream when either fails. A newer connection for the same session replaces the older one, and Deepgram is closed the moment the browser goes away.
+>   - **Browser:** [`relayProtocol.ts`](../src/lib/stt/relayProtocol.ts) defines the close codes, and the client shows a message and stops for final ones (signed out, session ended, quota, replaced, not configured). For everything else it reconnects with replay; it now retries indefinitely while the server is unreachable.
+>   - **Dependencies:** `ws` was added to `package.json`. It was already installed (via `@deepgram/sdk`), so nothing was downloaded.
+>   - **Verified:** 16 relay tests on real sockets (fake Deepgram), plus updated client tests: 292/292. The custom server runs in dev and production. Through it, the relay closed with `4503 stt_not_configured` (keys empty) and `4400` for a foreign Origin, HMR sockets still reach Next, and all pages hydrate with no console errors.
+>   - **Not verified:** a real Deepgram stream through the relay (needs `DEEPGRAM_API_KEY` and `SUPABASE_SERVICE_ROLE_KEY`, plus a signed-in session).
+>   - **Still recommended:** a dedicated Deepgram project with a member-role key and a spending cap.
 
 ### Step 3: Question gate (M)
 
@@ -191,6 +204,20 @@ Size: **S** ≤ 1 day · **M** 2–3 days · **L** 4+ days. Every step ends with
 - Your own design, not FRAI's: also add **Answer now** (button + `Space`/`A` while the answer window is focused) and **supersede** (a new question aborts the in-flight answer via `AbortController`).
 - Unit tests in `src/lib/__tests__/questionGate.test.ts` with a corpus of real interview utterances, including non-questions like "great, thanks" and "let me share my screen".
 - ✅ **Done when:** on the test corpus, it answers ≥ 90% of real questions and ≤ 10% of non-questions.
+
+> **Status (2026-10-20): built; the corpus target is met; not yet tried in a real call.**
+> - [`questionGate.ts`](../src/lib/copilot/questionGate.ts) scores each interviewer utterance. Signals: a final `?`, wh- and yes/no question forms, and interview prompts ("tell me about", "walk me through", "how would you", "given an array…", "design a…", "I'd love to hear…"). Short follow-ups such as "Why?" or "How so?" also count. It says no to call logistics ("can you hear me", "you're on mute"), small talk, understanding checks ("does that make sense") and acknowledgements. Score ≥ 0.6 answers, ≤ 0.3 skips, and anything in between goes to the classifier.
+> - It also gives a category (behavioral / technical / coding / system_design / other) for Step 4's prompt.
+> - Turns: interviewer lines less than 4 s apart form one turn, and the question sent includes up to 3 of the turn's lines for context. If a short line without `?` fired and the next line finishes it ("Tell me about a time" / "you disagreed…"), it fires again with the whole question. A complete question followed by a remark or filler does not re-fire. The candidate speaking ends the turn.
+> - Classifier: new `POST /api/copilot/sessions/[id]/gate` (owner, active session, consent, rate-limited). It uses `COPILOT_GATE_MODEL`, default `gpt-4o-mini`, with JSON output, a 1.5 s server timeout and no retries. The client gives it 600 ms. On timeout, failure or no key, lines scoring ≥ 0.45 are still answered.
+> - Answer now: a button plus the **A** key (ignored while typing). It answers the current interviewer turn plus any words still being spoken, or the last turn if the candidate has started answering. **Space** waits for Step 5's answer window, where it won't fight page scrolling.
+> - Supersede: [`answerController.ts`](../src/lib/copilot/answerController.ts) keeps one answer in flight, and a newer question or Answer now aborts the previous one via `AbortController`. Stop cancels.
+> - To make abort real I added a small JSON route, `POST /api/copilot/sessions/[id]/answer`. It passes the request's abort signal to the OpenAI call and saves nothing once aborted. **Step 4 turns this route into the streaming one** instead of creating a new file.
+> - STT lines are now saved with `autoSuggest: false`; only the gate (or Answer now) asks for answers. The live page shows a "Current question" card, and suggestion cards show the question they answer.
+> - Small fix on the way: the SSE stream appended events without de-duplicating, so one arriving in both a POST response and the stream showed twice.
+> - Corpus: [`questionGate.test.ts`](../src/lib/__tests__/questionGate.test.ts) has 60 interviewer questions and 40 non-questions in Deepgram style, some missing their `?`. Heuristic only: **59/60 questions answered (98%)** and **0/40 non-questions answered**; 6/60 categories differ from my labels (the test allows 15%). The miss is "What happens when the database becomes the bottleneck" without a `?`, exactly the kind of line the classifier is for. I wrote the corpus while tuning the rules, so treat these numbers as optimistic until real calls add lines.
+> - Verified: 40 new tests (gate, corpus, controller, both routes, card). Full suite 282/282, `tsc`, `next build`, ESLint 0 errors. Pages hydrate with no console errors, and the new routes return 401 when signed out.
+> - Not verified: classifier and answer quality against OpenAI (`OPENAI_API_KEY` is empty), and the gate on live speech.
 
 ### Step 4: Streaming answer route + context pack (M)
 

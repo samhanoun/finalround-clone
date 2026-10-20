@@ -2,8 +2,8 @@ import { render, screen } from '@testing-library/react';
 import React from 'react';
 import { AudioSourcesPanel } from '@/components/copilot/AudioSourcesPanel';
 import type { AudioCapture } from '@/components/copilot/useAudioCapture';
-import { fetchSttToken, type LiveTranscription } from '@/components/copilot/useLiveTranscription';
-import { SttTokenError } from '@/lib/stt/deepgramLive';
+import type { LiveTranscription } from '@/components/copilot/useLiveTranscription';
+import { sttStreamUrl } from '@/lib/stt/relayProtocol';
 
 function capture(status: AudioCapture['status']): AudioCapture {
   return {
@@ -60,44 +60,13 @@ describe('AudioSourcesPanel with live transcription', () => {
   });
 });
 
-describe('fetchSttToken', () => {
-  function respond(status: number, body: unknown) {
-    global.fetch = jest.fn().mockResolvedValue({ ok: status < 400, status, json: async () => body }) as unknown as typeof fetch;
-  }
-
-  async function failure(): Promise<SttTokenError> {
-    try {
-      await fetchSttToken('session-1');
-    } catch (e) {
-      return e as SttTokenError;
-    }
-    throw new Error('expected fetchSttToken to fail');
-  }
-
-  it('returns the token and listen URL', async () => {
-    respond(200, { token: 't', listenUrl: 'wss://x', expiresIn: 30 });
-    await expect(fetchSttToken('session-1')).resolves.toEqual({ token: 't', listenUrl: 'wss://x', expiresIn: 30 });
-    expect(global.fetch).toHaveBeenCalledWith('/api/stt/token', expect.objectContaining({ method: 'POST', body: '{"sessionId":"session-1"}' }));
+describe('sttStreamUrl', () => {
+  it('points at the relay on the same host as the page, with wss on https', () => {
+    expect(sttStreamUrl('abc', { protocol: 'https:', host: 'app.example.com' })).toBe('wss://app.example.com/api/stt/stream?session=abc');
+    expect(sttStreamUrl('abc', { protocol: 'http:', host: 'localhost:3000' })).toBe('ws://localhost:3000/api/stt/stream?session=abc');
   });
 
-  it('gives up with a readable message on permanent errors', async () => {
-    respond(503, { error: 'stt_not_configured' });
-    const error = await failure();
-    expect(error.retryable).toBe(false);
-    expect(error.message).toMatch(/DEEPGRAM_API_KEY/);
-
-    respond(403, { error: 'quota_exceeded' });
-    expect((await failure()).retryable).toBe(false);
-  });
-
-  it('retries on rate limits, server errors and network failures', async () => {
-    respond(429, { error: 'rate_limited' });
-    expect((await failure()).retryable).toBe(true);
-
-    respond(502, { error: 'stt_token_failed' });
-    expect((await failure()).retryable).toBe(true);
-
-    global.fetch = jest.fn().mockRejectedValue(new TypeError('Failed to fetch')) as unknown as typeof fetch;
-    expect((await failure()).retryable).toBe(true);
+  it('encodes the session id', () => {
+    expect(sttStreamUrl('a b&c', { protocol: 'http:', host: 'h' })).toBe('ws://h/api/stt/stream?session=a%20b%26c');
   });
 });

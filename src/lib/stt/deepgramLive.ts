@@ -5,8 +5,12 @@
  * channel 0 = candidate and channel 1 = interviewer, and Deepgram's
  * `multichannel` results say which channel they belong to.
  *
+ * Audio goes through our relay (src/server/sttRelay.ts), which holds the
+ * Deepgram key and ends the stream when the session stops or runs out of
+ * minutes; its close codes say when reconnecting can't help.
+ *
  * Reliability:
- * - Every (re)connect fetches a fresh short-lived token from our server.
+ * - Reconnects with backoff for as long as the server can't be reached.
  * - The last few seconds of audio stay in a ring buffer. After a reconnect we
  *   replay everything Deepgram hadn't finalized yet, then drop any words that
  *   were already final, so a Wi-Fi blip neither loses nor repeats speech.
@@ -17,23 +21,12 @@
 
 import type { CaptureFrame, CaptureLevels, CaptureSource } from '@/lib/audio/capture';
 import { hasSignal } from '@/lib/audio/levels';
+import { FATAL_CLOSE_MESSAGES, RELAY_CLOSE } from './relayProtocol';
 
 export type SpeakerRole = CaptureSource;
 
 /** Channel index → speaker. Matches the capture worklet's channel order. */
 export const CHANNEL_ROLES: readonly SpeakerRole[] = ['candidate', 'interviewer'];
-
-export type SttToken = { token: string; listenUrl: string; expiresIn?: number };
-
-export class SttTokenError extends Error {
-  readonly retryable: boolean;
-
-  constructor(message: string, retryable: boolean) {
-    super(message);
-    this.name = 'SttTokenError';
-    this.retryable = retryable;
-  }
-}
 
 export type TranscriptResult = {
   role: SpeakerRole;
@@ -61,7 +54,8 @@ type SocketLike = Pick<WebSocket, 'readyState' | 'send' | 'close' | 'binaryType'
 };
 
 export type LiveTranscriberOptions = {
-  getToken: () => Promise<SttToken>;
+  /** The relay URL for this session (see sttStreamUrl). */
+  getUrl: () => string;
   sampleRate?: number;
   /** Seconds of audio kept for replay after a reconnect. */
   bufferSeconds?: number;
@@ -69,11 +63,9 @@ export type LiveTranscriberOptions = {
   keepAliveMs?: number;
   /** A channel that had speech and has been quiet this long triggers Finalize. */
   finalizeAfterQuietMs?: number;
-  /** Consecutive connects Deepgram refuses (token minted, socket never opened) before giving up. */
-  maxRejectedConnects?: number;
   /** Max time to wait for Deepgram's last results after CloseStream. */
   closeTimeoutMs?: number;
-  createSocket?: (url: string, protocols: string[]) => SocketLike;
+  createSocket?: (url: string) => SocketLike;
   now?: () => number;
   random?: () => number;
 };
@@ -98,23 +90,20 @@ const CHANNELS = 2;
 const BACKOFF_MS = [250, 500, 1_000, 2_000, 4_000, 8_000];
 
 export class LiveTranscriber {
-  private readonly getToken: () => Promise<SttToken>;
+  private readonly getUrl: () => string;
   private readonly sampleRate: number;
   private readonly bufferSamples: number;
   private readonly keepAliveMs: number;
   private readonly finalizeAfterQuietMs: number;
-  private readonly maxRejectedConnects: number;
   private readonly closeTimeoutMs: number;
-  private readonly createSocket: (url: string, protocols: string[]) => SocketLike;
+  private readonly createSocket: (url: string) => SocketLike;
   private readonly now: () => number;
   private readonly random: () => number;
 
   private status: LiveSttStatus = 'idle';
   private socket: SocketLike | null = null;
-  private connectSeq = 0;
   /** Consecutive reconnects without a final result; drives the backoff. */
   private attempt = 0;
-  private rejections = 0;
   private everLive = false;
   private stopping = false;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -142,15 +131,13 @@ export class LiveTranscriber {
   private readonly statusListeners = new Set<(status: LiveSttStatus, error: string | null) => void>();
 
   constructor(options: LiveTranscriberOptions) {
-    this.getToken = options.getToken;
+    this.getUrl = options.getUrl;
     this.sampleRate = options.sampleRate ?? 16000;
     this.bufferSamples = Math.round((options.bufferSeconds ?? 10) * this.sampleRate);
     this.keepAliveMs = options.keepAliveMs ?? 4_000;
     this.finalizeAfterQuietMs = options.finalizeAfterQuietMs ?? 600;
-    this.maxRejectedConnects = options.maxRejectedConnects ?? 5;
     this.closeTimeoutMs = options.closeTimeoutMs ?? 2_000;
-    this.createSocket =
-      options.createSocket ?? ((url, protocols) => new WebSocket(url, protocols) as unknown as SocketLike);
+    this.createSocket = options.createSocket ?? ((url) => new WebSocket(url) as unknown as SocketLike);
     this.now = options.now ?? (() => Date.now());
     this.random = options.random ?? (() => Math.random());
   }
@@ -162,7 +149,7 @@ export class LiveTranscriber {
   start(): void {
     if (this.status !== 'idle') return;
     this.keepAliveTimer = setInterval(() => this.keepAlive(), this.keepAliveMs);
-    void this.connect();
+    this.connect();
   }
 
   /** Feed one capture frame. Safe to call while (re)connecting: frames wait in the ring buffer. */
@@ -209,7 +196,6 @@ export class LiveTranscriber {
       socket.send(JSON.stringify({ type: 'CloseStream' }));
       this.closeTimer = setTimeout(() => socket.close(1000), this.closeTimeoutMs);
     } else {
-      this.connectSeq += 1; // abandon a connect in flight
       this.socket = null;
       socket?.close(1000);
       this.finishStop();
@@ -237,38 +223,21 @@ export class LiveTranscriber {
     return () => this.statusListeners.delete(listener);
   }
 
-  private async connect(): Promise<void> {
-    const seq = ++this.connectSeq;
+  private connect(): void {
     this.setStatus(this.everLive ? 'reconnecting' : 'connecting');
-
-    let token: SttToken;
-    try {
-      token = await this.getToken();
-    } catch (e) {
-      if (seq !== this.connectSeq || this.stopping) return;
-      if (e instanceof SttTokenError && !e.retryable) {
-        this.fail(e.message);
-        return;
-      }
-      this.scheduleReconnect(e instanceof Error ? e.message : 'Could not reach the transcription service.');
-      return;
-    }
-    if (seq !== this.connectSeq || this.stopping) return;
 
     let socket: SocketLike;
     try {
-      socket = this.createSocket(token.listenUrl, ['bearer', token.token]);
+      socket = this.createSocket(this.getUrl());
     } catch (e) {
-      this.handleRejectedConnect(e instanceof Error ? e.message : 'Could not open the transcription connection.');
+      this.fail(e instanceof Error ? e.message : 'Could not open the transcription connection.');
       return;
     }
     socket.binaryType = 'arraybuffer';
     this.socket = socket;
-    let opened = false;
 
     socket.onopen = () => {
       if (this.socket !== socket) return;
-      opened = true;
       this.handleOpen();
     };
     socket.onmessage = (event) => {
@@ -278,7 +247,7 @@ export class LiveTranscriber {
     socket.onclose = (event) => {
       if (this.socket !== socket) return;
       this.socket = null;
-      this.handleClose(event, opened);
+      this.handleClose(event);
     };
     // A close event always follows an error; handle everything there.
     socket.onerror = () => undefined;
@@ -286,7 +255,6 @@ export class LiveTranscriber {
 
   private handleOpen(): void {
     this.everLive = true;
-    this.rejections = 0;
     this.connectionBaseSample = null;
     this.deliveredUntilSec = this.finalizedUntil.map((sample) => sample / this.sampleRate);
     this.setStatus('live');
@@ -299,28 +267,26 @@ export class LiveTranscriber {
     }
   }
 
-  private handleClose(event: CloseEvent, opened: boolean): void {
+  private handleClose(event: CloseEvent): void {
     if (this.stopping) {
       this.finishStop();
       return;
     }
-    const reason = event.reason || `Transcription connection closed (${event.code}).`;
-    if (opened) this.scheduleReconnect(reason);
-    else this.handleRejectedConnect(reason);
-  }
-
-  /**
-   * We got a token but Deepgram refused the socket. Repeated refusals mean a
-   * configuration problem, not a network blip, so stop retrying. (When the
-   * network is down the token request fails first, and that retries forever.)
-   */
-  private handleRejectedConnect(reason: string): void {
-    this.rejections += 1;
-    if (this.rejections >= this.maxRejectedConnects) {
-      this.fail(`Live transcription could not connect: ${reason}`);
+    const fatal = FATAL_CLOSE_MESSAGES[event.code];
+    if (fatal) {
+      this.fail(fatal);
       return;
     }
-    this.scheduleReconnect(reason);
+    if (event.code === RELAY_CLOSE.rateLimited) {
+      this.attempt = Math.max(this.attempt, BACKOFF_MS.length - 1); // wait the longest backoff
+      this.scheduleReconnect('Too many reconnects in a minute; waiting before trying again.');
+      return;
+    }
+    this.scheduleReconnect(
+      event.code === RELAY_CLOSE.upstreamFailed
+        ? 'The transcription service dropped the stream. Reconnecting…'
+        : "Can't reach the live transcription server. Reconnecting…",
+    );
   }
 
   private scheduleReconnect(reason: string): void {
@@ -330,13 +296,12 @@ export class LiveTranscriber {
     const delay = Math.round(base * (1 + 0.2 * this.random()));
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
-      void this.connect();
+      this.connect();
     }, delay);
   }
 
   private fail(message: string): void {
     this.clearTimers();
-    this.connectSeq += 1;
     const socket = this.socket;
     this.socket = null;
     socket?.close(1000);
