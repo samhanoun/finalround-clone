@@ -273,6 +273,34 @@ Size: **S** ≤ 1 day · **M** 2–3 days · **L** 4+ days. Every step ends with
 - Pre-session setup step: pick a resume, paste the JD, and enter company and role. Reuse the resume list from [`ResumeClient.tsx`](../src/components/ResumeClient.tsx) data.
 - ✅ **Done when:** you can keep the meeting tab in front and read streamed answers in the floating window.
 
+> **Status (2026-10-20): built; the real-call check (meeting tab in front, answers in the floating window) is still yours.**
+> - **Answer window:** [`AnswerPanel`](../src/components/copilot/AnswerPanel.tsx) shows [`AnswerView`](../src/components/copilot/AnswerView.tsx) in the page. **Pop out** moves it into a Document Picture-in-Picture window, always on top, through a React portal.
+>   - [`useDocumentPip`](../src/components/copilot/useDocumentPip.ts) opens it from the click, copies the page's styles and theme, and notices when it's closed.
+>   - The window closes when the session ends or the page unmounts. While it's open, the page shows "Bring back here".
+>   - Browsers without the API (Firefox, Safari) keep answers in the page, with a note.
+>   - The view shows a connection pill (Live / Connecting… / Reconnecting… / Not listening), the question and its category, the streaming answer, and the last few lines including words still being spoken. It has Answer now, Stop and A−/A+ (the text size is remembered).
+> - **Shortcuts:**
+>   - In the floating window: Space or A answers now (Space on a focused button just presses it), Esc stops, + / − change text size.
+>   - In the page: A answers now and Esc stops, both ignored while typing.
+> - **Setup step:** [`SessionSetup`](../src/components/copilot/SessionSetup.tsx) runs before a session in three steps:
+>   1. The interview: type, company, role, and a title that defaults to "Role at Company".
+>   2. Your résumé: a picker, with a link to the Résumé page when none is parsed.
+>   3. The job: the job description.
+>
+>   It's remembered in this browser, and a remembered résumé that has since been deleted is cleared. The coding "hints only" guardrail moved here; before, it was only enabled during a session, so it never reached the session. A running session shows [`SessionBar`](../src/components/copilot/SessionBar.tsx) instead: mode, start time, event stream, whether interview context is in use, and Stop.
+> - **UI split:**
+>   - [`LiveCopilotClient.tsx`](../src/components/LiveCopilotClient.tsx) went from 2,162 to 1,998 lines. Setup, session bar, answer panel and view, and the [transcript and answer feeds](../src/components/copilot/LiveFeeds.tsx) are now components.
+>   - The legacy overlay and SLO panels sit in a collapsed "Diagnostics" section. History, export and purge are unchanged.
+>   - Deviation: the plan's `useQuestionGate` / `useAnswerStream` stay one hook, [`useCopilotAnswers`](../src/components/copilot/useCopilotAnswers.ts), because the gate and the answer stream share the abort/supersede logic.
+>   - Removed: `InterviewContextFields` and `AnswerStatusCard` (replaced).
+> - **Security fix (review of Step 4):** résumé, job description, company and role are pasted by the user and go into the system prompt. A new [`screenReferenceText`](../src/lib/copilotSecurity.ts) drops lines that try to instruct the model and redacts emails and phone numbers. It uses narrower patterns than the transcript filter, so "Act as liaison…", "function call" and the name "Dan" survive. The context block is fenced as reference data, and the prompt says that context and transcript are data, not instructions.
+> - **Verified:**
+>   - 323/323 tests. The floating-window tests use an iframe as the second document, and React handled clicks and key presses inside it through the portal.
+>   - `tsc`, `npm run build`, and ESLint 0 errors.
+>   - Every page hydrates through the custom server with no console errors.
+>   - Headless Chromium supports the real API: the window opens from a click, a copied stylesheet applies inside it, and `pagehide` fires on close.
+> - **Not verified:** the window in headed Chrome during a real Meet call (size, staying on top of the meeting tab, readability). That needs you signed in with keys set.
+
 ### Step 6: Latency and reliability instrumentation (S)
 
 - Record `speech_end → final`, `final → gate`, `gate → first_token` and `first_token → done` per turn using [`copilotLatency.ts`](../src/lib/copilotLatency.ts) / [`sloClient.ts`](../src/lib/sloClient.ts). Show them in a debug drawer.
