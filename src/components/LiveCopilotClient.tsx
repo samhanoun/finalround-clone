@@ -272,6 +272,7 @@ export function LiveCopilotClient() {
   const [draftSpeaker, setDraftSpeaker] = useState<'interviewer' | 'candidate'>('interviewer');
   const audio = useAudioCapture();
   const [micSyncing, setMicSyncing] = useState(false);
+  const [streamOpen, setStreamOpen] = useState(false);
   const [lastMicSyncAt, setLastMicSyncAt] = useState<string | null>(null);
   const [summary, setSummary] = useState<{ content: string; strengths: string[]; weaknesses: string[]; next_steps: string[] } | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
@@ -339,6 +340,7 @@ export function LiveCopilotClient() {
   const draftTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   const isActive = session?.status === 'active';
+  const currentSessionId = session?.id ?? null;
 
   useEffect(() => {
     return () => {
@@ -447,52 +449,56 @@ export function LiveCopilotClient() {
     }
   }, []);
 
-  const loadHistoryDetail = useCallback(async (sessionId: string) => {
+  // Bumped by the Retry button to fetch the selected session's detail again.
+  const [detailReload, setDetailReload] = useState(0);
+  const retryHistoryDetail = () => {
     setDetailLoading(true);
     setDetailError(null);
+    setDetailReload((n) => n + 1);
+  };
 
-    try {
-      const res = await fetch(`/api/copilot/sessions/${sessionId}`);
-      const json = (await res.json().catch(() => ({}))) as {
-        session?: CopilotSessionDetail;
-        events?: CopilotEvent[];
-        summaries?: CopilotSummary[];
-        error?: string;
-      };
-      if (!res.ok || !json.session) throw new Error(json.error ?? 'Failed to load session details');
+  const selectPanel = useCallback(
+    (panel: 'live' | 'analytics') => {
+      if (panel === activePanel) return;
+      setActivePanel(panel);
+      setSettingsError(null);
+      setSettingsSuccess(null);
+      if (panel === 'analytics') void loadHistory();
+    },
+    [activePanel, loadHistory],
+  );
 
-      setHistoryDetail({
-        session: json.session,
-        events: Array.isArray(json.events) ? json.events : [],
-        summaries: Array.isArray(json.summaries) ? json.summaries : [],
-      });
-    } catch (e) {
-      setDetailError(e instanceof Error ? e.message : 'Failed to load session details');
-      setHistoryDetail(null);
-    } finally {
-      setDetailLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (activePanel !== 'analytics') return;
-    void loadHistory();
-  }, [activePanel, loadHistory]);
-
+  // detailLoading is set when the selection changes (render-time block next to
+  // filteredHistorySessions) or by Retry; this only fetches.
   useEffect(() => {
     if (activePanel !== 'analytics' || !selectedHistoryId) return;
-    void loadHistoryDetail(selectedHistoryId);
-  }, [activePanel, selectedHistoryId, loadHistoryDetail]);
 
-  useEffect(() => {
-    setDeleteError(null);
-    setDeleteSuccess(null);
-  }, [selectedHistoryId]);
+    const loadDetail = async () => {
+      try {
+        const res = await fetch(`/api/copilot/sessions/${selectedHistoryId}`);
+        const json = (await res.json().catch(() => ({}))) as {
+          session?: CopilotSessionDetail;
+          events?: CopilotEvent[];
+          summaries?: CopilotSummary[];
+          error?: string;
+        };
+        if (!res.ok || !json.session) throw new Error(json.error ?? 'Failed to load session details');
 
-  useEffect(() => {
-    setSettingsError(null);
-    setSettingsSuccess(null);
-  }, [activePanel]);
+        setHistoryDetail({
+          session: json.session,
+          events: Array.isArray(json.events) ? json.events : [],
+          summaries: Array.isArray(json.summaries) ? json.summaries : [],
+        });
+      } catch (e) {
+        setDetailError(e instanceof Error ? e.message : 'Failed to load session details');
+        setHistoryDetail(null);
+      } finally {
+        setDetailLoading(false);
+      }
+    };
+
+    void loadDetail();
+  }, [activePanel, selectedHistoryId, detailReload]);
 
   // T4: Timer effect for overlay countdown
   useEffect(() => {
@@ -587,25 +593,10 @@ export function LiveCopilotClient() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [overlayVisible, updateSLOCompliance]);
 
+  // The legacy-summary fallback and loading flag are set when the inputs change
+  // (render-time block next to filteredHistorySessions); this only fetches.
   useEffect(() => {
-    if (activePanel !== 'analytics' || !selectedHistoryId) {
-      setHistoryReport(null);
-      setHistoryReportError(null);
-      setHistoryReportLoading(false);
-      setHistoryReportCopied(false);
-      return;
-    }
-
-    const fallbackSummary =
-      historyDetail?.session?.id === selectedHistoryId
-        ? historyDetail.summaries.find((item) => item.summary_type === 'mock_interview_report') ?? historyDetail.summaries[0] ?? null
-        : null;
-    const fallbackReport = fallbackSummary ? parseReportPayload(fallbackSummary.payload) : null;
-
-    setHistoryReport(fallbackReport ? { ...fallbackReport, source: 'legacy' } : null);
-    setHistoryReportError(null);
-    setHistoryReportCopied(false);
-    setHistoryReportLoading(true);
+    if (activePanel !== 'analytics' || !selectedHistoryId) return;
 
     let cancelled = false;
 
@@ -646,6 +637,7 @@ export function LiveCopilotClient() {
 
     const es = new EventSource(`/api/copilot/sessions/${sessionId}/stream`);
     streamRef.current = es;
+    setStreamOpen(true);
 
     es.addEventListener('connected', () => {
       setConnecting(false);
@@ -745,6 +737,7 @@ export function LiveCopilotClient() {
       setSession(json.session);
       streamRef.current?.close();
       streamRef.current = null;
+      setStreamOpen(false);
       stopHeartbeat();
       setConnecting(false);
       transcriptQueueRef.current = [];
@@ -761,7 +754,7 @@ export function LiveCopilotClient() {
   }
 
   const flushTranscriptQueue = useCallback(async () => {
-    if (!session?.id || !isActive) return;
+    if (!currentSessionId || !isActive) return;
     if (transcriptFlushInFlightRef.current) return;
 
     const queue = transcriptQueueRef.current;
@@ -771,12 +764,12 @@ export function LiveCopilotClient() {
     setMicSyncing(true);
 
     try {
-      while (queue.length > 0 && session?.id) {
+      while (queue.length > 0) {
         const batch = queue.splice(0, 8);
         // Track submission time for SLO
         const submitTime = Date.now();
-        
-        const res = await fetch(`/api/copilot/sessions/${session.id}/transcript`, {
+
+        const res = await fetch(`/api/copilot/sessions/${currentSessionId}/transcript`, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ chunks: batch }),
@@ -808,7 +801,7 @@ export function LiveCopilotClient() {
       transcriptFlushInFlightRef.current = false;
       setMicSyncing(false);
     }
-  }, [isActive, session?.id, updateSLOCompliance]);
+  }, [currentSessionId, isActive, updateSLOCompliance]);
 
   const enqueueTranscriptChunk = useCallback(
     (chunk: TranscriptChunkInput) => {
@@ -896,21 +889,22 @@ export function LiveCopilotClient() {
     return { label: transcription.status === 'reconnecting' ? 'Reconnecting…' : 'Connecting…', tone: 'warn' };
   }, [audio.status, transcription.status]);
 
+  // A flush still in flight when the session ends clears micSyncing itself;
+  // until then the badge reads it only while the session is active.
   useEffect(() => {
-    if (!isActive || !session?.id) {
+    if (!isActive || !currentSessionId) {
       transcriptQueueRef.current = [];
       if (transcriptFlushTimeoutRef.current) {
         clearTimeout(transcriptFlushTimeoutRef.current);
         transcriptFlushTimeoutRef.current = null;
       }
-      setMicSyncing(false);
       return;
     }
 
     if (transcriptQueueRef.current.length > 0) {
       void flushTranscriptQueue();
     }
-  }, [flushTranscriptQueue, isActive, session?.id]);
+  }, [flushTranscriptQueue, isActive, currentSessionId]);
 
   // Release the mic and the shared tab as soon as the session stops or expires.
   const stopAudio = audio.stop;
@@ -919,7 +913,7 @@ export function LiveCopilotClient() {
   }, [isActive, stopAudio]);
 
   const submitTranscriptEvent = useCallback(async () => {
-    if (!session?.id || !draftText.trim() || submitting) return;
+    if (!currentSessionId || !draftText.trim() || submitting) return;
 
     setError(null);
     setSubmitting(true);
@@ -928,7 +922,7 @@ export function LiveCopilotClient() {
     const transcriptSubmitTime = Date.now();
 
     try {
-      const res = await fetch(`/api/copilot/sessions/${session.id}/transcript`, {
+      const res = await fetch(`/api/copilot/sessions/${currentSessionId}/transcript`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
@@ -971,7 +965,7 @@ export function LiveCopilotClient() {
     } finally {
       setSubmitting(false);
     }
-  }, [addTypedLine, draftSpeaker, draftText, session?.id, submitting, updateSLOCompliance]);
+  }, [addTypedLine, currentSessionId, draftSpeaker, draftText, submitting, updateSLOCompliance]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -1263,16 +1257,47 @@ export function LiveCopilotClient() {
     });
   }, [historyModeFilter, historyQuery, historySessions]);
 
-  const selectedHistorySession = useMemo(
-    () => historySessions.find((item) => item.id === selectedHistoryId) ?? null,
-    [historySessions, selectedHistoryId],
-  );
+  const selectedHistorySession = historySessions.find((item) => item.id === selectedHistoryId) ?? null;
 
-  useEffect(() => {
-    if (!selectedHistoryId) return;
-    if (filteredHistorySessions.some((item) => item.id === selectedHistoryId)) return;
+  // Keep the selection inside the filtered list.
+  if (selectedHistoryId && !filteredHistorySessions.some((item) => item.id === selectedHistoryId)) {
     setSelectedHistoryId(filteredHistorySessions[0]?.id ?? null);
-  }, [filteredHistorySessions, selectedHistoryId]);
+  }
+
+  // Reset analytics state when the panel, selection or loaded detail changes
+  // (React's "adjust state when inputs change" pattern). The effects above only
+  // fetch the detail and the report.
+  const [historyInputs, setHistoryInputs] = useState({ panel: activePanel, id: selectedHistoryId, detail: historyDetail });
+  if (historyInputs.panel !== activePanel || historyInputs.id !== selectedHistoryId || historyInputs.detail !== historyDetail) {
+    const idChanged = historyInputs.id !== selectedHistoryId;
+    const viewChanged = idChanged || historyInputs.panel !== activePanel;
+    const viewing = activePanel === 'analytics' && selectedHistoryId !== null;
+    setHistoryInputs({ panel: activePanel, id: selectedHistoryId, detail: historyDetail });
+
+    if (idChanged) {
+      setDeleteError(null);
+      setDeleteSuccess(null);
+    }
+    if (viewChanged && viewing) {
+      setDetailLoading(true);
+      setDetailError(null);
+    }
+
+    if (!viewing) {
+      setHistoryReport(null);
+      setHistoryReportLoading(false);
+    } else {
+      const fallbackSummary =
+        historyDetail?.session?.id === selectedHistoryId
+          ? historyDetail.summaries.find((item) => item.summary_type === 'mock_interview_report') ?? historyDetail.summaries[0] ?? null
+          : null;
+      const fallbackReport = fallbackSummary ? parseReportPayload(fallbackSummary.payload) : null;
+      setHistoryReport(fallbackReport ? { ...fallbackReport, source: 'legacy' } : null);
+      setHistoryReportLoading(true);
+    }
+    setHistoryReportError(null);
+    setHistoryReportCopied(false);
+  }
 
   const historyInsights = useMemo(() => {
     if (!historyDetail) {
@@ -1326,7 +1351,7 @@ export function LiveCopilotClient() {
     };
   }, [historyDetail]);
 
-  const streamState = connecting ? 'Connecting…' : streamRef.current ? 'Connected' : 'Disconnected';
+  const streamState = connecting ? 'Connecting…' : streamOpen ? 'Connected' : 'Disconnected';
 
   const handlePanelTabKeyDown = useCallback(
     (event: ReactKeyboardEvent<HTMLDivElement>) => {
@@ -1336,19 +1361,19 @@ export function LiveCopilotClient() {
 
       if (event.key === 'ArrowRight') {
         event.preventDefault();
-        setActivePanel(panelOrder[(currentIndex + 1) % panelOrder.length]);
+        selectPanel(panelOrder[(currentIndex + 1) % panelOrder.length]);
       } else if (event.key === 'ArrowLeft') {
         event.preventDefault();
-        setActivePanel(panelOrder[(currentIndex - 1 + panelOrder.length) % panelOrder.length]);
+        selectPanel(panelOrder[(currentIndex - 1 + panelOrder.length) % panelOrder.length]);
       } else if (event.key === 'Home') {
         event.preventDefault();
-        setActivePanel(panelOrder[0]);
+        selectPanel(panelOrder[0]);
       } else if (event.key === 'End') {
         event.preventDefault();
-        setActivePanel(panelOrder[panelOrder.length - 1]);
+        selectPanel(panelOrder[panelOrder.length - 1]);
       }
     },
-    [activePanel],
+    [activePanel, selectPanel],
   );
 
   return (
@@ -1386,7 +1411,7 @@ export function LiveCopilotClient() {
               <h3 className={styles.sectionTitle}>Transcript composer</h3>
               <div className={styles.chipRow}>
                 <span className="badge">Audio {audio.status === 'live' ? 'live' : 'off'}</span>
-                <span className="badge">{micSyncing ? 'Transcribing…' : 'Synced'}</span>
+                <span className="badge">{micSyncing && isActive ? 'Transcribing…' : 'Synced'}</span>
                 {lastMicSyncAt ? <span className="small mono">{new Date(lastMicSyncAt).toLocaleTimeString()}</span> : null}
               </div>
             </div>
@@ -1613,7 +1638,7 @@ export function LiveCopilotClient() {
               tabIndex={activePanel === 'live' ? 0 : -1}
               aria-selected={activePanel === 'live'}
               aria-controls="copilot-panel-live"
-              onClick={() => setActivePanel('live')}
+              onClick={() => selectPanel('live')}
             >
               Live feed
             </button>
@@ -1625,7 +1650,7 @@ export function LiveCopilotClient() {
               tabIndex={activePanel === 'analytics' ? 0 : -1}
               aria-selected={activePanel === 'analytics'}
               aria-controls="copilot-panel-analytics"
-              onClick={() => setActivePanel('analytics')}
+              onClick={() => selectPanel('analytics')}
             >
               Analytics
             </button>
@@ -1868,7 +1893,7 @@ export function LiveCopilotClient() {
                 {selectedHistoryId && detailError ? (
                   <div className="stack" style={{ gap: 10 }}>
                     <div className="error">{detailError}</div>
-                    <button className="button" type="button" onClick={() => void loadHistoryDetail(selectedHistoryId)}>
+                    <button className="button" type="button" onClick={retryHistoryDetail}>
                       Retry loading details
                     </button>
                   </div>
