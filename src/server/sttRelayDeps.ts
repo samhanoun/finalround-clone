@@ -60,7 +60,12 @@ export function relayDepsFromEnv(env: NodeJS.ProcessEnv = process.env): RelayDep
     },
 
     openUpstream() {
-      const url = buildDeepgramListenUrl({ model: env.DEEPGRAM_MODEL, language: env.DEEPGRAM_LANGUAGE });
+      const url = buildDeepgramListenUrl({
+        model: env.DEEPGRAM_MODEL,
+        language: env.DEEPGRAM_LANGUAGE,
+        // End-to-end tests point this at a local fake.
+        endpoint: env.DEEPGRAM_LISTEN_URL || undefined,
+      });
       return new WebSocket(url, { headers: { Authorization: `Token ${deepgramKey}` } });
     },
 

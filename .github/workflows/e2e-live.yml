@@ -1,0 +1,104 @@
+name: E2E live loop
+
+# The live copilot loop end to end: fake interviewer audio → capture → STT relay
+# → transcript → question gate → streamed answer (e2e/copilot-live.spec.ts).
+#
+# - On every push and PR: against local fakes of Supabase, Deepgram and OpenAI.
+#   No secrets needed.
+# - Manually (Run workflow → real = true): against real services, using the
+#   E2E_* repository secrets listed in the `real` job.
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+  workflow_dispatch:
+    inputs:
+      real:
+        description: Run against real Supabase, Deepgram and OpenAI (needs the E2E_* secrets)
+        type: boolean
+        default: false
+
+concurrency:
+  group: e2e-live-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fakes:
+    name: Live loop (fake services)
+    if: ${{ github.event_name != 'workflow_dispatch' || !inputs.real }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Install Chromium for Playwright
+        run: npx playwright install --with-deps chromium
+
+      - name: Live loop
+        run: npx playwright test -c playwright.live.config.ts
+
+      - name: Upload report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-live-fakes
+          path: |
+            playwright-report
+            test-results
+          retention-days: 7
+
+  real:
+    name: Live loop (real services)
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.real }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      E2E_REAL: '1'
+      # A test user in a test Supabase project with copilot minutes available.
+      E2E_EMAIL: ${{ secrets.E2E_EMAIL }}
+      E2E_PASSWORD: ${{ secrets.E2E_PASSWORD }}
+      E2E_QUESTION_WAV: ${{ github.workspace }}/e2e/.artifacts/question.wav
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.E2E_SUPABASE_URL }}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.E2E_SUPABASE_ANON_KEY }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.E2E_SUPABASE_SERVICE_ROLE_KEY }}
+      DEEPGRAM_API_KEY: ${{ secrets.E2E_DEEPGRAM_API_KEY }}
+      OPENAI_API_KEY: ${{ secrets.E2E_OPENAI_API_KEY }}
+      LLM_PROVIDER: openai
+      NEXT_PUBLIC_BETA_LIVE_COPILOT: 'true'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Install Chromium for Playwright
+        run: npx playwright install --with-deps chromium
+
+      - name: Speak the test question (Deepgram text-to-speech)
+        run: |
+          mkdir -p "$(dirname "$E2E_QUESTION_WAV")"
+          curl -sSf -X POST "https://api.deepgram.com/v1/speak?model=aura-2-thalia-en&encoding=linear16&sample_rate=16000&container=wav" \
+            -H "Authorization: Token $DEEPGRAM_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d '{"text":"Tell me about a time you led a project. What was the hardest part?"}' \
+            -o "$E2E_QUESTION_WAV"
+
+      # No artifact upload here: traces and screenshots would hold the test
+      # user's password and live session tokens. The config turns them off for
+      # E2E_REAL=1, and the list reporter's log (secrets masked) is the record.
+      - name: Live loop
+        run: npx playwright test -c playwright.live.config.ts

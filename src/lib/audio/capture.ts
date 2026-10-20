@@ -97,8 +97,16 @@ export class DualAudioCapture {
   private readonly levelListeners = new Set<(levels: CaptureLevels) => void>();
   private readonly endedListeners = new Set<(source: CaptureSource) => void>();
 
-  constructor(options: { frameMs?: number } = {}) {
+  private readonly testMicAsInterviewer: boolean;
+
+  /**
+   * `testMicAsInterviewer` is for end-to-end tests only: the (fake) microphone
+   * plays the interviewer, no screen is shared, and the candidate channel stays
+   * silent. Chromium's --use-file-for-fake-audio-capture feeds that microphone.
+   */
+  constructor(options: { frameMs?: number; testMicAsInterviewer?: boolean } = {}) {
     this.frameMs = options.frameMs ?? DEFAULT_FRAME_MS;
+    this.testMicAsInterviewer = options.testMicAsInterviewer ?? false;
   }
 
   static isSupported(): boolean {
@@ -118,6 +126,10 @@ export class DualAudioCapture {
     if (this.context) return;
     if (!DualAudioCapture.isSupported()) {
       throw new CaptureError('unsupported', 'This browser cannot capture meeting audio. Use Chrome or Edge on a desktop computer.');
+    }
+    if (this.testMicAsInterviewer) {
+      await this.startTestMode();
+      return;
     }
 
     try {
@@ -195,14 +207,33 @@ export class DualAudioCapture {
     };
   }
 
-  private async buildGraph(mic: MediaStream, meetingTrack: MediaStreamTrack) {
+  private async startTestMode() {
+    try {
+      this.mic = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+      });
+    } catch {
+      throw new CaptureError('mic-denied', 'Microphone access was blocked.');
+    }
+    const [track] = this.mic.getAudioTracks();
+    try {
+      await this.buildGraph(null, track);
+    } catch (error) {
+      this.stop();
+      throw new CaptureError('audio-engine', `Could not start audio processing: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    track.addEventListener('ended', () => this.emitEnded('interviewer'));
+  }
+
+  /** A null mic leaves the candidate channel silent (test mode). */
+  private async buildGraph(mic: MediaStream | null, meetingTrack: MediaStreamTrack) {
     const context = createAudioContext();
     this.context = context;
     await context.audioWorklet.addModule(WORKLET_URL);
 
     // Merger inputs are mono, so a stereo meeting tab is downmixed automatically.
     const merger = context.createChannelMerger(2);
-    context.createMediaStreamSource(mic).connect(merger, 0, 0);
+    if (mic) context.createMediaStreamSource(mic).connect(merger, 0, 0);
     context.createMediaStreamSource(new MediaStream([meetingTrack])).connect(merger, 0, 1);
 
     const node = new AudioWorkletNode(context, WORKLET_NAME, {

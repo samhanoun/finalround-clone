@@ -335,6 +335,27 @@ Size: **S** ≤ 1 day · **M** 2–3 days · **L** 4+ days. Every step ends with
 - Replace the current shallow [`e2e/copilot.spec.ts`](../e2e/copilot.spec.ts) checks.
 - ✅ **Done when:** CI goes from fake audio question → transcript → answer tokens green.
 
+> **Status (2026-10-20): green locally (4 runs, one from a cold build); the CI workflow is written but hasn't run yet (nothing is pushed).**
+> - **The test:** [`e2e/copilot-live.spec.ts`](../e2e/copilot-live.spec.ts) drives the whole loop in Chromium:
+>   1. Sign in, fill the setup step (company, role, résumé, job description) and start a session.
+>   2. Start listening. Chromium's fake microphone plays a speech-like WAV; `NEXT_PUBLIC_E2E_FAKE_AUDIO=1` routes it to the interviewer channel and leaves yours silent. That mode only exists in development builds.
+>   3. Wait for "Transcribing", then the question, tagged Behavioral.
+>   4. Watch the answer stream in piece by piece and the status reach "first words in N ms".
+>   5. Check the Latency drawer, stop the session, and check the stop reason and latency summary.
+> - **Fakes** ([`e2e/fakes/`](../e2e/fakes)), so it runs with no secrets:
+>   - **Supabase:** auth plus the PostgREST subset over in-memory tables, user-scoped like RLS.
+>   - **Deepgram:** checks the server's key and only "hears" the scripted question after a second of interviewer audio.
+>   - **OpenAI:** streams a scripted answer.
+>
+>   The test also checks what reached each one: Deepgram got `Token <server key>`, audio on the interviewer channel and silence on yours; the model got the context pack and the question; the database got the transcript, the answer and the latency row.
+> - **Small app changes** to make it testable: `DEEPGRAM_LISTEN_URL` (a test-only endpoint override), `NEXT_DIST_DIR` (the e2e build goes to `.next-e2e`, so it runs beside `npm run dev`), and the capture test mode. OpenAI's SDK already honours `OPENAI_BASE_URL`.
+> - **CI** ([`.github/workflows/e2e-live.yml`](../.github/workflows/e2e-live.yml)): the fakes job runs on every push and PR. A manual `real = true` run uses the `E2E_*` secrets, generates the question audio with Deepgram text-to-speech, and runs the same spec with `E2E_REAL=1`.
+> - **Replaced:** the shallow `e2e/copilot.spec.ts` (it only checked that a heading, nav and main rendered). It now checks the signed-out page and that the copilot APIs refuse signed-out calls; both pass against the dev server.
+> - **Unit tests:** gate, PCM worklet maths, SSE parser and context pack were written in Steps 1–5. Added a test for the capture test mode. 343/343, `tsc`, build, ESLint 0 errors.
+> - **Found on the way:** the dev server compiles each route on first use, which can take longer than an answer may, so the spec warms the routes up first. Also, my fake Deepgram crashed on odd-offset buffers (a test bug), which took all the fakes down mid-run; fixed.
+> - **Security (from a review of this step):** real-services runs record no traces, screenshots or HTML report, and that CI job uploads no artifacts. Otherwise the test user's password and live session tokens would land in downloadable artifacts. The fakes job keeps its traces; they only hold fake credentials.
+> - **Not done:** the real-services job needs you to create a test Supabase user and add the `E2E_*` secrets before it can run.
+
 ### Step 8: Real-call validation (S) — *the MVP gate*
 
 Checklist, each run with a friend playing interviewer for 15+ minutes:

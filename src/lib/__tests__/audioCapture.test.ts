@@ -168,4 +168,18 @@ describe('DualAudioCapture', () => {
     expect(context?.close).toHaveBeenCalled();
     [...displayStream.getTracks(), ...micStream.getTracks()].forEach((track) => expect(track.stop).toHaveBeenCalled());
   });
+
+  it('end-to-end test mode: the (fake) mic plays the interviewer and no screen is shared', async () => {
+    const capture = new DualAudioCapture({ testMicAsInterviewer: true });
+    const ended: string[] = [];
+    capture.onEnded((source) => ended.push(source));
+    await capture.start();
+
+    expect(calls).toEqual(['mic']);
+    // Only the interviewer channel gets a source; the candidate channel stays silent.
+    expect(FakeAudioContext.last?.sources).toHaveLength(1);
+    micStream.getAudioTracks()[0].dispatchEvent(new Event('ended'));
+    expect(ended).toEqual(['interviewer']);
+    capture.stop();
+  });
 });

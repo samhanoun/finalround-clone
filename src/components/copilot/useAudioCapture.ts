@@ -12,6 +12,13 @@ export type AudioCapture = ReturnType<typeof useAudioCapture>;
  * subscriptions rather than React state so 20 updates a second don't re-render
  * the whole copilot page.
  */
+/**
+ * End-to-end tests only (e2e/copilot-live.spec.ts): the fake microphone plays
+ * the interviewer. Never true in a production build.
+ */
+const TEST_MIC_AS_INTERVIEWER =
+  process.env.NODE_ENV !== 'production' && process.env.NEXT_PUBLIC_E2E_FAKE_AUDIO === '1';
+
 export function useAudioCapture() {
   const captureRef = useRef<DualAudioCapture | null>(null);
   const frameListeners = useRef(new Set<(frame: CaptureFrame) => void>());
@@ -30,7 +37,7 @@ export function useAudioCapture() {
   // Call from a click/keydown handler: the screen-share prompt needs the user gesture.
   const start = useCallback(async () => {
     if (captureRef.current) return;
-    const capture = new DualAudioCapture();
+    const capture = new DualAudioCapture({ testMicAsInterviewer: TEST_MIC_AS_INTERVIEWER });
     captureRef.current = capture;
     setError(null);
     setEnded(null);

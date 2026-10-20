@@ -14,6 +14,9 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     // Compiled custom server (npm run build:server):
     ".server/**",
+    // End-to-end build output (playwright.live.config.ts):
+    ".next-e2e/**",
+    "e2e/.artifacts/**",
   ]),
 ]);
 

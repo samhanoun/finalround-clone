@@ -4,6 +4,9 @@ import type { NextConfig } from "next";
 const withNextIntl = createNextIntlPlugin('./src/i18n/request.ts');
 
 const nextConfig: NextConfig = {
+  // End-to-end runs build into their own folder so they can run beside `npm run dev`.
+  distDir: process.env.NEXT_DIST_DIR || '.next',
+
   // Enable compression (enabled by default in Next.js, but explicit is clearer)
   compress: true,
   

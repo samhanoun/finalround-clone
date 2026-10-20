@@ -10,6 +10,8 @@
 export const DEEPGRAM_LISTEN_ENDPOINT = 'wss://api.deepgram.com/v1/listen';
 
 export type DeepgramListenOptions = {
+  /** Tests only: a local fake instead of Deepgram. */
+  endpoint?: string;
   model?: string;
   language?: string;
   sampleRate?: number;
@@ -17,6 +19,7 @@ export type DeepgramListenOptions = {
 };
 
 export function buildDeepgramListenUrl({
+  endpoint = DEEPGRAM_LISTEN_ENDPOINT,
   model = 'nova-3',
   language = 'en',
   sampleRate = 16000,
@@ -39,5 +42,5 @@ export function buildDeepgramListenUrl({
     utterance_end_ms: '1000',
     vad_events: 'true',
   });
-  return `${DEEPGRAM_LISTEN_ENDPOINT}?${params.toString()}`;
+  return `${endpoint}?${params.toString()}`;
 }
