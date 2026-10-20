@@ -7,6 +7,8 @@ import { sloClient, SLO_TYPE_OVERLAY_INTERACTION, SLO_TYPE_TRANSCRIPT_TO_SUGGEST
 import { AudioSourcesPanel } from './copilot/AudioSourcesPanel';
 import { useAudioCapture } from './copilot/useAudioCapture';
 import { useLiveTranscription } from './copilot/useLiveTranscription';
+import { AnswerStatusCard } from './copilot/AnswerStatusCard';
+import { useCopilotAnswers, type AnswerEvent } from './copilot/useCopilotAnswers';
 import type { Utterance } from '@/lib/stt/utterances';
 
 type CopilotMode = 'general' | 'coding' | 'phone' | 'video';
@@ -222,6 +224,11 @@ function appendUniqueEvents(current: CopilotEvent[], incoming: CopilotEvent[]): 
   });
   if (additions.length === 0) return current;
   return [...current, ...additions];
+}
+
+function isTypingTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  return target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName);
 }
 
 function formatModeLabel(mode: string): string {
@@ -648,10 +655,11 @@ export function LiveCopilotClient() {
       if (!parsed) return;
 
       const next = parsed.payload;
+      // The same event can also arrive in a POST response; keep one copy.
       if (next.event_type === 'transcript') {
-        setTranscript((prev) => [...prev, next]);
+        setTranscript((prev) => appendUniqueEvents(prev, [next]));
       } else if (next.event_type === 'suggestion') {
-        setSuggestions((prev) => [...prev, next]);
+        setSuggestions((prev) => appendUniqueEvents(prev, [next]));
       }
     });
 
@@ -807,20 +815,30 @@ export function LiveCopilotClient() {
     [flushTranscriptQueue],
   );
 
-  // Every finished utterance is saved. Interviewer lines also ask for a
-  // suggestion; until the question gate (Step 3) decides properly, skip
-  // one- and two-word lines like "Okay." or "Great, thanks."
+  const addAnswer = useCallback((event: AnswerEvent) => {
+    setSuggestions((prev) => appendUniqueEvents(prev, [event]));
+  }, []);
+
+  const answers = useCopilotAnswers({
+    sessionId: isActive && session ? session.id : null,
+    onAnswer: addAnswer,
+  });
+
+  // Every finished utterance is saved as it is; the question gate decides
+  // which interviewer lines get an answer.
+  const observeUtterance = answers.observe;
   const handleUtterance = useCallback(
     (utterance: Utterance) => {
       enqueueTranscriptChunk({
         speaker: utterance.role,
         text: utterance.text,
         isFinal: true,
-        autoSuggest: utterance.role === 'interviewer' && utterance.text.split(/\s+/).length >= 3,
+        autoSuggest: false,
         clientTimestamp: new Date(utterance.completedAt).toISOString(),
       });
+      observeUtterance(utterance);
     },
-    [enqueueTranscriptChunk],
+    [enqueueTranscriptChunk, observeUtterance],
   );
 
   const transcription = useLiveTranscription({
@@ -828,6 +846,14 @@ export function LiveCopilotClient() {
     capture: audio,
     onUtterance: handleUtterance,
   });
+
+  const requestAnswerNow = answers.answerNow;
+  const interviewerCaption = transcription.captions.interviewer;
+  const answerNow = useCallback(() => {
+    if (!requestAnswerNow(interviewerCaption)) {
+      setError('There is no interviewer question to answer yet.');
+    }
+  }, [interviewerCaption, requestAnswerNow]);
 
   useEffect(() => {
     if (!isActive || !session?.id) {
@@ -931,11 +957,17 @@ export function LiveCopilotClient() {
         event.preventDefault();
         draftTextareaRef.current?.focus();
       }
+
+      // A = Answer now, unless the user is typing.
+      if (!event.metaKey && !event.ctrlKey && !event.altKey && event.key.toLowerCase() === 'a' && !isTypingTarget(event.target)) {
+        event.preventDefault();
+        answerNow();
+      }
     };
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [activePanel, audio, isActive, session?.id, submitTranscriptEvent, submitting]);
+  }, [activePanel, answerNow, audio, isActive, session?.id, submitTranscriptEvent, submitting]);
 
   function injectFillerLine() {
     setDraftSpeaker('candidate');
@@ -1129,6 +1161,7 @@ export function LiveCopilotClient() {
         id: item.id,
         text: asText(item.payload.text, asText(item.payload.content, '')).trim(),
         category: asText(item.payload.category, 'suggestion'),
+        question: asText(item.payload.question, '').trim(),
         followUp: asText(item.payload.follow_up, '').trim(),
         complexity: asText(item.payload.complexity, '').trim(),
         edgeCases: Array.isArray(item.payload.edge_cases)
@@ -1526,6 +1559,8 @@ export function LiveCopilotClient() {
 
           <AudioSourcesPanel capture={audio} transcription={transcription} disabled={!isActive} />
 
+          <AnswerStatusCard answers={answers} onAnswerNow={answerNow} disabled={!isActive} />
+
           <div className={styles.composerCard}>
             <div className={styles.composerHeader}>
               <h3 className={styles.sectionTitle}>Transcript composer</h3>
@@ -1672,6 +1707,11 @@ export function LiveCopilotClient() {
                         <span className="badge">{row.category}</span>
                         <span className="small mono">{new Date(row.created_at).toLocaleTimeString()}</span>
                       </div>
+                      {row.question ? (
+                        <p className="small" style={{ margin: 0 }}>
+                          <strong>Q:</strong> {row.question}
+                        </p>
+                      ) : null}
                       <p className={styles.feedText}>{row.text}</p>
                       {row.complexity ? (
                         <p className="small" style={{ margin: 0 }}>

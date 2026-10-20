@@ -1,0 +1,42 @@
+.card {
+  display: grid;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.title {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.question {
+  display: grid;
+  gap: 6px;
+  justify-items: start;
+}
+
+.questionText {
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.45;
+}
+
+.empty {
+  margin: 0;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}

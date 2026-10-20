@@ -21,6 +21,10 @@ const RawEnvSchema = z.object({
   DEFAULT_MODEL: z.string().min(1).optional(),
   FALLBACK_MODEL: z.string().min(1).optional(),
 
+  // Live copilot models (OpenAI model ids)
+  COPILOT_GATE_MODEL: z.string().min(1).optional(),
+  COPILOT_ANSWER_MODEL: z.string().min(1).optional(),
+
   // Speech-to-text (server-only; browsers get short-lived tokens)
   DEEPGRAM_API_KEY: z.string().min(1).optional(),
   DEEPGRAM_MODEL: z.string().regex(/^[a-z0-9._-]+$/i).optional(),
@@ -62,6 +66,9 @@ export const env = RawEnvSchema.parse(blankToUndefined({
   GOOGLE_GENERATIVE_AI_API_KEY: process.env.GOOGLE_GENERATIVE_AI_API_KEY,
   DEFAULT_MODEL: process.env.DEFAULT_MODEL,
   FALLBACK_MODEL: process.env.FALLBACK_MODEL,
+
+  COPILOT_GATE_MODEL: process.env.COPILOT_GATE_MODEL,
+  COPILOT_ANSWER_MODEL: process.env.COPILOT_ANSWER_MODEL,
 
   DEEPGRAM_API_KEY: process.env.DEEPGRAM_API_KEY,
   DEEPGRAM_MODEL: process.env.DEEPGRAM_MODEL,

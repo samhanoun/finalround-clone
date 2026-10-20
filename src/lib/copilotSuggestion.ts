@@ -61,6 +61,25 @@ export function buildSuggestionPrompt(args: SuggestionPromptInput): OpenAI.Chat.
   ];
 }
 
+/** The `copilot_events` payload for a suggestion, plus any extra fields. */
+export function suggestionEventPayload(
+  parsed: ParsedSuggestion,
+  extra: Record<string, unknown>,
+): Record<string, unknown> {
+  const payload: Record<string, unknown> = {
+    category: 'answer',
+    text: parsed.shortAnswer,
+    structured: parsed.structured,
+    ...extra,
+  };
+  if (parsed.talkingPoints.length > 0) payload.talking_points = parsed.talkingPoints;
+  if (parsed.followUp) payload.follow_up = parsed.followUp;
+  if (parsed.complexity) payload.complexity = parsed.complexity;
+  if (parsed.edgeCases?.length) payload.edge_cases = parsed.edgeCases;
+  if (parsed.checklist?.length) payload.checklist = parsed.checklist;
+  return payload;
+}
+
 export function parseSuggestionContent(content: string, mode: string): ParsedSuggestion {
   let parsed: Record<string, unknown> = {};
 
