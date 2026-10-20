@@ -1,5 +1,6 @@
 'use client';
 
+import { useSyncExternalStore } from 'react';
 import type { QuestionCategory } from '@/lib/copilot/questionGate';
 import type { CopilotAnswers } from './useCopilotAnswers';
 import styles from './AnswerStatusCard.module.css';
@@ -28,8 +29,10 @@ export function AnswerStatusCard({
   onAnswerNow: () => void;
   disabled: boolean;
 }) {
-  const { state, stop } = answers;
+  // Subscribes here, not in the page, so streamed text only re-renders this card.
+  const state = useSyncExternalStore(answers.subscribe, answers.getState, answers.getState);
   const { question } = state;
+  const waitingForText = state.status === 'answering' && !state.text;
 
   return (
     <section className={styles.card} aria-label="Current question">
@@ -37,6 +40,7 @@ export function AnswerStatusCard({
         <h3 className={styles.title}>Current question</h3>
         <span className="badge" role="status" aria-live="polite">
           {STATUS_LABEL[state.status]}
+          {state.status === 'answered' && state.ttftMs != null ? ` · first words in ${state.ttftMs} ms` : ''}
         </span>
       </div>
 
@@ -46,7 +50,9 @@ export function AnswerStatusCard({
           <p className={styles.questionText}>{question.text}</p>
           <span className="small">
             {question.trigger === 'manual' ? 'You asked for this answer.' : 'Detected automatically.'}
-            {state.superseded > 0 ? ` ${state.superseded} earlier ${state.superseded === 1 ? 'answer was' : 'answers were'} replaced by a newer question.` : ''}
+            {state.superseded > 0
+              ? ` ${state.superseded} earlier ${state.superseded === 1 ? 'answer was' : 'answers were'} replaced by a newer question.`
+              : ''}
           </span>
         </div>
       ) : (
@@ -55,6 +61,12 @@ export function AnswerStatusCard({
           Answer now.
         </p>
       )}
+
+      {state.text || waitingForText ? (
+        <div className={styles.answer} aria-label="Suggested answer" aria-busy={state.status === 'answering'}>
+          {state.text || <span className={styles.waiting}>Writing an answer…</span>}
+        </div>
+      ) : null}
 
       {state.error ? (
         <div className="error" role="status">
@@ -67,7 +79,7 @@ export function AnswerStatusCard({
           Answer now
         </button>
         {state.status === 'answering' ? (
-          <button className="button" type="button" onClick={stop}>
+          <button className="button" type="button" onClick={answers.stop}>
             Stop
           </button>
         ) : null}

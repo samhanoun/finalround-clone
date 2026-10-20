@@ -229,6 +229,43 @@ Size: **S** ≤ 1 day · **M** 2–3 days · **L** 4+ days. Every step ends with
 - Persist the question and the final answer to `copilot_events` **after** the stream ends, using `after()` from `next/server` so it stays off the hot path.
 - ✅ **Done when:** first token ≤ 800 ms after the route is called (p50), and answers reference the right resume facts.
 
+> **Status (2026-10-20): built; the latency target and answer quality need real keys and a real call.**
+> - **Streaming route:** [`answer/route.ts`](../src/app/api/copilot/sessions/[id]/answer/route.ts) (the Step 3 route, converted) streams `text/event-stream` with `token` / `done` / `error` events. `done` carries the server-measured `ttftMs`.
+>   - The body carries `question`, `category`, `trigger` and the last ≤ 20 transcript lines, so no database read sits on the hot path.
+>   - Checks: sign-in, session owner/active/heartbeat/consent, quota, and prompt injection on the question and each line.
+>   - The session load and quota check run in parallel. Client abort or disconnect cancels the model call.
+>   - The finished answer is saved with `after()` and reaches the history list through the session stream; a superseded or failed answer isn't saved.
+> - **LLM router:** [`llmRouter.ts`](../src/lib/llmRouter.ts) has `streamChat()`, which routes by model id (`gpt-*`/`o*` → OpenAI, `claude-*` → Anthropic).
+>   - Timeout, no retries, abort signal; no temperature for reasoning models.
+>   - System blocks go first (stable), and Anthropic's last block is marked `cache_control`.
+>   - Models: `COPILOT_ANSWER_MODEL` (default `gpt-4o-mini`), plus `COPILOT_CODING_MODEL` (optional) for coding and system-design questions.
+> - **Context pack:** [`contextPack.ts`](../src/lib/copilot/contextPack.ts) is built once in [`sessions/start`](../src/app/api/copilot/sessions/start/route.ts) from `resumeDocumentId`, `jobDescription`, `company` and `role`, and stored in `metadata.context_pack`.
+>   - Résumé: ~1.5k tokens, whole lines, which handles `parsed_text` arriving as one long line.
+>   - Job description: requirement lines first, boilerplate dropped, ~750 tokens.
+>   - The client can't set `context_pack` directly. Someone else's résumé gets 404, and an unparsed one gets 422.
+>   - It renders identically for every question, so the prompt prefix is cacheable (tested).
+> - **Prompt** ([`answerPrompt.ts`](../src/lib/copilot/answerPrompt.ts)), in my own words:
+>   - First person: one sentence to say out loud, then 3–5 bullets, under ~150 words.
+>   - Candidate facts only from the context or the transcript, and nothing invented.
+>   - Per category: STAR for behavioral; approach → complexity → code for coding (hints only in "no full code" sessions); requirements → components → scaling for design.
+>   - Replies in the interviewer's language.
+> - **Client:**
+>   - [`sse.ts`](../src/lib/copilot/sse.ts) parses the stream over `fetch`.
+>   - The answer streams into the Current question card, which subscribes to the answer itself, so the 2,000-line page doesn't re-render per token. Its badge shows "first words in N ms".
+>   - Typed interviewer lines in the composer are always answered.
+> - **Pure persistence:** `transcript` (now one batch insert) and `events` no longer call the LLM. The old suggestion helpers (`copilotSuggestion.ts`) are deleted.
+> - **Pulled forward from Step 5:** a small, optional "Interview context" section in the start form (résumé picker, company, role, job description), since the context pack is unreachable without it. Step 5 still owns the full setup step.
+> - **Verified:** 315/315 tests, including:
+>   - real `Response` streams in Node,
+>   - the context pack and start route,
+>   - the SSE parser at arbitrary chunk splits,
+>   - streamed text in the card,
+>   - abort leading to no save.
+>
+>   Also: `tsc`, `npm run build`, ESLint 0 errors, every page hydrates through the custom server with no console errors, and the new routes return 401 when signed out.
+> - **Not verified:** time-to-first-token against OpenAI/Anthropic (keys are empty), answer quality against a real résumé, and SSE through a deployed proxy. The route sends `Cache-Control: no-transform` and `X-Accel-Buffering: no` so proxies don't buffer it.
+> - **Latency budget before the first token:** Supabase `getUser()` (one auth round trip), then the session and quota reads in parallel, then the model's own time-to-first-token. If p50 misses 800 ms, swap `getUser()` for local JWT verification (`getClaims()`) first.
+
 ### Step 5: Answer window and UI split (M)
 
 - New `src/components/copilot/AnswerWindow.tsx`, rendered into a **Document Picture-in-Picture** window (`documentPictureInPicture.requestWindow`), always on top. It shows the transcript tail, a question card, the streaming answer, Answer now / Stop / font size controls, and a "connection: live / reconnecting" pill. Falls back to the in-page panel.

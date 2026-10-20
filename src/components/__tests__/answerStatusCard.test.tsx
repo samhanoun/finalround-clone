@@ -1,16 +1,31 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import React from 'react';
 import { AnswerStatusCard } from '@/components/copilot/AnswerStatusCard';
 import type { CopilotAnswers } from '@/components/copilot/useCopilotAnswers';
-import type { AnswerState } from '@/lib/copilot/answerController';
+import { IDLE_ANSWER, type AnswerState } from '@/lib/copilot/answerController';
 
-function answers(state: Partial<AnswerState>): CopilotAnswers {
-  return {
-    state: { status: 'idle', question: null, error: null, superseded: 0, ...state },
+/** A tiny store like the hook's: tests can push new states while the card is mounted. */
+function answers(initial: Partial<AnswerState>) {
+  let state: AnswerState = { ...IDLE_ANSWER, ...initial };
+  const listeners = new Set<() => void>();
+  const value: CopilotAnswers = {
     observe: jest.fn(),
     answerNow: jest.fn(),
+    addTypedLine: jest.fn(),
     stop: jest.fn(),
+    subscribe: (listener) => {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+    getState: () => state,
   };
+  const push = (next: Partial<AnswerState>) => {
+    state = { ...state, ...next };
+    listeners.forEach((listener) => listener());
+  };
+  return Object.assign(value, { push });
 }
 
 const QUESTION = {
@@ -55,5 +70,18 @@ describe('AnswerStatusCard', () => {
     render(<AnswerStatusCard answers={answers({ status: 'error', error: 'Answers are not set up.' })} onAnswerNow={jest.fn()} disabled />);
     expect(screen.getByText('Answers are not set up.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Answer now' })).toBeDisabled();
+  });
+
+  it('shows the answer as it streams in, without the page re-rendering', () => {
+    const value = answers({ status: 'answering', question: QUESTION });
+    render(<AnswerStatusCard answers={value} onAnswerNow={jest.fn()} disabled={false} />);
+    expect(screen.getByText('Writing an answer…')).toBeInTheDocument();
+
+    act(() => value.push({ text: 'I led the payments migration.' }));
+    expect(screen.getByLabelText('Suggested answer')).toHaveTextContent('I led the payments migration.');
+
+    act(() => value.push({ text: 'I led the payments migration.\n- Cut latency 40%', status: 'answered', ttftMs: 420 }));
+    expect(screen.getByText('Answered · first words in 420 ms')).toBeInTheDocument();
+    expect(screen.getByLabelText('Suggested answer')).toHaveTextContent('Cut latency 40%');
   });
 });

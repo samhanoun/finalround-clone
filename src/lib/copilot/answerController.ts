@@ -5,24 +5,41 @@ export type AnswerStatus = 'idle' | 'answering' | 'answered' | 'error';
 export type AnswerState = {
   status: AnswerStatus;
   question: GatedQuestion | null;
+  /** The answer so far; grows while it streams. */
+  text: string;
   error: string | null;
   /** How many in-flight answers a newer question replaced this session. */
   superseded: number;
+  /** Time from request to first token, as the server measured it. */
+  ttftMs: number | null;
 };
 
-export type AnswerSender = (question: GatedQuestion, signal: AbortSignal) => Promise<void>;
+export type AnswerResult = { model?: string; ttftMs?: number | null } | void;
 
-const IDLE: AnswerState = { status: 'idle', question: null, error: null, superseded: 0 };
+export type AnswerSender = (
+  question: GatedQuestion,
+  signal: AbortSignal,
+  onText: (text: string) => void,
+) => Promise<AnswerResult>;
+
+export const IDLE_ANSWER: AnswerState = {
+  status: 'idle',
+  question: null,
+  text: '',
+  error: null,
+  superseded: 0,
+  ttftMs: null,
+};
 
 /**
- * One answer at a time: a new question (from the gate or Answer now) aborts
- * the answer in flight, so only the latest question ever finishes.
+ * One answer at a time: a new question (from the gate, Answer now or a typed
+ * line) aborts the answer in flight, so only the latest question finishes.
  */
 export class AnswerController {
   private readonly send: AnswerSender;
   private inFlight: AbortController | null = null;
   private seq = 0;
-  private state: AnswerState = IDLE;
+  private state: AnswerState = IDLE_ANSWER;
   private readonly listeners = new Set<(state: AnswerState) => void>();
 
   constructor(send: AnswerSender) {
@@ -47,13 +64,19 @@ export class AnswerController {
     this.update({
       status: 'answering',
       question,
+      text: '',
       error: null,
       superseded: this.state.superseded + (replacing ? 1 : 0),
+      ttftMs: null,
     });
 
+    const onText = (text: string) => {
+      if (seq === this.seq && !abort.signal.aborted) this.update({ ...this.state, text: this.state.text + text });
+    };
+
     try {
-      await this.send(question, abort.signal);
-      if (seq === this.seq) this.update({ ...this.state, status: 'answered' });
+      const result = await this.send(question, abort.signal, onText);
+      if (seq === this.seq) this.update({ ...this.state, status: 'answered', ttftMs: result?.ttftMs ?? null });
     } catch (e) {
       if (seq !== this.seq || abort.signal.aborted) return; // replaced or stopped
       this.update({ ...this.state, status: 'error', error: e instanceof Error ? e.message : 'Could not get an answer.' });
@@ -62,7 +85,7 @@ export class AnswerController {
     }
   }
 
-  /** Stop: abort the answer in flight and keep showing its question. */
+  /** Stop: abort the answer in flight and keep what has arrived so far. */
   cancel(): void {
     if (!this.inFlight) return;
     this.inFlight.abort();
@@ -75,7 +98,7 @@ export class AnswerController {
     this.inFlight?.abort();
     this.inFlight = null;
     this.seq += 1;
-    this.update(IDLE);
+    this.update(IDLE_ANSWER);
   }
 
   private update(next: AnswerState): void {

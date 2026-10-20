@@ -175,17 +175,20 @@ describe('copilot transcript route security responses', () => {
     });
   });
 
-  it('accepts interim chunk and skips suggestion generation', async () => {
+  it('saves lines in one batch insert and never generates suggestions', async () => {
     const sessionSingle = buildSessionSelect();
-    const eventInsertSingle = jest.fn().mockResolvedValue({
-      data: {
-        id: 'evt-1',
-        event_type: 'transcript',
-        payload: { text: 'Can you walk me through your approach?', transcript_kind: 'interim' },
-        created_at: new Date().toISOString(),
-      },
+    const eventInsertSelect = jest.fn().mockResolvedValue({
+      data: [
+        {
+          id: 'evt-1',
+          event_type: 'transcript',
+          payload: { text: 'Can you walk me through your approach?', transcript_kind: 'interim' },
+          created_at: new Date().toISOString(),
+        },
+      ],
       error: null,
     });
+    const eventInsert = jest.fn((rows: unknown[]) => ({ select: eventInsertSelect, rows }));
 
     createClient.mockResolvedValue({
       auth: {
@@ -211,11 +214,7 @@ describe('copilot transcript route security responses', () => {
                 })),
               })),
             })),
-            insert: jest.fn(() => ({
-              select: jest.fn(() => ({
-                single: eventInsertSingle,
-              })),
-            })),
+            insert: eventInsert,
           };
         }
 
@@ -239,6 +238,10 @@ describe('copilot transcript route security responses', () => {
     });
 
     expect(response.status).toBe(201);
+    expect(eventInsert).toHaveBeenCalledTimes(1);
+    expect(eventInsert.mock.calls[0][0]).toEqual([
+      expect.objectContaining({ event_type: 'transcript', payload: expect.objectContaining({ speaker: 'interviewer', transcript_kind: 'interim' }) }),
+    ]);
     await expect(response.json()).resolves.toEqual({
       ok: true,
       data: {

@@ -8,7 +8,13 @@ import { AudioSourcesPanel } from './copilot/AudioSourcesPanel';
 import { useAudioCapture } from './copilot/useAudioCapture';
 import { useLiveTranscription } from './copilot/useLiveTranscription';
 import { AnswerStatusCard } from './copilot/AnswerStatusCard';
-import { useCopilotAnswers, type AnswerEvent } from './copilot/useCopilotAnswers';
+import { useCopilotAnswers } from './copilot/useCopilotAnswers';
+import {
+  EMPTY_INTERVIEW_CONTEXT,
+  InterviewContextFields,
+  interviewContextBody,
+  type InterviewContext,
+} from './copilot/InterviewContextFields';
 import type { Utterance } from '@/lib/stt/utterances';
 
 type CopilotMode = 'general' | 'coding' | 'phone' | 'video';
@@ -248,6 +254,7 @@ function calculateDurationMinutes(startedAt?: string | null, stoppedAt?: string 
 export function LiveCopilotClient() {
   const [mode, setMode] = useState<CopilotMode>('general');
   const [title, setTitle] = useState('');
+  const [interviewContext, setInterviewContext] = useState<InterviewContext>(EMPTY_INTERVIEW_CONTEXT);
   const [session, setSession] = useState<CopilotSession | null>(null);
   const [transcript, setTranscript] = useState<CopilotEvent[]>([]);
   const [suggestions, setSuggestions] = useState<CopilotEvent[]>([]);
@@ -702,10 +709,18 @@ export function LiveCopilotClient() {
             // T10: Include noFullCode guardrail setting in session metadata
             noFullCodeMode: mode === 'coding' ? noFullCodeMode : false,
           },
+          ...interviewContextBody(interviewContext),
         }),
       });
       const json = (await res.json().catch(() => ({}))) as { session?: CopilotSession; error?: string };
-      if (!res.ok || !json.session) throw new Error(json.error ?? 'Failed to start session');
+      if (!res.ok || !json.session) {
+        const startErrors: Record<string, string> = {
+          resume_not_found: 'That résumé could not be found. Pick another one.',
+          resume_not_parsed: "That résumé hasn't been parsed yet. Open it on the Résumé page first.",
+          quota_exceeded: 'You have no copilot minutes left on your plan.',
+        };
+        throw new Error((json.error && startErrors[json.error]) ?? json.error ?? 'Failed to start session');
+      }
 
       setSession(json.session);
       connectStream(json.session.id);
@@ -815,14 +830,9 @@ export function LiveCopilotClient() {
     [flushTranscriptQueue],
   );
 
-  const addAnswer = useCallback((event: AnswerEvent) => {
-    setSuggestions((prev) => appendUniqueEvents(prev, [event]));
-  }, []);
-
-  const answers = useCopilotAnswers({
-    sessionId: isActive && session ? session.id : null,
-    onAnswer: addAnswer,
-  });
+  // Answers stream into the Current question card; saved answers reach the
+  // suggestions list through the session stream.
+  const answers = useCopilotAnswers({ sessionId: isActive && session ? session.id : null });
 
   // Every finished utterance is saved as it is; the question gate decides
   // which interviewer lines get an answer.
@@ -847,6 +857,7 @@ export function LiveCopilotClient() {
     onUtterance: handleUtterance,
   });
 
+  const addTypedLine = answers.addTypedLine;
   const requestAnswerNow = answers.answerNow;
   const interviewerCaption = transcription.captions.interviewer;
   const answerNow = useCallback(() => {
@@ -896,7 +907,6 @@ export function LiveCopilotClient() {
               speaker: draftSpeaker,
               text: draftText.trim(),
               isFinal: true,
-              autoSuggest: draftSpeaker === 'interviewer',
               clientTimestamp: new Date().toISOString(),
             },
           ],
@@ -924,12 +934,14 @@ export function LiveCopilotClient() {
       
       setLastMicSyncAt(new Date().toISOString());
       setDraftText('');
+      // Typed interviewer lines are always answered; typed candidate lines add context.
+      addTypedLine(draftSpeaker, draftText.trim());
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to submit transcript event');
     } finally {
       setSubmitting(false);
     }
-  }, [draftSpeaker, draftText, session?.id, submitting, updateSLOCompliance]);
+  }, [addTypedLine, draftSpeaker, draftText, session?.id, submitting, updateSLOCompliance]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -1327,6 +1339,8 @@ export function LiveCopilotClient() {
               />
             </label>
           </div>
+
+          <InterviewContextFields value={interviewContext} onChange={setInterviewContext} disabled={isActive || submitting} />
 
           <div className={styles.controlGrid}>
             <button className="button buttonPrimary" onClick={startSession} disabled={isActive || submitting} type="button">

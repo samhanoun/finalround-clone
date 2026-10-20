@@ -35,6 +35,21 @@
   margin: 0;
 }
 
+.answer {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 1rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.waiting {
+  color: var(--muted);
+}
+
 .actions {
   display: flex;
   flex-wrap: wrap;

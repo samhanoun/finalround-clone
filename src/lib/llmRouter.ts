@@ -636,3 +636,105 @@ export function getLLMClient(): LLMClient {
   }
   return llmClient;
 }
+
+// ---------------------------------------------------------------------------
+// Streaming chat (live copilot answers)
+// ---------------------------------------------------------------------------
+
+export type ChatProvider = 'openai' | 'anthropic';
+
+/** No API key, or a model id we can't route. */
+export class LLMUnavailableError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'LLMUnavailableError';
+  }
+}
+
+/** Routes by model id, so new models work without a MODEL_CONFIGS entry. */
+export function providerForModel(model: string): ChatProvider | null {
+  if (/^claude-/i.test(model)) return 'anthropic';
+  if (/^(gpt-|chatgpt-|o\d)/i.test(model)) return 'openai';
+  return null;
+}
+
+/** Reasoning models (o-series, gpt-5) reject a temperature. */
+function acceptsTemperature(model: string): boolean {
+  return !/^(o\d|gpt-5)/i.test(model);
+}
+
+export function isProviderConfigured(provider: ChatProvider): boolean {
+  return provider === 'anthropic' ? Boolean(process.env.ANTHROPIC_API_KEY) : Boolean(process.env.OPENAI_API_KEY);
+}
+
+export type StreamChatOptions = {
+  model: string;
+  /**
+   * System prompt blocks, most stable first. Providers cache a repeated
+   * prefix, so per-session context goes here and per-question text goes in
+   * `messages`. With Anthropic the last block is marked for caching.
+   */
+  system: string[];
+  messages: Array<{ role: 'user' | 'assistant'; content: string }>;
+  maxTokens?: number;
+  temperature?: number;
+  signal?: AbortSignal;
+  timeoutMs?: number;
+};
+
+export type StreamChatClients = { openai?: OpenAI; anthropic?: Anthropic };
+
+/** Yields text as the model writes it. Aborting `signal` cancels the provider request. */
+export async function* streamChat(options: StreamChatOptions, clients: StreamChatClients = {}): AsyncGenerator<string> {
+  const { model, system, messages, maxTokens = 700, temperature, signal, timeoutMs = 30_000 } = options;
+  const provider = providerForModel(model);
+  const requestOptions = { signal, timeout: timeoutMs, maxRetries: 0 };
+  const withTemperature = temperature !== undefined && acceptsTemperature(model) ? { temperature } : {};
+
+  if (provider === 'anthropic') {
+    const client =
+      clients.anthropic ?? (process.env.ANTHROPIC_API_KEY ? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }) : null);
+    if (!client) throw new LLMUnavailableError('ANTHROPIC_API_KEY is not set');
+    const stream = await client.messages.create(
+      {
+        model,
+        max_tokens: maxTokens,
+        ...withTemperature,
+        system: system.map((text, index) =>
+          index === system.length - 1
+            ? { type: 'text' as const, text, cache_control: { type: 'ephemeral' as const } }
+            : { type: 'text' as const, text },
+        ),
+        messages,
+        stream: true,
+      },
+      requestOptions,
+    );
+    for await (const event of stream) {
+      if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') yield event.delta.text;
+    }
+    return;
+  }
+
+  if (provider === 'openai') {
+    const client = clients.openai ?? (process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null);
+    if (!client) throw new LLMUnavailableError('OPENAI_API_KEY is not set');
+    const stream = await client.chat.completions.create(
+      {
+        model,
+        max_completion_tokens: maxTokens,
+        ...withTemperature,
+        messages: [{ role: 'system', content: system.join('\n\n') }, ...messages],
+        stream: true,
+      },
+      requestOptions,
+    );
+    for await (const chunk of stream) {
+      const text = chunk.choices[0]?.delta?.content;
+      if (text) yield text;
+    }
+    return;
+  }
+
+  throw new LLMUnavailableError(`No provider for model "${model}"`);
+}

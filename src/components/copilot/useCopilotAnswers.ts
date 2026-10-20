@@ -1,47 +1,57 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { AnswerController, type AnswerState } from '@/lib/copilot/answerController';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AnswerController, IDLE_ANSWER, type AnswerResult, type AnswerState } from '@/lib/copilot/answerController';
+import type { TranscriptLine } from '@/lib/copilot/answerPrompt';
 import {
   QUESTION_CATEGORIES,
   QuestionGate,
+  categorizeQuestion,
   type ClassifierResult,
   type GatedQuestion,
   type QuestionCategory,
 } from '@/lib/copilot/questionGate';
+import { readAnswerStream } from '@/lib/copilot/sse';
 import type { Utterance } from '@/lib/stt/utterances';
 
-/** The suggestion event the answer route saves (same shape as other copilot events). */
-export type AnswerEvent = {
-  id: string;
-  event_type: string;
-  payload: Record<string, unknown>;
-  created_at: string;
-};
-
 const ANSWER_ERRORS: Record<string, string> = {
-  answers_unavailable: 'Answers are not set up on the server (OPENAI_API_KEY is missing).',
+  answers_unavailable: 'Answers are not set up on the server (no API key for the answer model).',
   question_blocked: 'That question looked like an attempt to steer the assistant, so it was not answered.',
+  quota_exceeded: 'You have used all your copilot minutes for now.',
+  quota_unavailable: 'Your plan could not be checked (SUPABASE_SERVICE_ROLE_KEY missing?).',
   session_expired: 'This copilot session expired. Start a new one.',
   session_not_active: 'This copilot session has ended.',
   rate_limited: 'Too many answers in a short time. Try again in a moment.',
 };
 
-const IDLE: AnswerState = { status: 'idle', question: null, error: null, superseded: 0 };
+/** Lines of conversation sent with each question. */
+const RECENT_LINES = 12;
 
-async function postAnswer(sessionId: string, question: GatedQuestion, signal: AbortSignal): Promise<AnswerEvent> {
+async function streamAnswer(
+  sessionId: string,
+  question: GatedQuestion,
+  recentTranscript: TranscriptLine[],
+  signal: AbortSignal,
+  onText: (text: string) => void,
+): Promise<AnswerResult> {
   const res = await fetch(`/api/copilot/sessions/${sessionId}/answer`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ question: question.text, category: question.category, trigger: question.trigger }),
+    body: JSON.stringify({
+      question: question.text,
+      category: question.category,
+      trigger: question.trigger,
+      recentTranscript,
+    }),
     signal,
   });
-  const json = (await res.json().catch(() => ({}))) as { suggestion?: AnswerEvent; error?: string };
-  if (!res.ok || !json.suggestion) {
+  if (!res.ok || !res.body) {
+    const json = (await res.json().catch(() => ({}))) as { error?: string };
     const code = json.error ?? `http_${res.status}`;
     throw new Error(ANSWER_ERRORS[code] ?? `Could not get an answer (${code}).`);
   }
-  return json.suggestion;
+  const done = await readAnswerStream(res.body, onText);
+  return { model: done.model, ttftMs: done.ttftMs ?? null };
 }
 
 /** The classifier is optional: any failure means "no opinion", and the gate's fallback decides. */
@@ -65,38 +75,60 @@ async function classifyLine(sessionId: string, text: string, signal: AbortSignal
   }
 }
 
+/** The latest answer state, readable with useSyncExternalStore. */
+function createAnswerStore() {
+  let state: AnswerState = IDLE_ANSWER;
+  const listeners = new Set<() => void>();
+  return {
+    getState: () => state,
+    set(next: AnswerState) {
+      state = next;
+      listeners.forEach((listener) => listener());
+    },
+    subscribe(listener: () => void) {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+  };
+}
+
+/** Lines already inside the question text don't need to be sent twice. */
+function contextFor(question: GatedQuestion, recent: TranscriptLine[]): TranscriptLine[] {
+  return recent.filter((line) => !(line.speaker === 'interviewer' && question.text.includes(line.text)));
+}
+
 /**
- * Decides which interviewer lines get an answer (question gate), asks for it,
- * and makes sure only the latest question's answer lands.
+ * Decides which interviewer lines get an answer (question gate), streams the
+ * answer, and makes sure only the latest question's answer lands.
+ *
+ * Answer state changes many times a second while text streams, so it lives
+ * in a small store (`subscribe` / `getState`) that only the answer card reads,
+ * instead of React state that would re-render the whole page.
  */
-export function useCopilotAnswers({
-  sessionId,
-  onAnswer,
-}: {
-  sessionId: string | null;
-  onAnswer: (event: AnswerEvent) => void;
-}) {
-  const [state, setState] = useState<AnswerState>(IDLE);
+export function useCopilotAnswers({ sessionId }: { sessionId: string | null }) {
   const gateRef = useRef<QuestionGate | null>(null);
   const controllerRef = useRef<AnswerController | null>(null);
-  const onAnswerRef = useRef(onAnswer);
+  const recentRef = useRef<TranscriptLine[]>([]);
+  const [store] = useState(createAnswerStore);
 
-  useEffect(() => {
-    onAnswerRef.current = onAnswer;
-  }, [onAnswer]);
+  const remember = useCallback((line: TranscriptLine) => {
+    recentRef.current = [...recentRef.current, line].slice(-RECENT_LINES);
+  }, []);
 
   useEffect(() => {
     if (!sessionId) return;
+    recentRef.current = [];
 
-    const controller = new AnswerController(async (question, signal) => {
-      const event = await postAnswer(sessionId, question, signal);
-      if (!signal.aborted) onAnswerRef.current(event);
-    });
+    const controller = new AnswerController((question, signal, onText) =>
+      streamAnswer(sessionId, question, contextFor(question, recentRef.current), signal, onText),
+    );
     const gate = new QuestionGate({
       onQuestion: (question) => void controller.request(question),
       classify: (text, signal) => classifyLine(sessionId, text, signal),
     });
-    const unsubscribe = controller.subscribe(setState);
+    const unsubscribe = controller.subscribe((state) => store.set(state));
     controllerRef.current = controller;
     gateRef.current = gate;
 
@@ -106,22 +138,49 @@ export function useCopilotAnswers({
       controller.reset();
       if (gateRef.current === gate) gateRef.current = null;
       if (controllerRef.current === controller) controllerRef.current = null;
-      setState(IDLE);
+      store.set(IDLE_ANSWER);
     };
-  }, [sessionId]);
+  }, [sessionId, store]);
 
-  const observe = useCallback((utterance: Utterance) => {
-    void gateRef.current?.observe(utterance);
-  }, []);
+  /** Every committed speech utterance, both speakers. */
+  const observe = useCallback(
+    (utterance: Utterance) => {
+      void gateRef.current?.observe(utterance);
+      remember({ speaker: utterance.role, text: utterance.text });
+    },
+    [remember],
+  );
 
-  /** Returns false when there is no interviewer line to answer yet. */
+  /** Answer now. Returns false when there is no interviewer line to answer yet. */
   const answerNow = useCallback((liveInterviewerText?: string) => {
     return gateRef.current?.answerNow(liveInterviewerText) != null;
   }, []);
 
+  /** A line typed in the composer: interviewer lines are always answered. */
+  const addTypedLine = useCallback(
+    (speaker: TranscriptLine['speaker'], text: string) => {
+      const controller = controllerRef.current;
+      if (speaker === 'interviewer' && controller) {
+        void controller.request({
+          text,
+          category: categorizeQuestion(text),
+          trigger: 'manual',
+          via: 'manual',
+          score: 1,
+          decidedAt: Date.now(),
+        });
+      }
+      remember({ speaker, text });
+    },
+    [remember],
+  );
+
   const stop = useCallback(() => controllerRef.current?.cancel(), []);
 
-  return { state: sessionId ? state : IDLE, observe, answerNow, stop } as const;
+  return useMemo(
+    () => ({ observe, answerNow, addTypedLine, stop, subscribe: store.subscribe, getState: store.getState }),
+    [observe, answerNow, addTypedLine, stop, store],
+  );
 }
 
 export type CopilotAnswers = ReturnType<typeof useCopilotAnswers>;

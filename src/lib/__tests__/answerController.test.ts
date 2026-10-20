@@ -92,4 +92,32 @@ describe('AnswerController', () => {
     expect(calls[0].signal.aborted).toBe(true);
     expect(controller.getState()).toMatchObject({ status: 'idle', question: { text: 'How would you scale it?' }, error: null });
   });
+
+  it('accumulates streamed text and ignores late pieces from a replaced request', async () => {
+    const senders: Array<(text: string) => void> = [];
+    const finishers: Array<() => void> = [];
+    const controller = new AnswerController(
+      (_q, _signal, onText) =>
+        new Promise<{ ttftMs: number }>((resolve) => {
+          senders.push(onText);
+          finishers.push(() => resolve({ ttftMs: 410 }));
+        }),
+    );
+    const first = controller.request(question('Tell me about a time'));
+    senders[0]('I once ');
+    const second = controller.request(question('Tell me about a time you failed.'));
+    senders[0]('stale words');
+    senders[1]('I shipped a bug, ');
+    senders[1]('then fixed the process.');
+    finishers[1]();
+    await second;
+    finishers[0]();
+    await first;
+
+    expect(controller.getState()).toMatchObject({
+      status: 'answered',
+      text: 'I shipped a bug, then fixed the process.',
+      ttftMs: 410,
+    });
+  });
 });

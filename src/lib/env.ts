@@ -24,6 +24,7 @@ const RawEnvSchema = z.object({
   // Live copilot models (OpenAI model ids)
   COPILOT_GATE_MODEL: z.string().min(1).optional(),
   COPILOT_ANSWER_MODEL: z.string().min(1).optional(),
+  COPILOT_CODING_MODEL: z.string().min(1).optional(),
 
   // Speech-to-text (server-only; used by the STT relay in server.ts)
   DEEPGRAM_API_KEY: z.string().min(1).optional(),
@@ -69,6 +70,7 @@ export const env = RawEnvSchema.parse(blankToUndefined({
 
   COPILOT_GATE_MODEL: process.env.COPILOT_GATE_MODEL,
   COPILOT_ANSWER_MODEL: process.env.COPILOT_ANSWER_MODEL,
+  COPILOT_CODING_MODEL: process.env.COPILOT_CODING_MODEL,
 
   DEEPGRAM_API_KEY: process.env.DEEPGRAM_API_KEY,
   DEEPGRAM_MODEL: process.env.DEEPGRAM_MODEL,
