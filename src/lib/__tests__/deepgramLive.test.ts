@@ -348,3 +348,18 @@ describe('LiveTranscriber', () => {
     expect(transcriber.getStatus()).toBe('closed');
   });
 });
+
+describe('LiveTranscriber wall-clock times', () => {
+  it('turns Deepgram word times into wall-clock speech-end times using the first frame', async () => {
+    const { transcriber, received } = setup();
+    transcriber.start();
+    await flush();
+    const socket = FakeSocket.instances[0];
+    socket.open();
+    // The first 50 ms frame arrived at t = 10,050 ms, so capture sample 0 was at 10,000 ms.
+    transcriber.sendFrame({ ...frame(1), receivedAt: 10_050 });
+
+    socket.receive(results(1, 1.2, 0.8, 'Why this company?', { is_final: true, speech_final: true }));
+    expect(received[0].endedAt).toBe(12_000);
+  });
+});

@@ -10,9 +10,12 @@ import {
   recordCopilotUsage,
 } from '@/lib/copilot';
 import { revokeConsentMetadata } from '@/lib/copilotConsent';
+import { summarizeLatencyEvents } from '@/lib/copilot/latency';
 
 const BodySchema = z.object({
   sessionId: z.string().uuid(),
+  /** Why the session ended: the Stop button, the tab closing, or meeting audio sharing stopping. */
+  reason: z.enum(['user', 'tab_closed', 'sharing_stopped']).default('user'),
 });
 
 export async function POST(req: NextRequest) {
@@ -55,6 +58,19 @@ export async function POST(req: NextRequest) {
 
   await recordCopilotUsage(userId, billableMinutes);
 
+  // Latency per stage for this session (Step 6): stored on the session and logged.
+  const { data: latencyRows } = await supabase
+    .from('copilot_events')
+    .select('payload')
+    .eq('session_id', session.id)
+    .eq('event_type', 'system')
+    .eq('payload->>kind', 'latency')
+    .limit(1000);
+  const latencySummary = summarizeLatencyEvents((latencyRows ?? []).map((row) => row.payload));
+  console.log(
+    JSON.stringify({ scope: 'copilot', event: 'latency_summary', sessionId: session.id, reason: parse.data.reason, ...latencySummary }),
+  );
+
   // Revoke consent when session is stopped
   const nowIso = new Date().toISOString();
   const consentRevocation = revokeConsentMetadata(session.metadata, nowIso);
@@ -70,6 +86,8 @@ export async function POST(req: NextRequest) {
         ...(typeof session.metadata === 'object' && session.metadata !== null ? session.metadata : {}),
         quota_snapshot: quota,
         requested_minutes: usage.elapsedMinutes,
+        stop_reason: parse.data.reason,
+        latency_summary: { ...latencySummary, computed_at: nowIso },
         ...consentRevocation,
       },
     })

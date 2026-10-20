@@ -9,6 +9,7 @@ function capture(status: AudioCapture['status']): AudioCapture {
   return {
     status,
     error: null,
+    ended: null,
     start: jest.fn(),
     stop: jest.fn(),
     subscribeFrames: jest.fn(() => () => undefined),

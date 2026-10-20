@@ -38,7 +38,7 @@ export function SessionBar({
             <span className="badge">{hasContext ? 'Using your interview context' : 'No interview context'}</span>
           </div>
         </div>
-        <button className="button buttonDanger" type="button" onClick={onStop} disabled={stopping}>
+        <button className="button buttonDanger" type="button" onClick={() => onStop()} disabled={stopping}>
           {stopping ? 'Stopping…' : 'Stop session'}
         </button>
       </div>

@@ -307,6 +307,27 @@ Size: **S** ≤ 1 day · **M** 2–3 days · **L** 4+ days. Every step ends with
 - Auto-end sessions on tab close or stopped sharing, plus heartbeat (existing).
 - ✅ **Done when:** a dashboard or log shows p50/p95 per stage for each session.
 
+> **Status (2026-10-20): built; the numbers need real calls.**
+> - **Per-turn timing:** every question is timed through `speech end → final → gate → first token → done`, plus the headline `speech end → first token`.
+>   - **Speech end** is wall-clock time, taken from Deepgram's word timings and anchored to the first audio frame ([`deepgramLive.ts`](../src/lib/stt/deepgramLive.ts)). The utterance and the gate's question carry it forward.
+>   - [`AnswerController`](../src/lib/copilot/answerController.ts) records first token and done, and reports every turn with its outcome: answered, replaced, stopped or failed.
+>   - The maths lives in [`latency.ts`](../src/lib/copilot/latency.ts): nearest-rank p50/p95, with negative or over-10-minute spans dropped as clock jumps. Targets come from Steps 2, 4 and 8.
+> - **Storage:** each turn's durations, not timestamps (so client and server clocks never need to agree), go to `POST /api/copilot/sessions/[id]/latency` with `keepalive`. They're stored as `system` events with `payload.kind = 'latency'`, so no migration was needed. The summarize route skips them, and the history "System events" count excludes them.
+> - **Per session:**
+>   - The live page has a **Latency** drawer (in the live assistance card): p50/p95 per stage, sample counts, stages over target in amber, and the last 8 questions.
+>   - The history detail shows the same table from stored events, so expired sessions are covered too.
+>   - The stop route stores `metadata.latency_summary` and logs one JSON line, `{"event":"latency_summary", sessionId, reason, turns, outcomes, stages}`.
+> - **Auto-end:**
+>   - Closing the tab sends a `sendBeacon` stop (`reason: tab_closed`), so the session ends and is billed instead of silently expiring. Before this, an expired session was never billed.
+>   - When meeting audio sharing stops, a 2:00 countdown ends the session (`sharing_stopped`) unless you start listening again or choose "Keep session open".
+>   - Heartbeat expiry (60 s) is unchanged. The stop route records `stop_reason`.
+>   - Fixed on the way: the Stop button passed the click event as the stop reason.
+> - **Verified:**
+>   - 342/342 tests, including turn timing and outcomes, percentiles, both routes (stop: reason, summary, log line), the countdown, and the drawer.
+>   - `tsc`, `npm run build`, ESLint 0 errors (same 66 warnings as before). Every page hydrates with no console errors.
+>   - In headless Chromium, a real `sendBeacon` reached the stop route as JSON and was parsed (401 signed out).
+> - **Not verified:** real stage numbers, which need keys and live calls; that's Step 8's checklist.
+
 ### Step 7: Tests that prove the loop (M)
 
 - Unit tests: gate, PCM worklet math, SSE stream parser, context-pack builder.

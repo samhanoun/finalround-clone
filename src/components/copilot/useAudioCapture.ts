@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { DualAudioCapture, type CaptureFrame, type CaptureLevels } from '@/lib/audio/capture';
+import { DualAudioCapture, type CaptureFrame, type CaptureLevels, type CaptureSource } from '@/lib/audio/capture';
 
 export type AudioCaptureStatus = 'idle' | 'starting' | 'live' | 'error';
 
@@ -18,6 +18,8 @@ export function useAudioCapture() {
   const levelListeners = useRef(new Set<(levels: CaptureLevels) => void>());
   const [status, setStatus] = useState<AudioCaptureStatus>('idle');
   const [error, setError] = useState<string | null>(null);
+  /** Set when a source ended on its own (the user stopped sharing, the mic unplugged), not via stop(). */
+  const [ended, setEnded] = useState<{ source: CaptureSource; at: number } | null>(null);
 
   const stop = useCallback(() => {
     captureRef.current?.stop();
@@ -31,6 +33,7 @@ export function useAudioCapture() {
     const capture = new DualAudioCapture();
     captureRef.current = capture;
     setError(null);
+    setEnded(null);
     setStatus('starting');
 
     capture.onFrame((frame) => frameListeners.current.forEach((listener) => listener(frame)));
@@ -40,6 +43,7 @@ export function useAudioCapture() {
       capture.stop();
       captureRef.current = null;
       setStatus('idle');
+      setEnded({ source, at: Date.now() });
       setError(
         source === 'interviewer'
           ? 'Meeting audio sharing stopped. Start listening again to keep transcribing.'
@@ -83,7 +87,7 @@ export function useAudioCapture() {
   const getDisplayVideoTrack = useCallback(() => captureRef.current?.getDisplayVideoTrack() ?? null, []);
 
   return useMemo(
-    () => ({ status, error, start, stop, subscribeFrames, subscribeLevels, getDisplayVideoTrack }),
-    [status, error, start, stop, subscribeFrames, subscribeLevels, getDisplayVideoTrack],
+    () => ({ status, error, ended, start, stop, subscribeFrames, subscribeLevels, getDisplayVideoTrack }),
+    [status, error, ended, start, stop, subscribeFrames, subscribeLevels, getDisplayVideoTrack],
   );
 }

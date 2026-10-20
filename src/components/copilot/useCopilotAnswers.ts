@@ -11,6 +11,7 @@ import {
   type GatedQuestion,
   type QuestionCategory,
 } from '@/lib/copilot/questionGate';
+import { latencyEventPayload, type TurnTiming } from '@/lib/copilot/latency';
 import { readAnswerStream } from '@/lib/copilot/sse';
 import type { Utterance } from '@/lib/stt/utterances';
 
@@ -76,6 +77,41 @@ async function classifyLine(sessionId: string, text: string, signal: AbortSignal
 }
 
 /** The latest answer state, readable with useSyncExternalStore. */
+/** Most recent question timings first-in-first-out, for the latency drawer. */
+const MAX_TURNS = 50;
+
+function createTurnStore() {
+  let turns: TurnTiming[] = [];
+  const listeners = new Set<() => void>();
+  return {
+    getTurns: () => turns,
+    add(turn: TurnTiming) {
+      turns = [...turns, turn].slice(-MAX_TURNS);
+      listeners.forEach((listener) => listener());
+    },
+    clear() {
+      turns = [];
+      listeners.forEach((listener) => listener());
+    },
+    subscribeTurns(listener: () => void) {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+  };
+}
+
+/** Fire-and-forget; keepalive lets it finish even if the page is closing. */
+function sendLatency(sessionId: string, turn: TurnTiming) {
+  void fetch(`/api/copilot/sessions/${sessionId}/latency`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ turns: [latencyEventPayload(turn)] }),
+    keepalive: true,
+  }).catch(() => undefined);
+}
+
 function createAnswerStore() {
   let state: AnswerState = IDLE_ANSWER;
   const listeners = new Set<() => void>();
@@ -112,6 +148,7 @@ export function useCopilotAnswers({ sessionId }: { sessionId: string | null }) {
   const controllerRef = useRef<AnswerController | null>(null);
   const recentRef = useRef<TranscriptLine[]>([]);
   const [store] = useState(createAnswerStore);
+  const [turnStore] = useState(createTurnStore);
 
   const remember = useCallback((line: TranscriptLine) => {
     recentRef.current = [...recentRef.current, line].slice(-RECENT_LINES);
@@ -129,18 +166,24 @@ export function useCopilotAnswers({ sessionId }: { sessionId: string | null }) {
       classify: (text, signal) => classifyLine(sessionId, text, signal),
     });
     const unsubscribe = controller.subscribe((state) => store.set(state));
+    turnStore.clear();
+    const unsubscribeTurns = controller.onTurn((turn) => {
+      turnStore.add(turn);
+      sendLatency(sessionId, turn);
+    });
     controllerRef.current = controller;
     gateRef.current = gate;
 
     return () => {
       unsubscribe();
+      unsubscribeTurns();
       gate.reset();
       controller.reset();
       if (gateRef.current === gate) gateRef.current = null;
       if (controllerRef.current === controller) controllerRef.current = null;
       store.set(IDLE_ANSWER);
     };
-  }, [sessionId, store]);
+  }, [sessionId, store, turnStore]);
 
   /** Every committed speech utterance, both speakers. */
   const observe = useCallback(
@@ -178,8 +221,17 @@ export function useCopilotAnswers({ sessionId }: { sessionId: string | null }) {
   const stop = useCallback(() => controllerRef.current?.cancel(), []);
 
   return useMemo(
-    () => ({ observe, answerNow, addTypedLine, stop, subscribe: store.subscribe, getState: store.getState }),
-    [observe, answerNow, addTypedLine, stop, store],
+    () => ({
+      observe,
+      answerNow,
+      addTypedLine,
+      stop,
+      subscribe: store.subscribe,
+      getState: store.getState,
+      subscribeTurns: turnStore.subscribeTurns,
+      getTurns: turnStore.getTurns,
+    }),
+    [observe, answerNow, addTypedLine, stop, store, turnStore],
   );
 }
 

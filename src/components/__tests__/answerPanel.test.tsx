@@ -22,6 +22,8 @@ function answers(initial: Partial<AnswerState> = {}) {
       };
     },
     getState: () => state,
+    subscribeTurns: () => () => undefined,
+    getTurns: () => [],
   };
   const push = (next: Partial<AnswerState>) => {
     state = { ...state, ...next };

@@ -7,12 +7,15 @@ export type Utterance = {
   endSec: number;
   /** When the last piece of the utterance arrived (ms since epoch). */
   completedAt: number;
+  /** Wall-clock time (ms) the speaker stopped talking, from Deepgram word timings. */
+  speechEndedAt?: number | null;
 };
 
 type SpeakerState = {
   finals: string[];
   startSec: number | null;
   endSec: number;
+  endedAt: number | null;
   interim: string;
   /** UtteranceEnd arrived before the last words were final: commit on the next final. */
   commitOnNextFinal: boolean;
@@ -21,7 +24,7 @@ type SpeakerState = {
 const ROLES: SpeakerRole[] = ['candidate', 'interviewer'];
 
 function emptyState(): SpeakerState {
-  return { finals: [], startSec: null, endSec: 0, interim: '', commitOnNextFinal: false };
+  return { finals: [], startSec: null, endSec: 0, endedAt: null, interim: '', commitOnNextFinal: false };
 }
 
 /**
@@ -49,6 +52,7 @@ export class UtteranceAssembler {
       state.finals.push(result.text);
       state.startSec ??= result.startSec;
       state.endSec = result.endSec;
+      state.endedAt = result.endedAt ?? null;
     }
     if (result.speechFinal || (state.commitOnNextFinal && result.text)) {
       this.commit(result.role, result.receivedAt);
@@ -80,7 +84,14 @@ export class UtteranceAssembler {
     const state = this.speakers[role];
     const text = state.finals.join(' ').trim();
     const utterance: Utterance | null = text
-      ? { role, text, startSec: state.startSec ?? state.endSec, endSec: state.endSec, completedAt: at }
+      ? {
+          role,
+          text,
+          startSec: state.startSec ?? state.endSec,
+          endSec: state.endSec,
+          completedAt: at,
+          speechEndedAt: state.endedAt,
+        }
       : null;
     this.speakers[role] = { ...emptyState(), interim: state.interim };
     if (utterance) this.onUtterance(utterance);

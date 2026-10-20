@@ -37,6 +37,8 @@ export type TranscriptResult = {
   /** Seconds since capture started (not since this connection opened). */
   startSec: number;
   endSec: number;
+  /** Wall-clock time (ms) the last word ended, or null before any audio arrived. */
+  endedAt?: number | null;
   confidence: number;
   receivedAt: number;
 };
@@ -113,6 +115,7 @@ export class LiveTranscriber {
 
   private ring: BufferedFrame[] = [];
   private totalSamples = 0;
+  private captureStartedAt: number | null = null;
   /** Capture sample where the current connection's audio starts (Deepgram times are relative to it). */
   private connectionBaseSample: number | null = null;
   /** Per channel: capture sample up to which Deepgram has sent final results. */
@@ -156,6 +159,8 @@ export class LiveTranscriber {
   sendFrame(frame: CaptureFrame): void {
     if (this.stopping || this.status === 'error' || this.status === 'closed') return;
     const samples = frame.pcm.length / CHANNELS;
+    // Wall-clock time of capture sample 0, so Deepgram's word times can be compared with other events.
+    this.captureStartedAt ??= frame.receivedAt - (samples / this.sampleRate) * 1000;
     const buffered: BufferedFrame = { startSample: this.totalSamples, samples, pcm: frame.pcm };
     this.totalSamples += samples;
     this.ring.push(buffered);
@@ -429,6 +434,7 @@ export class LiveTranscriber {
       speechFinal: isFinal && speechFinal,
       startSec,
       endSec,
+      endedAt: this.captureStartedAt === null ? null : this.captureStartedAt + endSec * 1000,
       confidence: alternative?.confidence ?? 0,
       receivedAt,
     };

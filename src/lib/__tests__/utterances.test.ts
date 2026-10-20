@@ -23,11 +23,20 @@ function setup() {
 describe('UtteranceAssembler', () => {
   it('joins final pieces into one utterance that closes on speech_final', () => {
     const { assembler, utterances } = setup();
-    assembler.push(piece({ text: 'So tell me', startSec: 2, endSec: 3 }));
-    assembler.push(piece({ text: 'about a project you led.', startSec: 3, endSec: 4.5, speechFinal: true, receivedAt: 5 }));
+    assembler.push(piece({ text: 'So tell me', startSec: 2, endSec: 3, endedAt: 1_003_000 }));
+    assembler.push(
+      piece({ text: 'about a project you led.', startSec: 3, endSec: 4.5, endedAt: 1_004_500, speechFinal: true, receivedAt: 5 }),
+    );
 
     expect(utterances).toEqual([
-      { role: 'interviewer', text: 'So tell me about a project you led.', startSec: 2, endSec: 4.5, completedAt: 5 },
+      {
+        role: 'interviewer',
+        text: 'So tell me about a project you led.',
+        startSec: 2,
+        endSec: 4.5,
+        completedAt: 5,
+        speechEndedAt: 1_004_500,
+      },
     ]);
   });
 

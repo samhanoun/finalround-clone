@@ -121,3 +121,57 @@ describe('AnswerController', () => {
     });
   });
 });
+
+describe('AnswerController turn timings', () => {
+  function clock(start = 1_000) {
+    let t = start;
+    return { now: () => t, advance: (ms: number) => (t += ms) };
+  }
+
+  it('reports an answered turn with its first-token and done times', async () => {
+    const time = clock();
+    const turns: unknown[] = [];
+    const controller = new AnswerController(
+      async (_q, _signal, onText) => {
+        time.advance(600);
+        onText('I ');
+        time.advance(900);
+        onText('shipped it.');
+        return { ttftMs: 450 };
+      },
+      { now: time.now },
+    );
+    controller.onTurn((turn) => turns.push(turn));
+    await controller.request({ ...question('Why?'), speechEndedAt: 500, finalAt: 800, decidedAt: 1_000 });
+
+    expect(turns).toEqual([
+      expect.objectContaining({
+        outcome: 'answered',
+        speechEndedAt: 500,
+        finalAt: 800,
+        gateAt: 1_000,
+        firstTokenAt: 1_600,
+        doneAt: 2_500,
+        serverTtftMs: 450,
+      }),
+    ]);
+  });
+
+  it('reports replaced, stopped and failed turns too', async () => {
+    const { send, calls } = controllableSender();
+    const controller = new AnswerController(send);
+    const outcomes: string[] = [];
+    controller.onTurn((turn) => outcomes.push(turn.outcome));
+
+    const first = controller.request(question('First?'));
+    const second = controller.request(question('Second?')); // replaces the first
+    await first;
+    controller.cancel(); // stops the second
+    await second;
+    const third = controller.request(question('Third?'));
+    calls[2].reject(new Error('boom'));
+    await third;
+
+    expect(outcomes).toEqual(['superseded', 'stopped', 'error']);
+  });
+});

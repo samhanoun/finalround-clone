@@ -9,6 +9,9 @@ import { useAudioCapture } from './copilot/useAudioCapture';
 import { useLiveTranscription } from './copilot/useLiveTranscription';
 import { useCopilotAnswers } from './copilot/useCopilotAnswers';
 import { AnswerPanel } from './copilot/AnswerPanel';
+import { AutoEndNotice } from './copilot/AutoEndNotice';
+import { LatencyDrawer, LatencyTable } from './copilot/LatencyDrawer';
+import { isLatencyPayload, summarizeLatencyEvents } from '@/lib/copilot/latency';
 import type { ConnectionState, TailLine } from './copilot/AnswerView';
 import { SuggestionFeed, TranscriptFeed } from './copilot/LiveFeeds';
 import { SessionBar } from './copilot/SessionBar';
@@ -234,6 +237,9 @@ function appendUniqueEvents(current: CopilotEvent[], incoming: CopilotEvent[]): 
   if (additions.length === 0) return current;
   return [...current, ...additions];
 }
+
+/** Why a session ended; stored on the session by the stop route. */
+type StopReason = 'user' | 'tab_closed' | 'sharing_stopped';
 
 function isTypingTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
@@ -721,7 +727,7 @@ export function LiveCopilotClient() {
     }
   }
 
-  async function stopSession() {
+  async function stopSession(reason: StopReason = 'user') {
     if (!session?.id || submitting) return;
 
     setError(null);
@@ -731,7 +737,7 @@ export function LiveCopilotClient() {
       const res = await fetch('/api/copilot/sessions/stop', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ sessionId: session.id }),
+        body: JSON.stringify({ sessionId: session.id, reason }),
       });
       const json = (await res.json().catch(() => ({}))) as { session?: CopilotSession; error?: string };
       if (!res.ok || !json.session) throw new Error(json.error ?? 'Failed to stop session');
@@ -860,6 +866,26 @@ export function LiveCopilotClient() {
   useEffect(() => {
     saveSetup(setup);
   }, [setup]);
+
+  // Closing the tab ends the session (and its billed minutes) instead of
+  // leaving it to expire. A beacon still goes out while the page unloads.
+  const activeSessionId = isActive && session ? session.id : null;
+  useEffect(() => {
+    if (!activeSessionId) return;
+    const onPageHide = () => {
+      const body = new Blob([JSON.stringify({ sessionId: activeSessionId, reason: 'tab_closed' })], {
+        type: 'application/json',
+      });
+      navigator.sendBeacon?.('/api/copilot/sessions/stop', body);
+    };
+    window.addEventListener('pagehide', onPageHide);
+    return () => window.removeEventListener('pagehide', onPageHide);
+  }, [activeSessionId]);
+
+  // Stopping the meeting share starts a countdown to end the session (see AutoEndNotice).
+  const [keepOpenAfterStop, setKeepOpenAfterStop] = useState<number | null>(null);
+  const sharingStoppedAt =
+    isActive && audio.status !== 'live' && audio.ended?.source === 'interviewer' ? audio.ended.at : null;
 
   const connection = useMemo<ConnectionState>(() => {
     if (audio.status !== 'live') {
@@ -1281,16 +1307,22 @@ export function LiveCopilotClient() {
   }, [historyDetail, selectedHistorySession]);
 
   const historyEventBreakdown = useMemo(() => {
-    if (!historyDetail) return { transcripts: [], suggestions: [], systems: [] } as {
-      transcripts: CopilotEvent[];
-      suggestions: CopilotEvent[];
-      systems: CopilotEvent[];
-    };
+    if (!historyDetail) {
+      return { transcripts: [], suggestions: [], systems: [], latency: summarizeLatencyEvents([]) } as {
+        transcripts: CopilotEvent[];
+        suggestions: CopilotEvent[];
+        systems: CopilotEvent[];
+        latency: ReturnType<typeof summarizeLatencyEvents>;
+      };
+    }
 
     return {
       transcripts: historyDetail.events.filter((item) => item.event_type === 'transcript'),
       suggestions: historyDetail.events.filter((item) => item.event_type === 'suggestion'),
-      systems: historyDetail.events.filter((item) => item.event_type !== 'transcript' && item.event_type !== 'suggestion'),
+      systems: historyDetail.events.filter(
+        (item) => item.event_type !== 'transcript' && item.event_type !== 'suggestion' && !isLatencyPayload(item.payload),
+      ),
+      latency: summarizeLatencyEvents(historyDetail.events.map((item) => item.payload)),
     };
   }, [historyDetail]);
 
@@ -1332,8 +1364,17 @@ export function LiveCopilotClient() {
       {isActive ? (
         <section className="card" aria-label="Live assistance">
           <div className="cardInner stack" style={{ gap: 14 }}>
+            {sharingStoppedAt !== null && keepOpenAfterStop !== sharingStoppedAt ? (
+              <AutoEndNotice
+                key={sharingStoppedAt}
+                startedAt={sharingStoppedAt}
+                onExpire={() => void stopSession('sharing_stopped')}
+                onKeepOpen={() => setKeepOpenAfterStop(sharingStoppedAt)}
+              />
+            ) : null}
             <AudioSourcesPanel capture={audio} transcription={transcription} disabled={!isActive} />
             <AnswerPanel answers={answers} onAnswerNow={answerNow} disabled={!isActive} connection={connection} tail={answerTail} />
+            <LatencyDrawer answers={answers} />
           </div>
         </section>
       ) : null}
@@ -1864,6 +1905,15 @@ export function LiveCopilotClient() {
                       <div className={styles.metricCard}><span className="small">Suggestions</span><strong>{historyInsights.suggestions}</strong></div>
                       <div className={styles.metricCard}><span className="small">System events</span><strong>{historyEventBreakdown.systems.length}</strong></div>
                     </div>
+
+                    {historyEventBreakdown.latency.turns > 0 ? (
+                      <div className={styles.summaryCard}>
+                        <LatencyTable
+                          summary={historyEventBreakdown.latency.stages}
+                          caption={`Latency per stage: ${historyEventBreakdown.latency.outcomes.answered} answered, ${historyEventBreakdown.latency.outcomes.superseded} replaced, ${historyEventBreakdown.latency.outcomes.error} failed`}
+                        />
+                      </div>
+                    ) : null}
 
                     <div className={styles.summaryColumns}>
                       <article className={styles.summaryCard}>

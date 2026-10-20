@@ -309,3 +309,14 @@ describe('QuestionGate classifier for unsure lines', () => {
     expect(fired.map((q) => q.via)).toEqual(['heuristic']);
   });
 });
+
+describe('QuestionGate timing', () => {
+  it('passes the triggering line\'s speech-end and final times with the question', async () => {
+    const { gate, fired } = setup();
+    await gate.observe({ ...interviewer('Why did you leave?', 0, 2), speechEndedAt: 5_000, completedAt: 5_350 });
+    expect(fired[0]).toMatchObject({ speechEndedAt: 5_000, finalAt: 5_350 });
+
+    gate.answerNow();
+    expect(fired[1].speechEndedAt).toBeUndefined();
+  });
+});

@@ -255,6 +255,10 @@ export type GatedQuestion = {
   via: 'heuristic' | 'classifier' | 'fallback' | 'manual';
   score: number;
   decidedAt: number;
+  /** Automatic questions: when the interviewer stopped talking (wall clock, ms). */
+  speechEndedAt?: number | null;
+  /** Automatic questions: when the triggering utterance became final. */
+  finalAt?: number | null;
 };
 
 export type QuestionGateOptions = {
@@ -277,6 +281,9 @@ type Turn = {
   lastTriggerText: string | null;
   /** The line that fired looked cut off, so the next line may finish it. */
   lastTriggerOpen: boolean;
+  /** Timing of the latest line, for latency per question. */
+  lastSpeechEndedAt: number | null;
+  lastFinalAt: number | null;
 };
 
 /**
@@ -324,12 +331,21 @@ export class QuestionGate {
     let turn = this.turn;
     if (!turn || utterance.startSec - turn.lastEndSec > this.turnGapSec) {
       this.endTurn();
-      turn = { parts: [], lastEndSec: utterance.endSec, lastTriggerText: null, lastTriggerOpen: false };
+      turn = {
+        parts: [],
+        lastEndSec: utterance.endSec,
+        lastTriggerText: null,
+        lastTriggerOpen: false,
+        lastSpeechEndedAt: null,
+        lastFinalAt: null,
+      };
       this.turn = turn;
     }
     const gapSec = utterance.startSec - turn.lastEndSec;
     turn.parts.push(text);
     turn.lastEndSec = utterance.endSec;
+    turn.lastSpeechEndedAt = utterance.speechEndedAt ?? null;
+    turn.lastFinalAt = utterance.completedAt;
 
     const turnText = this.turnText(turn);
     const own = scoreUtterance(text);
@@ -426,6 +442,8 @@ export class QuestionGate {
       via,
       score: verdict.score,
       decidedAt: this.now(),
+      speechEndedAt: turn.lastSpeechEndedAt,
+      finalAt: turn.lastFinalAt,
     });
   }
 
