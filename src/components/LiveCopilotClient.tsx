@@ -6,6 +6,8 @@ import { formatCopilotActionError } from './liveCopilotDataControls';
 import { sloClient, SLO_TYPE_OVERLAY_INTERACTION, SLO_TYPE_TRANSCRIPT_TO_SUGGESTION, getStatusEmoji, formatLatency, type SLOCompliance, type SLOMetric } from '@/lib/sloClient';
 import { AudioSourcesPanel } from './copilot/AudioSourcesPanel';
 import { useAudioCapture } from './copilot/useAudioCapture';
+import { useLiveTranscription } from './copilot/useLiveTranscription';
+import type { Utterance } from '@/lib/stt/utterances';
 
 type CopilotMode = 'general' | 'coding' | 'phone' | 'video';
 
@@ -805,6 +807,28 @@ export function LiveCopilotClient() {
     [flushTranscriptQueue],
   );
 
+  // Every finished utterance is saved. Interviewer lines also ask for a
+  // suggestion; until the question gate (Step 3) decides properly, skip
+  // one- and two-word lines like "Okay." or "Great, thanks."
+  const handleUtterance = useCallback(
+    (utterance: Utterance) => {
+      enqueueTranscriptChunk({
+        speaker: utterance.role,
+        text: utterance.text,
+        isFinal: true,
+        autoSuggest: utterance.role === 'interviewer' && utterance.text.split(/\s+/).length >= 3,
+        clientTimestamp: new Date(utterance.completedAt).toISOString(),
+      });
+    },
+    [enqueueTranscriptChunk],
+  );
+
+  const transcription = useLiveTranscription({
+    sessionId: isActive && session ? session.id : null,
+    capture: audio,
+    onUtterance: handleUtterance,
+  });
+
   useEffect(() => {
     if (!isActive || !session?.id) {
       transcriptQueueRef.current = [];
@@ -1500,7 +1524,7 @@ export function LiveCopilotClient() {
             </section>
           )}
 
-          <AudioSourcesPanel capture={audio} disabled={!isActive} />
+          <AudioSourcesPanel capture={audio} transcription={transcription} disabled={!isActive} />
 
           <div className={styles.composerCard}>
             <div className={styles.composerHeader}>

@@ -4,7 +4,9 @@ import { useEffect, useState } from 'react';
 import type { CaptureLevels } from '@/lib/audio/capture';
 import { hasSignal, levelToPercent } from '@/lib/audio/levels';
 import styles from './AudioSourcesPanel.module.css';
+import type { LiveSttStatus } from '@/lib/stt/deepgramLive';
 import type { AudioCapture, AudioCaptureStatus } from './useAudioCapture';
+import type { LiveCaptions, LiveTranscription } from './useLiveTranscription';
 
 const SILENT: CaptureLevels = { candidate: 0, interviewer: 0 };
 
@@ -15,7 +17,24 @@ const STATUS_LABEL: Record<AudioCaptureStatus, string> = {
   error: 'Not listening',
 };
 
-export function AudioSourcesPanel({ capture, disabled }: { capture: AudioCapture; disabled: boolean }) {
+const STT_LABEL: Record<LiveSttStatus, string> = {
+  idle: 'Transcription off',
+  connecting: 'Connecting transcription…',
+  live: 'Transcribing',
+  reconnecting: 'Reconnecting…',
+  closed: 'Transcription off',
+  error: 'Transcription stopped',
+};
+
+export function AudioSourcesPanel({
+  capture,
+  transcription,
+  disabled,
+}: {
+  capture: AudioCapture;
+  transcription?: LiveTranscription;
+  disabled: boolean;
+}) {
   const { status, error, start, stop, subscribeLevels } = capture;
   const live = status === 'live';
 
@@ -23,10 +42,15 @@ export function AudioSourcesPanel({ capture, disabled }: { capture: AudioCapture
     <section className={styles.panel} aria-label="Audio sources">
       <div className={styles.header}>
         <h3 className={styles.title}>Audio sources</h3>
-        <span className="badge">{STATUS_LABEL[status]}</span>
+        <div className={styles.badges}>
+          <span className="badge">{STATUS_LABEL[status]}</span>
+          {transcription && live ? <span className="badge">{STT_LABEL[transcription.status]}</span> : null}
+        </div>
       </div>
 
       <LevelMeters subscribe={subscribeLevels} active={live} />
+
+      {transcription && live ? <Captions captions={transcription.captions} /> : null}
 
       <div className={styles.actions}>
         <button
@@ -52,7 +76,30 @@ export function AudioSourcesPanel({ capture, disabled }: { capture: AudioCapture
           {error}
         </div>
       ) : null}
+
+      {transcription?.error ? (
+        <div className="error" role="status" aria-live="polite">
+          {transcription.error}
+        </div>
+      ) : null}
     </section>
+  );
+}
+
+// Interim text changes several times a second, so captions are not a live
+// region; finished lines are announced through the transcript instead.
+function Captions({ captions }: { captions: LiveCaptions }) {
+  return (
+    <div className={styles.captions} aria-label="Live captions">
+      <p className={styles.caption}>
+        <span className={styles.captionSpeaker}>Interviewer</span>
+        <span className={captions.interviewer ? undefined : styles.captionIdle}>{captions.interviewer || '…'}</span>
+      </p>
+      <p className={styles.caption}>
+        <span className={styles.captionSpeaker}>You</span>
+        <span className={captions.candidate ? undefined : styles.captionIdle}>{captions.candidate || '…'}</span>
+      </p>
+    </div>
   );
 }
 

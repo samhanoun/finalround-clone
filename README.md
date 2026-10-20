@@ -113,7 +113,7 @@ apex-round/
 │   │   └── (page routes)
 │   └── lib/                    # Shared utilities
 │       ├── supabase/          # Supabase clients
-│       ├── sttProviders/      # Speech-to-text
+│       ├── stt/               # Live speech-to-text
 │       └── ...
 ├── supabase/
 │   └── migrations/            # Database migrations

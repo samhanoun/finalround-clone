@@ -21,6 +21,11 @@ const RawEnvSchema = z.object({
   DEFAULT_MODEL: z.string().min(1).optional(),
   FALLBACK_MODEL: z.string().min(1).optional(),
 
+  // Speech-to-text (server-only; browsers get short-lived tokens)
+  DEEPGRAM_API_KEY: z.string().min(1).optional(),
+  DEEPGRAM_MODEL: z.string().regex(/^[a-z0-9._-]+$/i).optional(),
+  DEEPGRAM_LANGUAGE: z.string().regex(/^[a-z]{2,3}(-[a-z0-9]{2,8})?$|^multi$/i).optional(),
+
   // Billing (server-only)
   STRIPE_SECRET_KEY: z.string().min(1).optional(),
   STRIPE_WEBHOOK_SECRET: z.string().min(1).optional(),
@@ -57,6 +62,10 @@ export const env = RawEnvSchema.parse(blankToUndefined({
   GOOGLE_GENERATIVE_AI_API_KEY: process.env.GOOGLE_GENERATIVE_AI_API_KEY,
   DEFAULT_MODEL: process.env.DEFAULT_MODEL,
   FALLBACK_MODEL: process.env.FALLBACK_MODEL,
+
+  DEEPGRAM_API_KEY: process.env.DEEPGRAM_API_KEY,
+  DEEPGRAM_MODEL: process.env.DEEPGRAM_MODEL,
+  DEEPGRAM_LANGUAGE: process.env.DEEPGRAM_LANGUAGE,
 
   STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY,
   STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET,
