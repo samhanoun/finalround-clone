@@ -94,9 +94,13 @@ const BODY = {
   recentTranscript: [{ speaker: 'interviewer', text: 'Take a look at the problem I just shared.' }],
 };
 
-async function call(body: unknown = BODY) {
+async function call(body: unknown = BODY, init: { stream?: ReadableStream<Uint8Array> } = {}) {
   const { POST } = await import('./route');
-  const req = { headers: { get: () => null }, json: async () => body, signal: new AbortController().signal } as unknown as NextRequest;
+  const req = new Request('http://localhost/api/copilot/sessions/session-1/screen', {
+    method: 'POST',
+    body: init.stream ?? JSON.stringify(body),
+    ...(init.stream ? { duplex: 'half' } : {}),
+  } as RequestInit) as unknown as NextRequest;
   const res = await POST(req, { params: Promise.resolve({ id: SESSION_ID }) });
   return { res, text: await res.text() };
 }
@@ -180,6 +184,22 @@ describe('POST /api/copilot/sessions/[id]/screen', () => {
     expect(mockStreamChat).not.toHaveBeenCalled();
     await runAfter();
     expect(insert).not.toHaveBeenCalled();
+  });
+
+  it('stops reading a body past the size limit, even without a Content-Length', async () => {
+    mockSupabase();
+    let pulled = 0;
+    const chunk = new TextEncoder().encode('A'.repeat(256 * 1024));
+    const endless = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pulled += 1;
+        controller.enqueue(chunk);
+      },
+    });
+    const { res, text } = await call(undefined, { stream: endless });
+    expect(res.status).toBe(413);
+    expect(JSON.parse(text).error).toBe('image_too_large');
+    expect(pulled).toBeLessThan(40); // about 4.1 MB, then it stops
   });
 
   it('accepts only JPEG or PNG bytes', async () => {

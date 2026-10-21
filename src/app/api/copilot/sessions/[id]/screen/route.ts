@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { after, NextRequest } from 'next/server';
 import { z } from 'zod';
-import { jsonError } from '@/lib/api';
+import { jsonError, readJsonLimited } from '@/lib/api';
 import { env } from '@/lib/env';
 import { createClient } from '@/lib/supabase/server';
 import { rateLimit } from '@/lib/rateLimit';
@@ -78,16 +78,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   const ipRl = await rateLimit({ key: `copilot:screen:ip:${ip}`, limit: 30, windowMs: 60_000 });
   if (!ipRl.ok) return jsonError(429, 'rate_limited');
 
-  if (Number(req.headers.get('content-length') ?? 0) > MAX_BODY_BYTES) return jsonError(413, 'image_too_large');
-  const parse = BodySchema.safeParse(await req.json().catch(() => null));
-  if (!parse.success) return jsonError(400, 'invalid_body', parse.error.flatten());
-
-  const bytes = Buffer.from(parse.data.image, 'base64');
-  if (bytes.length > MAX_IMAGE_BYTES) return jsonError(413, 'image_too_large');
-  const mediaType = imageType(bytes);
-  if (!mediaType) return jsonError(400, 'invalid_image');
-  const sha256 = createHash('sha256').update(bytes).digest('hex');
-
+  // Sign-in and the per-user limit come before reading a body of up to a few MB.
   const { id } = await params;
   const supabase = await createClient();
   const { data: userData, error: userError } = await supabase.auth.getUser();
@@ -97,6 +88,17 @@ export async function POST(req: NextRequest, { params }: Params) {
   // Each frame is a vision call: fewer than spoken answers.
   const userRl = await rateLimit({ key: `copilot:screen:user:${userId}`, limit: 10, windowMs: 60_000 });
   if (!userRl.ok) return jsonError(429, 'rate_limited');
+
+  const raw = await readJsonLimited(req, MAX_BODY_BYTES);
+  if (!raw.ok) return raw.tooLarge ? jsonError(413, 'image_too_large') : jsonError(400, 'invalid_body');
+  const parse = BodySchema.safeParse(raw.data);
+  if (!parse.success) return jsonError(400, 'invalid_body', parse.error.flatten());
+
+  const bytes = Buffer.from(parse.data.image, 'base64');
+  if (bytes.length > MAX_IMAGE_BYTES) return jsonError(413, 'image_too_large');
+  const mediaType = imageType(bytes);
+  if (!mediaType) return jsonError(400, 'invalid_image');
+  const sha256 = createHash('sha256').update(bytes).digest('hex');
 
   const [loaded, quota, previous] = await Promise.all([
     loadActiveCopilotSession(supabase, id, userId),
