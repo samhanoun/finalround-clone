@@ -422,6 +422,19 @@ Known limitation to verify: on macOS, Chrome reliably captures **tab** audio onl
 
 - New `src/app/api/billing/checkout/route.ts` (Stripe Checkout Session for `PRICE_ID_PRO_*`) and `src/app/api/billing/portal/route.ts`, wired to [`webhooks/stripe`](../src/app/api/webhooks/stripe/route.ts) and [`quota.ts`](../src/lib/quota.ts). Upgrade the pinned Stripe API version in [`src/lib/stripe.ts`](../src/lib/stripe.ts) deliberately.
 
+> **Status (2026-10-21): built in test mode; not yet run against Stripe.** Setup and testing are in [`STRIPE_SETUP.md`](../STRIPE_SETUP.md).
+> - **SDK and API version:** stripe-node 14 → 23, with the API version moved from `2023-10-16` to `2026-09-30.endive`, the current version per docs.stripe.com. The billing period now comes from the subscription item, since API version 2025-03-31.basil moved it there.
+> - **Checkout:** creates one Stripe customer per user (tagged with the user id, idempotent), then a subscription Checkout for the EUR or USD price. The price id comes only from server env. A user who already has Pro gets 409.
+> - **Portal:** opens Stripe's billing portal for the user's own customer.
+> - **Webhook:**
+>   - It handles `checkout.session.completed`, customer events and subscription events, and re-reads each subscription from Stripe so events arriving out of order can't leave a stale plan.
+>   - Pro stays on while the subscription is active, trialing or past_due.
+>   - A failed sync now returns 500, so Stripe retries; before, the error was swallowed and the event lost.
+> - **UI:** Settings → Usage & Limits has "Upgrade to Pro" with a currency choice, or "Manage billing", plus a note after returning from Checkout.
+> - **Security:** migration `0026_lock_billing_tables.sql` makes `subscriptions` and `usage_counters` read-only for users. Before, any signed-in user could give themselves a plan or reset their usage. **It isn't applied to "Finalroundy" yet.**
+> - **Tests:** unit tests cover the sync logic, the checkout route and the webhook (signature, routing, retry on failure). A browser check confirmed the settings UI against the fakes.
+> - **Not verified:** a real test-mode checkout (test keys, prices and `stripe listen` are needed).
+
 ### After the MVP (not in scope now)
 
 1. **Desktop app (Electron)** that wraps the same web UI. Windows system audio via `session.setDisplayMediaRequestHandler(... audio: 'loopback')` (no native addon); macOS via ScreenCaptureKit or Core Audio Taps (🔶 native work or a maintained addon; verify Electron's current macOS loopback support). Always-on-top overlay windows, global hotkeys, auto-update. **Harden Electron fuses** (`RunAsNode` off, ASAR integrity on, `OnlyLoadAppFromAsar` on), which FRAI doesn't.

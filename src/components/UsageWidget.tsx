@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { BillingActions } from './BillingActions';
 
 interface UsageData {
   plan: string;
@@ -125,6 +126,8 @@ export function UsageWidget() {
             Upgrade to Pro for higher limits: 400 min/month, 30 min/session, 45 min/day, Smart mode 80 min/month, 10 resume reviews/month.
           </p>
         )}
+
+        <BillingActions isPro={data.isPro} />
       </div>
     </div>
   );

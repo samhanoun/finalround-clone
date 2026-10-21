@@ -9,9 +9,8 @@ export function getStripe() {
   if (!env.STRIPE_SECRET_KEY) return null;
 
   _stripe = new Stripe(env.STRIPE_SECRET_KEY, {
-    // Keep pinned; adjust if you upgrade Stripe.
-    apiVersion: '2023-10-16',
-    typescript: true,
+    // The version stripe-node 23 is built for; keep the webhook endpoint on the same version.
+    apiVersion: '2026-09-30.endive',
   });
 
   return _stripe;
