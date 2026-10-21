@@ -6,7 +6,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 
 jest.mock('@/lib/env', () => ({ env: { PRICE_ID_PRO_EUR: 'price_eur', PRICE_ID_PRO_USD: 'price_usd' } }));
 
-import { getOrCreateStripeCustomer, proPriceId, recordCheckout, syncSubscription } from '@/lib/billing';
+import { getOrCreateStripeCustomer, proAccessUntil, proPriceId, recordCheckout, syncSubscription } from '@/lib/billing';
 
 type Row = Record<string, unknown>;
 type Call = { table: string; op: 'upsert' | 'update'; value: Row; options?: unknown; filters?: Array<[string, unknown]> };
@@ -96,6 +96,31 @@ describe('syncSubscription', () => {
       op: 'upsert',
       value: { user_id: 'user-1', plan_id: 'pro', status: 'active' },
       options: { onConflict: 'user_id,plan_id' },
+    });
+  });
+
+  it('keeps Pro for a short grace only while a renewal is past due', async () => {
+    const start = 1_760_000_000;
+    const { stripe } = fakeStripe(subscription({ status: 'past_due' }));
+    const { admin, calls } = fakeAdmin({ stripe_customers: [{ user_id: 'user-1', stripe_customer_id: 'cus_1' }] });
+
+    await syncSubscription(stripe, admin, 'sub_1');
+
+    expect(calls.find((c) => c.table === 'subscriptions')?.value).toMatchObject({
+      plan_id: 'pro',
+      status: 'active',
+      current_period_end: new Date((start + 7 * 24 * 60 * 60) * 1000).toISOString(),
+    });
+  });
+
+  it('grants nothing for unpaid, incomplete or paused subscriptions', () => {
+    const period = { start: '2026-10-01T00:00:00.000Z', end: '2026-11-01T00:00:00.000Z' };
+    for (const status of ['unpaid', 'incomplete', 'incomplete_expired', 'paused', 'canceled'] as const) {
+      expect(proAccessUntil(status, period)).toBeNull();
+    }
+    expect(proAccessUntil('active', period)).toEqual({ until: period.end });
+    expect(proAccessUntil('past_due', { start: '2026-10-30T00:00:00.000Z', end: '2026-11-01T00:00:00.000Z' })).toEqual({
+      until: '2026-11-01T00:00:00.000Z', // the period ends before the grace would
     });
   });
 

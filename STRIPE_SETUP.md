@@ -39,7 +39,7 @@ Use that `whsec_…` as `STRIPE_WEBHOOK_SECRET` while testing, start the app (`n
 
 - `POST /api/billing/checkout` creates (once) a Stripe customer tagged with the user id, then a subscription Checkout Session for the chosen currency's price. The price id never comes from the browser.
 - `POST /api/billing/portal` opens the portal for the user's own customer.
-- The webhook verifies the signature, then re-reads each subscription from Stripe (so out-of-order events can't leave a stale state) and syncs `stripe_customers`, `stripe_subscriptions` and the app's `subscriptions` row (`plan_id = 'pro'`), which drives quotas. Pro stays on while the subscription is `active`, `trialing` or `past_due`.
+- The webhook verifies the signature, then re-reads each subscription from Stripe (so out-of-order events can't leave a stale state) and syncs `stripe_customers`, `stripe_subscriptions` and the app's `subscriptions` row (`plan_id = 'pro'`), which drives quotas. Pro stays on while the subscription is `active` or `trialing`, and for 7 days of a `past_due` renewal (enforced through the plan's end date, whatever the retry settings).
 - A failed sync returns 500, so Stripe retries the event (with backoff, for up to three days); every handler is safe to repeat.
 - Users can read but not change `subscriptions` and `usage_counters` (migration `0026_lock_billing_tables.sql`); only the service role writes them.
 

@@ -428,7 +428,7 @@ Known limitation to verify: on macOS, Chrome reliably captures **tab** audio onl
 > - **Portal:** opens Stripe's billing portal for the user's own customer.
 > - **Webhook:**
 >   - It handles `checkout.session.completed`, customer events and subscription events, and re-reads each subscription from Stripe so events arriving out of order can't leave a stale plan.
->   - Pro stays on while the subscription is active, trialing or past_due.
+>   - Pro stays on while the subscription is active or trialing, plus a 7-day grace for a past-due renewal (enforced through the plan's end date).
 >   - A failed sync now returns 500, so Stripe retries; before, the error was swallowed and the event lost.
 > - **UI:** Settings → Usage & Limits has "Upgrade to Pro" with a currency choice, or "Manage billing", plus a note after returning from Checkout.
 > - **Security:** migration `0026_lock_billing_tables.sql` makes `subscriptions` and `usage_counters` read-only for users. Before, any signed-in user could give themselves a plan or reset their usage. **It isn't applied to "Finalroundy" yet.**

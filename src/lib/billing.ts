@@ -28,6 +28,26 @@ export function subscriptionPeriod(sub: Stripe.Subscription): { start: string | 
   return { start: toIso(item?.current_period_start), end: toIso(item?.current_period_end) };
 }
 
+/** How long a failed renewal keeps Pro while Stripe retries the payment. */
+export const PAST_DUE_GRACE_DAYS = 7;
+
+/**
+ * Whether a subscription grants Pro, and until when. Active and trialing:
+ * the current period. Past due: a short grace from the start of the unpaid
+ * period, whatever the account's retry settings. Anything else: no access.
+ */
+export function proAccessUntil(
+  status: Stripe.Subscription.Status,
+  period: { start: string | null; end: string | null },
+): { until: string | null } | null {
+  if (status === 'active' || status === 'trialing') return { until: period.end };
+  if (status === 'past_due' && period.start) {
+    const grace = new Date(Date.parse(period.start) + PAST_DUE_GRACE_DAYS * 24 * 60 * 60 * 1000).toISOString();
+    return { until: period.end && period.end < grace ? period.end : grace };
+  }
+  return null;
+}
+
 export async function findStripeCustomerId(admin: SupabaseClient, userId: string): Promise<string | null> {
   const { data } = await admin.from('stripe_customers').select('stripe_customer_id').eq('user_id', userId).maybeSingle();
   return data?.stripe_customer_id ?? null;
@@ -123,16 +143,16 @@ export async function syncSubscription(stripe: Stripe, admin: SupabaseClient, su
 
   if (!isProPrice(price?.id)) return;
 
-  // Pro while active or trialing; past_due keeps access until Stripe gives up and cancels.
-  const entitled = sub.status === 'active' || sub.status === 'trialing' || sub.status === 'past_due';
-  const plan = entitled
+  const access = proAccessUntil(sub.status, period);
+  const plan = access
     ? await admin.from('subscriptions').upsert(
         {
           user_id: userId,
           plan_id: 'pro',
           status: 'active',
           current_period_start: period.start,
-          current_period_end: period.end,
+          // get_user_plan ignores rows past this date, so access lapses on time even without another event.
+          current_period_end: access.until,
         },
         { onConflict: 'user_id,plan_id' },
       )
