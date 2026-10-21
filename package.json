@@ -8,6 +8,7 @@
     "build": "next build && npm run build:server",
     "build:server": "tsc -p tsconfig.server.json",
     "start": "node .server/server.js --production",
+    "check:live": "node scripts/check-live-setup.mjs",
     "lint": "eslint",
     "test": "jest",
     "test:e2e": "playwright test",

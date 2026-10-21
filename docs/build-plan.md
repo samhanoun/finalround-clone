@@ -389,6 +389,16 @@ Checklist, each run with a friend playing interviewer for 15+ minutes:
 
 Known limitation to verify: on macOS, Chrome reliably captures **tab** audio only, so the Zoom/Teams desktop apps on Mac wait for the desktop phase.
 
+> **Status (2026-10-21): ready to run; the calls themselves are yours.**
+> - **Setup check:** `npm run check:live` confirms that the Supabase service role, Deepgram and each copilot model's key are accepted, without printing them. Stripe is reported but optional.
+> - **Copilot time:** migration `0025_tester_plan.sql` adds a Tester plan (120 minutes per session, 180 a day, 2,000 a month), enough for the 60-minute run. It's applied to "Finalroundy". To put an account on it:
+>   `insert into public.subscriptions (user_id, plan_id, status) values ('<auth user id>', 'tester', 'active');`
+> - **Each run:**
+>   1. `npm run dev`, then open `http://localhost:3000/en/copilot/live`. Capture needs `localhost` or HTTPS.
+>   2. Fill the setup step and start the session. Choose **Start listening** and share the meeting tab with **Share tab audio** ticked; for a desktop app, share the entire screen with **Share system audio**.
+>   3. Pop out the answer window and run the call.
+>   4. Afterwards, the Latency drawer (also in Analytics → the session) shows p50/p95 per stage. Note them against the 1.5 s / 3 s targets, along with anything that broke.
+
 ### Step 9 (MVP+): Coding copilot (M)
 
 - On Answer now with "screen", or a dedicated button: grab a frame from the **display video track you already have** (`ImageCapture.grabFrame()` or a canvas) → JPEG → SHA-256 for dedup → `POST /api/copilot/sessions/[id]/screen` (new) → vision-capable model → streamed result into the same answer window, with a code block and complexity.
