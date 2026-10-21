@@ -335,7 +335,7 @@ Size: **S** ≤ 1 day · **M** 2–3 days · **L** 4+ days. Every step ends with
 - Replace the current shallow [`e2e/copilot.spec.ts`](../e2e/copilot.spec.ts) checks.
 - ✅ **Done when:** CI goes from fake audio question → transcript → answer tokens green.
 
-> **Status (2026-10-20): green locally (4 runs, one from a cold build); the CI workflow is written but hasn't run yet (nothing is pushed).**
+> **Status (2026-10-21): ✅ done. CI runs the loop green on draft PR [#27](https://github.com/samhanoun/finalround-clone/pull/27):** the `Live loop (fake services)` job has passed on every push (`cbfa669` through `0738e28`), alongside lint, typecheck, unit tests, build and the dependency audit. The only red check is GitGuardian (see "Still open" below).
 > - **The test:** [`e2e/copilot-live.spec.ts`](../e2e/copilot-live.spec.ts) drives the whole loop in Chromium:
 >   1. Sign in, fill the setup step (company, role, résumé, job description) and start a session.
 >   2. Start listening. Chromium's fake microphone plays a speech-like WAV; `NEXT_PUBLIC_E2E_FAKE_AUDIO=1` routes it to the interviewer channel and leaves yours silent. That mode only exists in development builds.
@@ -351,10 +351,28 @@ Size: **S** ≤ 1 day · **M** 2–3 days · **L** 4+ days. Every step ends with
 > - **Small app changes** to make it testable: `DEEPGRAM_LISTEN_URL` (a test-only endpoint override), `NEXT_DIST_DIR` (the e2e build goes to `.next-e2e`, so it runs beside `npm run dev`), and the capture test mode. OpenAI's SDK already honours `OPENAI_BASE_URL`.
 > - **CI** ([`.github/workflows/e2e-live.yml`](../.github/workflows/e2e-live.yml)): the fakes job runs on every push and PR. A manual `real = true` run uses the `E2E_*` secrets, generates the question audio with Deepgram text-to-speech, and runs the same spec with `E2E_REAL=1`.
 > - **Replaced:** the shallow `e2e/copilot.spec.ts` (it only checked that a heading, nav and main rendered). It now checks the signed-out page and that the copilot APIs refuse signed-out calls; both pass against the dev server.
-> - **Unit tests:** gate, PCM worklet maths, SSE parser and context pack were written in Steps 1–5. Added a test for the capture test mode. 343/343, `tsc`, build, ESLint 0 errors.
+> - **Unit tests:** gate, PCM worklet maths, SSE parser and context pack were written in Steps 1–5. Added a test for the capture test mode, and later one for the toast provider. 345/345, `tsc`, build, ESLint 0 errors.
 > - **Found on the way:** the dev server compiles each route on first use, which can take longer than an answer may, so the spec warms the routes up first. Also, my fake Deepgram crashed on odd-offset buffers (a test bug), which took all the fakes down mid-run; fixed.
 > - **Security (from a review of this step):** real-services runs record no traces, screenshots or HTML report, and that CI job uploads no artifacts. Otherwise the test user's password and live session tokens would land in downloadable artifacts. The fakes job keeps its traces; they only hold fake credentials.
-> - **Not done:** the real-services job needs you to create a test Supabase user and add the `E2E_*` secrets before it can run.
+> - **Fixed after CI first ran** (each is its own commit on PR #27):
+>   - `2afebcf`: GitGuardian read the spec's sign-in skip message as a hardcoded password. Reworded, no behaviour change.
+>   - `43d0354`: the non-breaking `npm audit fix` (e.g. `ws` 8.22.0, `next-intl` 4.14.9, `axios`, `@xmldom/xmldom`, `dompurify`). CI's audit now covers production dependencies only (`--omit=dev`). The dev-only Jest/ESLint advisories have no fix short of downgrading `eslint-config-next` to 14, and they were already on `master`.
+>   - `c75dad9`: Next.js and `eslint-config-next` 16.1.6 → 16.4.2, which clears the production critical and high advisories (Next, `sharp`, `postcss`). Its stricter React hooks lint rules raised 16 errors, all fixed without changing what the pages fetch or show:
+>     - Fetches moved into the effects.
+>     - State resets now happen during render when their inputs change.
+>     - One intended change: the admin page now drops responses from outdated requests.
+>   - `0738e28`: `ClientProviders` was never mounted, so the dashboard, jobs, résumé and settings pages crashed ("useToast must be used within a ToastProvider"). The locale layout now mounts it.
+> - **Still open:**
+>   - The real-services job (optional; the done-criterion above is met). It needs a test user in a test Supabase project, with copilot minutes, plus the `E2E_*` repository secrets listed in [`e2e/README.md`](../e2e/README.md).
+>   - GitGuardian keeps flagging the old commit `cbfa669` (incident 38750060) until it's marked a false positive in the GitGuardian dashboard. Rewriting history would need a force-push.
+>   - Found but not fixed:
+>     - `usePlatformDetection` in `src/lib/useVideoConferencing.ts` (unused) sends a POST on every DOM change.
+>     - `LanguageSwitcher` logs missing `en` messages (`settings.languages.*`, `settings.common.back`).
+>     - Three moderate production advisories (`mammoth` → `argparse` → `sprintf-js`) are only fixable by downgrading `mammoth`.
+> - **Before Step 8:**
+>   - Fill in `.env.local`: `SUPABASE_SERVICE_ROLE_KEY`, `DEEPGRAM_API_KEY`, and `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` to match `LLM_PROVIDER`.
+>   - Give the test account enough copilot minutes. Free allows 10 minutes a month. Pro allows 30 per session, 45 a day and 400 a month. So the 15-minute runs need Pro, and the 60-minute session needs higher session and daily limits for that account.
+>   - Run the custom server (`npm run dev`, or `npm run build && npm start`) on `localhost`. Screen capture needs a secure context, and `localhost` counts as one.
 
 ### Step 8: Real-call validation (S) — *the MVP gate*
 
