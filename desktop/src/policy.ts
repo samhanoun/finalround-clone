@@ -6,16 +6,37 @@
 
 export const DEFAULT_APP_URL = 'http://localhost:3000';
 
+function isLoopback(hostname: string): boolean {
+  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]' || hostname.endsWith('.localhost');
+}
+
 /**
- * The web app to load: APEX_APP_URL (for development), else app.config.json.
- * Plain http is only accepted for localhost, where capture still counts as a
- * secure context.
+ * The web app to load. The app grants that origin silent screen, system-audio
+ * and microphone capture, so:
+ * - development (`npm start`): APEX_APP_URL, else app.config.json, else
+ *   localhost; https, or http on localhost;
+ * - a packaged build: app.config.json only, and it must be https on a real
+ *   host. A localhost default would hand capture to whatever listens on that
+ *   port, and an environment variable could point it anywhere.
  */
-export function resolveAppUrl(fromEnv: string | undefined, fromConfig: string | undefined): URL {
+export function resolveAppUrl(
+  fromEnv: string | undefined,
+  fromConfig: string | undefined,
+  { packaged = false }: { packaged?: boolean } = {},
+): URL {
+  if (packaged) {
+    const raw = fromConfig?.trim();
+    if (!raw) throw new Error('Set "appUrl" in app.config.json to your server (https) before building the app.');
+    const url = new URL(raw);
+    if (url.protocol !== 'https:' || isLoopback(url.hostname)) {
+      throw new Error(`A packaged build needs an https appUrl on a real host, not ${raw}`);
+    }
+    return url;
+  }
+
   const raw = fromEnv?.trim() || fromConfig?.trim() || DEFAULT_APP_URL;
   const url = new URL(raw);
-  const local = url.hostname === 'localhost' || url.hostname === '127.0.0.1' || url.hostname === '[::1]';
-  if (url.protocol !== 'https:' && !(url.protocol === 'http:' && local)) {
+  if (url.protocol !== 'https:' && !(url.protocol === 'http:' && isLoopback(url.hostname))) {
     throw new Error(`The app URL must use https (or http on localhost): ${raw}`);
   }
   return url;

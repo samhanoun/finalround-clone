@@ -18,6 +18,19 @@ test('resolveAppUrl: env over config over default; https or localhost only', () 
   assert.throws(() => resolveAppUrl('file:///C:/app/index.html', undefined), /https/);
 });
 
+test('resolveAppUrl in a packaged build: config only, https on a real host', () => {
+  const packaged = { packaged: true };
+  assert.equal(resolveAppUrl(undefined, 'https://app.example.com', packaged).origin, 'https://app.example.com');
+  // The environment can't redirect a packaged build.
+  assert.equal(resolveAppUrl('https://evil.test', 'https://app.example.com', packaged).origin, 'https://app.example.com');
+  assert.throws(() => resolveAppUrl(undefined, '', packaged), /app\.config\.json/);
+  assert.throws(() => resolveAppUrl(undefined, undefined, packaged), /app\.config\.json/);
+  assert.throws(() => resolveAppUrl(undefined, 'http://localhost:3000', packaged), /real host/);
+  assert.throws(() => resolveAppUrl(undefined, 'https://localhost:3000', packaged), /real host/);
+  assert.throws(() => resolveAppUrl(undefined, 'https://127.0.0.1', packaged), /real host/);
+  assert.throws(() => resolveAppUrl(undefined, 'http://app.example.com', packaged), /real host/);
+});
+
 test('isAppOrigin compares origins, not prefixes', () => {
   const app = new URL('https://app.example.com');
   assert.equal(isAppOrigin('https://app.example.com/en/copilot/live', app), true);

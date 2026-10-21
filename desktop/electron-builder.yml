@@ -8,6 +8,7 @@ directories:
 files:
   - dist/**/*.js
   - "!dist/**/*.test.js"
+  - "!dist/checkConfig.js"
   - app.config.json
   - package.json
 

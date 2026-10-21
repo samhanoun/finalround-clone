@@ -4,6 +4,7 @@ import {
   app,
   BrowserWindow,
   desktopCapturer,
+  dialog,
   globalShortcut,
   Menu,
   screen,
@@ -37,17 +38,24 @@ import {
 const PARTITION = 'persist:apex';
 const START_PATH = '/en/copilot/live';
 
-function configuredAppUrl(): URL {
+function configuredAppUrl(): URL | null {
   let fromConfig: string | undefined;
   try {
     fromConfig = JSON.parse(readFileSync(path.join(__dirname, '..', 'app.config.json'), 'utf8')).appUrl;
   } catch {
-    // no config file: the default (localhost) applies
+    // no config file: development falls back to localhost; a packaged build refuses below
   }
-  return resolveAppUrl(process.env.APEX_APP_URL, fromConfig);
+  try {
+    return resolveAppUrl(process.env.APEX_APP_URL, fromConfig, { packaged: app.isPackaged });
+  } catch (error) {
+    dialog.showErrorBox('Apex Round', error instanceof Error ? error.message : String(error));
+    return null;
+  }
 }
 
-const appUrl = configuredAppUrl();
+const configured = configuredAppUrl();
+if (!configured) app.exit(1);
+const appUrl = configured as URL;
 let mainWindow: BrowserWindow | null = null;
 
 function offlinePage(url: URL): string {
