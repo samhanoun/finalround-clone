@@ -3,6 +3,10 @@ import type { NextConfig } from "next";
 
 const withNextIntl = createNextIntlPlugin('./src/i18n/request.ts');
 
+// The e2e test mode stands in for the shared screen with Chromium's fake
+// camera (see DualAudioCapture). Never in a production build.
+const e2eFakeCamera = process.env.NODE_ENV !== 'production' && process.env.NEXT_PUBLIC_E2E_FAKE_AUDIO === '1';
+
 const nextConfig: NextConfig = {
   // End-to-end runs build into their own folder so they can run beside `npm run dev`.
   distDir: process.env.NEXT_DIST_DIR || '.next',
@@ -57,7 +61,7 @@ const nextConfig: NextConfig = {
           {
             key: 'Permissions-Policy',
             // The live copilot captures the mic and the meeting tab's audio (getDisplayMedia).
-            value: 'camera=(), microphone=(self), display-capture=(self), geolocation=()',
+            value: `camera=${e2eFakeCamera ? '(self)' : '()'}, microphone=(self), display-capture=(self), geolocation=()`,
           },
           {
             key: 'Cache-Control',

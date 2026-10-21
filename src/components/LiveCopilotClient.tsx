@@ -12,6 +12,7 @@ import { AnswerPanel } from './copilot/AnswerPanel';
 import { AutoEndNotice } from './copilot/AutoEndNotice';
 import { LatencyDrawer, LatencyTable } from './copilot/LatencyDrawer';
 import { isLatencyPayload, summarizeLatencyEvents } from '@/lib/copilot/latency';
+import { grabScreenFrame } from '@/lib/copilot/screenFrame';
 import type { ConnectionState, TailLine } from './copilot/AnswerView';
 import { SuggestionFeed, TranscriptFeed } from './copilot/LiveFeeds';
 import { SessionBar } from './copilot/SessionBar';
@@ -856,6 +857,23 @@ export function LiveCopilotClient() {
     }
   }, [interviewerCaption, requestAnswerNow]);
 
+  // Solve screen reads the tab or screen already shared for audio: no second prompt.
+  const getDisplayVideoTrack = audio.getDisplayVideoTrack;
+  const answerScreen = answers.answerScreen;
+  const solveScreen = useCallback(async () => {
+    const track = getDisplayVideoTrack();
+    if (!track) {
+      setError('Start listening and share the meeting tab or your screen first: Solve screen reads what you share.');
+      return;
+    }
+    try {
+      const frame = await grabScreenFrame(track);
+      if (!answerScreen(frame)) setError('Start a session first.');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not read the shared screen.');
+    }
+  }, [getDisplayVideoTrack, answerScreen]);
+
   useEffect(() => {
     saveSetup(setup);
   }, [setup]);
@@ -1398,7 +1416,15 @@ export function LiveCopilotClient() {
               />
             ) : null}
             <AudioSourcesPanel capture={audio} transcription={transcription} disabled={!isActive} />
-            <AnswerPanel answers={answers} onAnswerNow={answerNow} disabled={!isActive} connection={connection} tail={answerTail} />
+            <AnswerPanel
+              answers={answers}
+              onAnswerNow={answerNow}
+              onSolveScreen={solveScreen}
+              screenDisabled={audio.status !== 'live'}
+              disabled={!isActive}
+              connection={connection}
+              tail={answerTail}
+            />
             <LatencyDrawer answers={answers} />
           </div>
         </section>

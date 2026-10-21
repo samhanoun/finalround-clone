@@ -252,7 +252,8 @@ export type GatedQuestion = {
   text: string;
   category: QuestionCategory;
   trigger: 'gate' | 'manual';
-  via: 'heuristic' | 'classifier' | 'fallback' | 'manual';
+  /** 'screen': Solve screen, answered from a frame of the shared screen rather than speech. */
+  via: 'heuristic' | 'classifier' | 'fallback' | 'manual' | 'screen';
   score: number;
   decidedAt: number;
   /** Automatic questions: when the interviewer stopped talking (wall clock, ms). */

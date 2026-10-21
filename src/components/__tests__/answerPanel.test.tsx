@@ -13,6 +13,7 @@ function answers(initial: Partial<AnswerState> = {}) {
   const value: CopilotAnswers = {
     observe: jest.fn(),
     answerNow: jest.fn(),
+    answerScreen: jest.fn(),
     addTypedLine: jest.fn(),
     stop: jest.fn(),
     subscribe: (listener) => {
@@ -72,6 +73,34 @@ describe('AnswerView', () => {
     act(() => value.push({ text: 'I shipped a bug.\n- Then fixed the process', status: 'answered', ttftMs: 420 }));
     expect(screen.getByText('Answered · first words in 420 ms')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Stop' })).not.toBeInTheDocument();
+  });
+
+  it('renders fenced code as a code block, even while it is still streaming', () => {
+    const value = answers({ status: 'answering', question: QUESTION });
+    const { container } = render(<AnswerView answers={value} variant="inline" {...props} />);
+
+    act(() => value.push({ text: 'Use a hash map.\n```python\ndef two_sum(nums, target):' }));
+    const code = container.querySelector('pre code');
+    expect(code).toHaveTextContent('def two_sum(nums, target):');
+    expect(container.querySelector('pre')).toHaveAttribute('data-lang', 'python');
+    expect(screen.getByLabelText('Suggested answer')).not.toHaveTextContent('```');
+
+    act(() => value.push({ text: 'Use a hash map.\n```python\ndef two_sum(nums, target):\n    pass\n```\nO(n) time.' }));
+    expect(screen.getByLabelText('Suggested answer')).toHaveTextContent('O(n) time.');
+  });
+
+  it('offers Solve screen only with a shared screen, and labels screen answers', () => {
+    const onSolveScreen = jest.fn();
+    const { rerender } = render(
+      <AnswerView answers={answers()} variant="inline" {...props} onSolveScreen={onSolveScreen} screenDisabled />,
+    );
+    expect(screen.getByRole('button', { name: 'Solve screen' })).toBeDisabled();
+
+    const value = answers({ status: 'answering', question: { ...QUESTION, text: 'What’s on the shared screen', category: 'coding', via: 'screen' } });
+    rerender(<AnswerView answers={value} variant="inline" {...props} onSolveScreen={onSolveScreen} screenDisabled={false} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Solve screen' }));
+    expect(onSolveScreen).toHaveBeenCalled();
+    expect(screen.getByText('Screen')).toBeInTheDocument();
   });
 
   it('changes text size within limits and shows errors', () => {

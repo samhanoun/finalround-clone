@@ -101,8 +101,9 @@ export class DualAudioCapture {
 
   /**
    * `testMicAsInterviewer` is for end-to-end tests only: the (fake) microphone
-   * plays the interviewer, no screen is shared, and the candidate channel stays
-   * silent. Chromium's --use-file-for-fake-audio-capture feeds that microphone.
+   * plays the interviewer, the (fake) camera stands in for the shared screen,
+   * and the candidate channel stays silent. Chromium's
+   * --use-file-for-fake-audio-capture feeds that microphone.
    */
   constructor(options: { frameMs?: number; testMicAsInterviewer?: boolean } = {}) {
     this.frameMs = options.frameMs ?? DEFAULT_FRAME_MS;
@@ -215,6 +216,9 @@ export class DualAudioCapture {
     } catch {
       throw new CaptureError('mic-denied', 'Microphone access was blocked.');
     }
+    // Stands in for the shared screen so Solve screen can be tested: Chromium's
+    // fake camera (--use-fake-device-for-media-stream) draws a moving test pattern.
+    this.display = await navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720 } }).catch(() => null);
     const [track] = this.mic.getAudioTracks();
     try {
       await this.buildGraph(null, track);

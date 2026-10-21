@@ -404,6 +404,20 @@ Known limitation to verify: on macOS, Chrome reliably captures **tab** audio onl
 - On Answer now with "screen", or a dedicated button: grab a frame from the **display video track you already have** (`ImageCapture.grabFrame()` or a canvas) → JPEG → SHA-256 for dedup → `POST /api/copilot/sessions/[id]/screen` (new) → vision-capable model → streamed result into the same answer window, with a code block and complexity.
 - Optionally store screenshots in Supabase Storage with retention through the existing [`copilotRetention.ts`](../src/lib/copilotRetention.ts).
 
+> **Status (2026-10-21): built; verified with fakes, not yet with a real model.**
+> - **Solve screen** (a button in the answer window, or **S** in the floating window): grabs one frame of the tab or screen already shared for audio. Chrome uses `ImageCapture.grabFrame()`; other browsers draw a video element. The frame is scaled to at most 1600 px wide, encoded as JPEG and sent to `POST /api/copilot/sessions/[id]/screen`.
+> - **The route** has the same checks as the answer route (sign-in, ownership, active session, quota, rate limits) and accepts only JPEG or PNG bytes up to 3 MB.
+>   - It hashes the frame (SHA-256). A frame already answered in the session replays the saved answer with no model call.
+>   - Frames are never stored, only their hash alongside the answer.
+>   - The model is `COPILOT_CODING_MODEL`, falling back to `COPILOT_ANSWER_MODEL` (default `gpt-4o-mini`); it must accept images.
+>   - The prompt treats text on screen as data, not instructions.
+> - **The answer** streams into the same window as spoken answers, and either kind replaces the other. Fenced code now renders as code blocks, including while it streams.
+> - **Shared code:** `streamChat` takes image parts (OpenAI `image_url`, Anthropic base64 `image`). The answer and screen routes share one streaming helper (`answerStream.ts`).
+> - **Tests:**
+>   - Unit tests cover the route (vision call, replay, image checks, guards), the image parts, the controller, frame scaling and code-fence splitting.
+>   - The live e2e now presses Solve screen. In test mode Chromium's fake camera stands in for the shared screen, so a real JPEG reaches the fake OpenAI as `image_url`. The development-only E2E flag allows the camera in the Permissions-Policy.
+> - **Not verified:** a real vision model's answer quality and latency. That's part of the Step 8 runs once keys are in.
+
 ### Step 10 (only if you charge at launch): Billing (S)
 
 - New `src/app/api/billing/checkout/route.ts` (Stripe Checkout Session for `PRICE_ID_PRO_*`) and `src/app/api/billing/portal/route.ts`, wired to [`webhooks/stripe`](../src/app/api/webhooks/stripe/route.ts) and [`quota.ts`](../src/lib/quota.ts). Upgrade the pinned Stripe API version in [`src/lib/stripe.ts`](../src/lib/stripe.ts) deliberately.

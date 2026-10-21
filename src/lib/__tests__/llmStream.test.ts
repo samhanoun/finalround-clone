@@ -83,6 +83,40 @@ describe('streamChat', () => {
     expect(create.mock.calls[0][0].system[0]).not.toHaveProperty('cache_control');
   });
 
+  it('sends an image part in each provider\'s format', async () => {
+    const messages = [
+      {
+        role: 'user' as const,
+        content: [
+          { type: 'text' as const, text: 'Solve this.' },
+          { type: 'image' as const, mediaType: 'image/jpeg' as const, data: 'AAAA' },
+        ],
+      },
+    ];
+
+    const openaiCreate = jest.fn().mockResolvedValue(chunks([]));
+    const openai = { chat: { completions: { create: openaiCreate } } } as unknown as OpenAI;
+    await collect(streamChat({ ...base, model: 'gpt-4o-mini', messages }, { openai }));
+    expect(openaiCreate.mock.calls[0][0].messages[1]).toEqual({
+      role: 'user',
+      content: [
+        { type: 'text', text: 'Solve this.' },
+        { type: 'image_url', image_url: { url: 'data:image/jpeg;base64,AAAA', detail: 'high' } },
+      ],
+    });
+
+    const anthropicCreate = jest.fn().mockResolvedValue(chunks([]));
+    const anthropic = { messages: { create: anthropicCreate } } as unknown as Anthropic;
+    await collect(streamChat({ ...base, model: 'claude-haiku-5-5', messages }, { anthropic }));
+    expect(anthropicCreate.mock.calls[0][0].messages[0]).toEqual({
+      role: 'user',
+      content: [
+        { type: 'text', text: 'Solve this.' },
+        { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: 'AAAA' } },
+      ],
+    });
+  });
+
   it('fails clearly without a key or a known provider', async () => {
     const saved = { openai: process.env.OPENAI_API_KEY, anthropic: process.env.ANTHROPIC_API_KEY };
     delete process.env.OPENAI_API_KEY;

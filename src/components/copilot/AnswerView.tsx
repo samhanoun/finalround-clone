@@ -1,6 +1,7 @@
 'use client';
 
-import { useSyncExternalStore, type ReactNode } from 'react';
+import { useMemo, useSyncExternalStore, type ReactNode } from 'react';
+import { splitCodeFences } from '@/lib/copilot/answerText';
 import type { QuestionCategory } from '@/lib/copilot/questionGate';
 import type { CopilotAnswers } from './useCopilotAnswers';
 import styles from './AnswerView.module.css';
@@ -26,6 +27,26 @@ export type TailLine = { speaker: 'interviewer' | 'candidate'; text: string; liv
 export const MIN_FONT_PX = 13;
 export const MAX_FONT_PX = 26;
 
+/** Prose as text, fenced code as code blocks; partial while the answer streams. */
+function AnswerBody({ text }: { text: string }) {
+  const segments = useMemo(() => splitCodeFences(text), [text]);
+  return (
+    <>
+      {segments.map((segment, index) =>
+        segment.kind === 'code' ? (
+          <pre key={index} className={styles.code} data-lang={segment.lang || undefined}>
+            <code>{segment.code}</code>
+          </pre>
+        ) : (
+          <span key={index} className={styles.prose}>
+            {segment.text}
+          </span>
+        ),
+      )}
+    </>
+  );
+}
+
 /**
  * The answer as the candidate reads it mid-interview: the question, the
  * streaming answer, and the last few lines of conversation. Rendered in the
@@ -41,6 +62,8 @@ export function AnswerView({
   fontPx,
   onFontPx,
   actions,
+  onSolveScreen,
+  screenDisabled = false,
 }: {
   answers: CopilotAnswers;
   onAnswerNow: () => void;
@@ -51,6 +74,9 @@ export function AnswerView({
   fontPx: number;
   onFontPx: (px: number) => void;
   actions?: ReactNode;
+  /** Solve screen: answer from a frame of the shared tab or screen. */
+  onSolveScreen?: () => void;
+  screenDisabled?: boolean;
 }) {
   // Subscribes here, not in the page, so streamed text only re-renders this view.
   const state = useSyncExternalStore(answers.subscribe, answers.getState, answers.getState);
@@ -76,7 +102,7 @@ export function AnswerView({
 
       {question ? (
         <div className={styles.question}>
-          <span className="badge">{CATEGORY_LABEL[question.category]}</span>
+          <span className="badge">{question.via === 'screen' ? 'Screen' : CATEGORY_LABEL[question.category]}</span>
           <p className={styles.questionText}>{question.text}</p>
           {state.superseded > 0 && variant === 'inline' ? (
             <span className="small">
@@ -92,7 +118,7 @@ export function AnswerView({
 
       {state.text || waitingForText ? (
         <div className={styles.answer} aria-label="Suggested answer" aria-busy={state.status === 'answering'}>
-          {state.text || <span className={styles.waiting}>Writing an answer…</span>}
+          {state.text ? <AnswerBody text={state.text} /> : <span className={styles.waiting}>Writing an answer…</span>}
         </div>
       ) : null}
 
@@ -117,6 +143,17 @@ export function AnswerView({
         <button className="button buttonPrimary" type="button" onClick={onAnswerNow} disabled={disabled}>
           Answer now
         </button>
+        {onSolveScreen ? (
+          <button
+            className="button"
+            type="button"
+            onClick={onSolveScreen}
+            disabled={disabled || screenDisabled}
+            title="Read the shared tab or screen and solve what's on it"
+          >
+            Solve screen
+          </button>
+        ) : null}
         {state.status === 'answering' ? (
           <button className="button" type="button" onClick={answers.stop}>
             Stop
@@ -145,7 +182,9 @@ export function AnswerView({
       </footer>
 
       {variant === 'window' ? (
-        <p className={`small ${styles.hint}`}>Space or A: answer now · Esc: stop · + / −: text size</p>
+        <p className={`small ${styles.hint}`}>
+          Space or A: answer now{onSolveScreen ? ' · S: solve screen' : ''} · Esc: stop · + / −: text size
+        </p>
       ) : null}
     </section>
   );

@@ -25,6 +25,20 @@ function track(controller: AnswerController) {
 }
 
 describe('AnswerController', () => {
+  it('passes a screen frame to the sender but keeps it out of the shown state', async () => {
+    const { send, calls } = controllableSender();
+    const controller = new AnswerController(send);
+    const states = track(controller);
+
+    const done = controller.request({ ...question('What’s on the shared screen', 'manual'), via: 'screen', screen: { jpegBase64: 'AAAA' } });
+    expect(calls[0].question).toMatchObject({ via: 'screen', screen: { jpegBase64: 'AAAA' } });
+    expect(states[0].question).toMatchObject({ via: 'screen', text: 'What’s on the shared screen' });
+    expect(states[0].question).not.toHaveProperty('screen');
+
+    calls[0].resolve();
+    await done;
+  });
+
   it('answers a question and reports the result', async () => {
     const { send, calls } = controllableSender();
     const controller = new AnswerController(send);

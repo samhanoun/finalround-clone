@@ -667,6 +667,15 @@ export function isProviderConfigured(provider: ChatProvider): boolean {
   return provider === 'anthropic' ? Boolean(process.env.ANTHROPIC_API_KEY) : Boolean(process.env.OPENAI_API_KEY);
 }
 
+/** Part of a user message: text, or an image (base64, no data: prefix) for vision models. */
+export type ChatPart =
+  | { type: 'text'; text: string }
+  | { type: 'image'; mediaType: 'image/jpeg' | 'image/png'; data: string };
+
+export type ChatMessage =
+  | { role: 'user'; content: string | ChatPart[] }
+  | { role: 'assistant'; content: string };
+
 export type StreamChatOptions = {
   model: string;
   /**
@@ -675,7 +684,7 @@ export type StreamChatOptions = {
    * `messages`. With Anthropic the last block is marked for caching.
    */
   system: string[];
-  messages: Array<{ role: 'user' | 'assistant'; content: string }>;
+  messages: ChatMessage[];
   maxTokens?: number;
   temperature?: number;
   signal?: AbortSignal;
@@ -683,6 +692,37 @@ export type StreamChatOptions = {
 };
 
 export type StreamChatClients = { openai?: OpenAI; anthropic?: Anthropic };
+
+function anthropicMessages(messages: ChatMessage[]): Anthropic.MessageParam[] {
+  return messages.map((message) =>
+    typeof message.content === 'string'
+      ? { role: message.role, content: message.content }
+      : {
+          role: message.role,
+          content: message.content.map((part) =>
+            part.type === 'text'
+              ? { type: 'text' as const, text: part.text }
+              : { type: 'image' as const, source: { type: 'base64' as const, media_type: part.mediaType, data: part.data } },
+          ),
+        },
+  );
+}
+
+function openaiMessages(messages: ChatMessage[]): OpenAI.Chat.ChatCompletionMessageParam[] {
+  return messages.map((message) => {
+    if (message.role === 'assistant' || typeof message.content === 'string') {
+      return { role: message.role, content: message.content } as OpenAI.Chat.ChatCompletionMessageParam;
+    }
+    return {
+      role: 'user',
+      content: message.content.map((part) =>
+        part.type === 'text'
+          ? { type: 'text' as const, text: part.text }
+          : { type: 'image_url' as const, image_url: { url: `data:${part.mediaType};base64,${part.data}`, detail: 'high' as const } },
+      ),
+    };
+  });
+}
 
 /** Yields text as the model writes it. Aborting `signal` cancels the provider request. */
 export async function* streamChat(options: StreamChatOptions, clients: StreamChatClients = {}): AsyncGenerator<string> {
@@ -705,7 +745,7 @@ export async function* streamChat(options: StreamChatOptions, clients: StreamCha
             ? { type: 'text' as const, text, cache_control: { type: 'ephemeral' as const } }
             : { type: 'text' as const, text },
         ),
-        messages,
+        messages: anthropicMessages(messages),
         stream: true,
       },
       requestOptions,
@@ -724,7 +764,7 @@ export async function* streamChat(options: StreamChatOptions, clients: StreamCha
         model,
         max_completion_tokens: maxTokens,
         ...withTemperature,
-        messages: [{ role: 'system', content: system.join('\n\n') }, ...messages],
+        messages: [{ role: 'system', content: system.join('\n\n') }, ...openaiMessages(messages)],
         stream: true,
       },
       requestOptions,

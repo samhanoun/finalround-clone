@@ -38,7 +38,7 @@ test.describe('live copilot loop', () => {
     const session = '00000000-0000-4000-8000-000000000000';
     await request.get('/en/auth');
     await request.get('/en/copilot/live');
-    for (const route of ['answer', 'gate', 'transcript', 'latency', 'heartbeat']) {
+    for (const route of ['answer', 'screen', 'gate', 'transcript', 'latency', 'heartbeat']) {
       await request.post(`/api/copilot/sessions/${session}/${route}`, { data: {}, timeout: 120_000 });
     }
     await request.post('/api/copilot/sessions/start', { data: {}, timeout: 120_000 });
@@ -136,6 +136,31 @@ test.describe('live copilot loop', () => {
           };
         })
         .toEqual({ transcript: true, answer: true, latency: true });
+
+      // Solve screen: a frame of the shared screen (the fake camera, in test
+      // mode) goes to the model as an image, and the answer is saved with its hash.
+      await card.getByRole('button', { name: 'Solve screen' }).click();
+      await expect(card.getByText('Screen', { exact: true })).toBeVisible();
+      await expect(card.getByText(/^Answered/)).toBeVisible({ timeout: 60_000 });
+      await expect(answer).toContainText('checkout latency dropped by 40%');
+
+      const vision = await state<{ requests: Array<{ stream: boolean; messages: Array<{ role: string; content: unknown }> }> }>(
+        request,
+        fake.openai,
+      );
+      const screenCall = vision.requests.find((call) => Array.isArray(call.messages.at(-1)?.content));
+      const parts = screenCall!.messages.at(-1)!.content as Array<{ type: string; image_url?: { url: string } }>;
+      expect(parts.map((part) => part.type)).toEqual(['text', 'image_url']);
+      expect(parts[1].image_url!.url).toMatch(/^data:image\/jpeg;base64,\/9j\//); // a real JPEG
+      expect(screenCall!.messages[0].content).toContain('screenshot');
+
+      await expect
+        .poll(async () => {
+          const { tables } = await state<SupabaseState>(request, fake.supabase);
+          const saved = tables.copilot_events.find((e) => e.event_type === 'suggestion' && e.payload?.source === 'screen');
+          return typeof saved?.payload?.screen_sha256 === 'string' && /^[0-9a-f]{64}$/.test(saved.payload.screen_sha256);
+        })
+        .toBe(true);
     }
 
     // Stop: the setup step comes back and the session records why and how fast it was.
@@ -146,7 +171,8 @@ test.describe('live copilot loop', () => {
       const { tables } = await state<SupabaseState>(request, fake.supabase);
       const session = tables.copilot_sessions.at(-1)!;
       expect(session.status).toBe('stopped');
-      expect(session.metadata).toMatchObject({ stop_reason: 'user', latency_summary: { turns: 1, outcomes: { answered: 1 } } });
+      // Two turns: the spoken question and Solve screen.
+      expect(session.metadata).toMatchObject({ stop_reason: 'user', latency_summary: { turns: 2, outcomes: { answered: 2 } } });
     }
   });
 });

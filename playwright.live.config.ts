@@ -34,7 +34,8 @@ export default defineConfig({
     baseURL: APP_URL,
     trace: REAL ? 'off' : 'retain-on-failure',
     screenshot: REAL ? 'off' : 'only-on-failure',
-    permissions: ['microphone'],
+    // The fake camera stands in for the shared screen (Solve screen).
+    permissions: ['microphone', 'camera'],
     launchOptions: {
       // Locally you can point at an installed Chromium instead of downloading Playwright's.
       executablePath: process.env.CHROMIUM_PATH || undefined,

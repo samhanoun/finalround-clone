@@ -17,11 +17,21 @@ export type AnswerState = {
 
 export type AnswerResult = { model?: string; ttftMs?: number | null } | void;
 
+/** A question to answer. Solve screen requests carry the frame to read instead of speech. */
+export type AnswerRequest = GatedQuestion & { screen?: { jpegBase64: string } };
+
 export type AnswerSender = (
-  question: GatedQuestion,
+  question: AnswerRequest,
   signal: AbortSignal,
   onText: (text: string) => void,
 ) => Promise<AnswerResult>;
+
+/** The state shows the question, not the (large) screen frame. */
+function withoutScreen(question: AnswerRequest): GatedQuestion {
+  const shown = { ...question };
+  delete shown.screen;
+  return shown;
+}
 
 export const IDLE_ANSWER: AnswerState = {
   status: 'idle',
@@ -67,7 +77,7 @@ export class AnswerController {
     return () => this.turnListeners.delete(listener);
   }
 
-  async request(question: GatedQuestion): Promise<void> {
+  async request(question: AnswerRequest): Promise<void> {
     const replacing = this.inFlight !== null;
     this.endInFlight('superseded');
     const flight: InFlight = { abort: new AbortController(), endedBy: null };
@@ -77,7 +87,7 @@ export class AnswerController {
     let firstTokenAt: number | null = null;
     this.update({
       status: 'answering',
-      question,
+      question: withoutScreen(question),
       text: '',
       error: null,
       superseded: this.state.superseded + (replacing ? 1 : 0),

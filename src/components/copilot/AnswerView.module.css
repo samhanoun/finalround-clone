@@ -96,6 +96,29 @@
   color: var(--muted);
 }
 
+.prose {
+  display: block;
+}
+
+.prose + .prose,
+.prose + .code,
+.code + .prose {
+  margin-top: 8px;
+}
+
+.code {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: calc(var(--radius) / 2);
+  background: rgba(0, 0, 0, 0.35);
+  font-family: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: calc(var(--answer-font) * 0.85);
+  line-height: 1.45;
+  white-space: pre;
+  overflow-x: auto;
+  overflow-wrap: normal;
+}
+
 .tail {
   display: grid;
   gap: 4px;

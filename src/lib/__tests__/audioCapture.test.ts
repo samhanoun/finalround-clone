@@ -169,13 +169,20 @@ describe('DualAudioCapture', () => {
     [...displayStream.getTracks(), ...micStream.getTracks()].forEach((track) => expect(track.stop).toHaveBeenCalled());
   });
 
-  it('end-to-end test mode: the (fake) mic plays the interviewer and no screen is shared', async () => {
+  it('end-to-end test mode: the (fake) mic plays the interviewer and the (fake) camera stands in for the screen', async () => {
+    const cameraStream = new FakeStream([new FakeTrack('video')]);
+    getUserMedia.mockImplementation(async (constraints: MediaStreamConstraints) => {
+      calls.push(constraints.video ? 'camera' : 'mic');
+      return constraints.video ? cameraStream : micStream;
+    });
     const capture = new DualAudioCapture({ testMicAsInterviewer: true });
     const ended: string[] = [];
     capture.onEnded((source) => ended.push(source));
     await capture.start();
 
-    expect(calls).toEqual(['mic']);
+    expect(calls).toEqual(['mic', 'camera']);
+    expect(getDisplayMedia).not.toHaveBeenCalled();
+    expect(capture.getDisplayVideoTrack()).toBe(cameraStream.getVideoTracks()[0]);
     // Only the interviewer channel gets a source; the candidate channel stays silent.
     expect(FakeAudioContext.last?.sources).toHaveLength(1);
     micStream.getAudioTracks()[0].dispatchEvent(new Event('ended'));

@@ -6,7 +6,8 @@ import { createClient } from '@/lib/supabase/server';
 import { rateLimit } from '@/lib/rateLimit';
 import { sanitizeCopilotText } from '@/lib/copilotSecurity';
 import { getCopilotQuotaSnapshot, getElapsedUsage } from '@/lib/copilot';
-import { isProviderConfigured, providerForModel, streamChat } from '@/lib/llmRouter';
+import { isProviderConfigured, providerForModel } from '@/lib/llmRouter';
+import { eventStreamResponse, streamAnswerEvents } from '@/lib/copilot/answerStream';
 import { loadActiveCopilotSession, sessionMode } from '@/lib/copilot/activeSession';
 import { answerSystemBlocks, answerUserMessage, type TranscriptLine } from '@/lib/copilot/answerPrompt';
 import { readContextPack } from '@/lib/copilot/contextPack';
@@ -63,10 +64,6 @@ function logAnswerError(requestId: string, errorClass: string, meta?: Record<str
   console.error('[copilot]', { route: '/api/copilot/sessions/[id]/answer', requestId, errorClass, ...(meta ?? {}) });
 }
 
-function sseEvent(event: string, data: unknown): string {
-  return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
-}
-
 export async function POST(req: NextRequest, { params }: Params) {
   const receivedAt = Date.now();
   const requestId = getRequestId(req);
@@ -119,83 +116,45 @@ export async function POST(req: NextRequest, { params }: Params) {
   });
   const userMessage = answerUserMessage({ question: question.sanitized, category, recentTranscript });
 
-  const abort = new AbortController();
-  req.signal?.addEventListener('abort', () => abort.abort(), { once: true });
-
-  let answer = '';
-  let firstTokenAt: number | null = null;
-  let finishedAt: number | null = null;
-  const encoder = new TextEncoder();
-
-  const body = new ReadableStream<Uint8Array>({
-    async start(controller) {
-      const send = (event: string, data: unknown) => controller.enqueue(encoder.encode(sseEvent(event, data)));
-      try {
-        for await (const text of streamChat({
-          model,
-          system,
-          messages: [{ role: 'user', content: userMessage }],
-          maxTokens: MAX_ANSWER_TOKENS,
-          temperature: 0.4,
-          signal: abort.signal,
-          timeoutMs: MODEL_TIMEOUT_MS,
-        })) {
-          if (firstTokenAt === null) firstTokenAt = Date.now();
-          answer += text;
-          send('token', { text });
-        }
-        finishedAt = Date.now();
-        send('done', {
-          model,
-          ttftMs: firstTokenAt === null ? null : firstTokenAt - receivedAt,
-          totalMs: finishedAt - receivedAt,
-        });
-      } catch (e) {
-        if (!abort.signal.aborted) {
-          logAnswerError(requestId, 'llm_answer_failed', { sessionId: id, model, name: e instanceof Error ? e.name : 'unknown' });
-          send('error', { error: 'answer_failed', requestId });
-        }
-      } finally {
-        try {
-          controller.close();
-        } catch {
-          // already closed because the client went away
-        }
-      }
+  const { body, result } = streamAnswerEvents({
+    chat: {
+      model,
+      system,
+      messages: [{ role: 'user', content: userMessage }],
+      maxTokens: MAX_ANSWER_TOKENS,
+      temperature: 0.4,
+      timeoutMs: MODEL_TIMEOUT_MS,
     },
-    cancel() {
-      abort.abort();
-    },
+    receivedAt,
+    requestId,
+    signal: req.signal,
+    onError: (e) =>
+      logAnswerError(requestId, 'llm_answer_failed', { sessionId: id, model, name: e instanceof Error ? e.name : 'unknown' }),
   });
 
   // Saved once the response is over; a superseded or failed answer is not.
   after(async () => {
-    if (finishedAt === null || abort.signal.aborted || !answer.trim()) return;
+    const answer = result();
+    if (!answer) return;
     const { error } = await supabase.from('copilot_events').insert({
       session_id: id,
       user_id: userId,
       event_type: 'suggestion',
       payload: {
         category: 'answer',
-        text: answer.trim(),
+        text: answer.text,
         format: 'markdown',
         question: question.sanitized,
         question_category: category,
         trigger: parse.data.trigger,
         mode,
         model,
-        ttft_ms: firstTokenAt === null ? null : firstTokenAt - receivedAt,
-        total_ms: finishedAt - receivedAt,
+        ttft_ms: answer.ttftMs,
+        total_ms: answer.totalMs,
       },
     });
     if (error) logAnswerError(requestId, 'db_insert_answer_failed', { sessionId: id, code: error.code ?? null });
   });
 
-  return new Response(body, {
-    headers: {
-      'Content-Type': 'text/event-stream; charset=utf-8',
-      'Cache-Control': 'no-cache, no-transform',
-      'X-Accel-Buffering': 'no',
-    },
-  });
+  return eventStreamResponse(body);
 }

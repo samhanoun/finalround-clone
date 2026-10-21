@@ -1,7 +1,13 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AnswerController, IDLE_ANSWER, type AnswerResult, type AnswerState } from '@/lib/copilot/answerController';
+import {
+  AnswerController,
+  IDLE_ANSWER,
+  type AnswerRequest,
+  type AnswerResult,
+  type AnswerState,
+} from '@/lib/copilot/answerController';
 import type { TranscriptLine } from '@/lib/copilot/answerPrompt';
 import {
   QUESTION_CATEGORIES,
@@ -23,29 +29,42 @@ const ANSWER_ERRORS: Record<string, string> = {
   session_expired: 'This copilot session expired. Start a new one.',
   session_not_active: 'This copilot session has ended.',
   rate_limited: 'Too many answers in a short time. Try again in a moment.',
+  image_too_large: 'The screen capture was too large to send.',
+  invalid_image: 'The screen capture could not be read.',
 };
+
+/** What a Solve screen request shows as its question. */
+export const SCREEN_QUESTION_TEXT = 'What’s on the shared screen';
 
 /** Lines of conversation sent with each question. */
 const RECENT_LINES = 12;
 
 async function streamAnswer(
   sessionId: string,
-  question: GatedQuestion,
+  question: AnswerRequest,
   recentTranscript: TranscriptLine[],
   signal: AbortSignal,
   onText: (text: string) => void,
 ): Promise<AnswerResult> {
-  const res = await fetch(`/api/copilot/sessions/${sessionId}/answer`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      question: question.text,
-      category: question.category,
-      trigger: question.trigger,
-      recentTranscript,
-    }),
-    signal,
-  });
+  // Solve screen sends the frame; spoken and typed questions send the text.
+  const res = question.screen
+    ? await fetch(`/api/copilot/sessions/${sessionId}/screen`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ image: question.screen.jpegBase64, recentTranscript }),
+        signal,
+      })
+    : await fetch(`/api/copilot/sessions/${sessionId}/answer`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          question: question.text,
+          category: question.category,
+          trigger: question.trigger,
+          recentTranscript,
+        }),
+        signal,
+      });
   if (!res.ok || !res.body) {
     const json = (await res.json().catch(() => ({}))) as { error?: string };
     const code = json.error ?? `http_${res.status}`;
@@ -218,12 +237,29 @@ export function useCopilotAnswers({ sessionId }: { sessionId: string | null }) {
     [remember],
   );
 
+  /** Solve screen: answer from a frame of the shared screen. Replaces any answer in flight. */
+  const answerScreen = useCallback((frame: { jpegBase64: string }) => {
+    const controller = controllerRef.current;
+    if (!controller) return false;
+    void controller.request({
+      text: SCREEN_QUESTION_TEXT,
+      category: 'coding',
+      trigger: 'manual',
+      via: 'screen',
+      score: 1,
+      decidedAt: Date.now(),
+      screen: frame,
+    });
+    return true;
+  }, []);
+
   const stop = useCallback(() => controllerRef.current?.cancel(), []);
 
   return useMemo(
     () => ({
       observe,
       answerNow,
+      answerScreen,
       addTypedLine,
       stop,
       subscribe: store.subscribe,
@@ -231,7 +267,7 @@ export function useCopilotAnswers({ sessionId }: { sessionId: string | null }) {
       subscribeTurns: turnStore.subscribeTurns,
       getTurns: turnStore.getTurns,
     }),
-    [observe, answerNow, addTypedLine, stop, store, turnStore],
+    [observe, answerNow, answerScreen, addTypedLine, stop, store, turnStore],
   );
 }
 

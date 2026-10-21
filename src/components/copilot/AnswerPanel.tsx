@@ -31,12 +31,16 @@ function isInteractive(target: EventTarget | null): boolean {
 export function AnswerPanel({
   answers,
   onAnswerNow,
+  onSolveScreen,
+  screenDisabled,
   disabled,
   connection,
   tail,
 }: {
   answers: CopilotAnswers;
   onAnswerNow: () => void;
+  onSolveScreen?: () => void;
+  screenDisabled?: boolean;
   disabled: boolean;
   connection: ConnectionState;
   tail: TailLine[];
@@ -69,6 +73,9 @@ export function AnswerPanel({
       if (key === 'a' || (event.key === ' ' && !isInteractive(event.target))) {
         event.preventDefault();
         onAnswerNow();
+      } else if (key === 's' && onSolveScreen && !disabled && !screenDisabled) {
+        event.preventDefault();
+        onSolveScreen();
       } else if (event.key === 'Escape') {
         stop();
       } else if (event.key === '+' || event.key === '=') {
@@ -79,7 +86,7 @@ export function AnswerPanel({
     };
     pipWindow.document.addEventListener('keydown', onKeyDown);
     return () => pipWindow.document.removeEventListener('keydown', onKeyDown);
-  }, [pipWindow, onAnswerNow, stop]);
+  }, [pipWindow, onAnswerNow, onSolveScreen, disabled, screenDisabled, stop]);
 
   const popOut = useCallback(() => {
     setPopOutError(null);
@@ -92,6 +99,8 @@ export function AnswerPanel({
     <AnswerView
       answers={answers}
       onAnswerNow={onAnswerNow}
+      onSolveScreen={onSolveScreen}
+      screenDisabled={screenDisabled}
       disabled={disabled}
       variant={variant}
       connection={connection}
