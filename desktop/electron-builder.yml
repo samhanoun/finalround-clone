@@ -1,0 +1,46 @@
+appId: com.apexround.desktop
+productName: Apex Round
+copyright: Copyright © 2026 Apex Round
+
+directories:
+  output: release
+
+files:
+  - dist/**/*.js
+  - "!dist/**/*.test.js"
+  - app.config.json
+  - package.json
+
+asar: true
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  shortcutName: Apex Round
+
+# Hardening (https://www.electronjs.org/docs/latest/tutorial/fuses): the
+# packaged app can't be run as plain Node, ignores NODE_OPTIONS and
+# --inspect, and only loads its own integrity-checked asar.
+electronFuses:
+  runAsNode: false
+  enableCookieEncryption: true
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+  enableEmbeddedAsarIntegrityValidation: true
+  onlyLoadAppFromAsar: true
+  loadBrowserProcessSpecificV8Snapshot: false
+  grantFileProtocolExtraPrivileges: false
+
+# Auto-update reads GitHub Releases of this repository. Nothing is published
+# unless `electron-builder --publish always` is run with a GH_TOKEN.
+publish:
+  provider: github
+  owner: samhanoun
+  repo: finalround-clone

@@ -438,6 +438,20 @@ Known limitation to verify: on macOS, Chrome reliably captures **tab** audio onl
 ### After the MVP (not in scope now)
 
 1. **Desktop app (Electron)** that wraps the same web UI. Windows system audio via `session.setDisplayMediaRequestHandler(... audio: 'loopback')` (no native addon); macOS via ScreenCaptureKit or Core Audio Taps (🔶 native work or a maintained addon; verify Electron's current macOS loopback support). Always-on-top overlay windows, global hotkeys, auto-update. **Harden Electron fuses** (`RunAsNode` off, ASAR integrity on, `OnlyLoadAppFromAsar` on), which FRAI doesn't.
+
+   > **Status (2026-10-21): Windows build done**, in [`desktop/`](../desktop/README.md) (Electron 44, electron-builder 26).
+   > - **What it does:**
+   >   - Loads the web app; capture uses `setDisplayMediaRequestHandler` with the primary screen and `audio: 'loopback'`, so there's no picker and desktop meeting apps work.
+   >   - Global shortcuts Ctrl+Shift+A / S / H (answer now, solve screen, toggle the answer window). They arrive as a DOM event with a user gesture, so they can open the floating window.
+   >   - The always-on-top window is the web app's own Document PiP, which Electron 44 supports. Its window-open request had to be allowed explicitly.
+   > - **Hardening:** context isolation, sandbox, navigation locked to the app origin, permissions only for the app (mic audio-only, screen capture, no camera), and fuses `RunAsNode` off, `NODE_OPTIONS`/`--inspect` off, ASAR integrity, only-load-from-ASAR and cookie encryption.
+   > - **Packaging:** an unsigned NSIS installer (`npm run dist`). Auto-update is wired to GitHub Releases but nothing is published.
+   > - **Verified:**
+   >   - Policy unit tests.
+   >   - Playwright's Electron driver against the fakes: no-picker capture of screen and loopback audio, Solve screen with a real screen frame, external links opening in the browser.
+   >   - The packaged, fuse-hardened app launches.
+   >   - The floating window opening from the shortcut was checked with a standalone Electron probe, not through Playwright, which pauses new windows.
+   > - **Not done:** code signing, an app icon, macOS (loopback needs ScreenCaptureKit), and choosing which screen to read.
 2. Mock interviews with an AI interviewer on the same streaming route; voice and avatar later.
 3. Phone / in-person mode: single mic + diarization primed with a voice sample.
 4. RAG over documents with provenance, long-term "memory" per goal, playbooks.

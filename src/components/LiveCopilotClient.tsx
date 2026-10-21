@@ -13,6 +13,7 @@ import { AutoEndNotice } from './copilot/AutoEndNotice';
 import { LatencyDrawer, LatencyTable } from './copilot/LatencyDrawer';
 import { isLatencyPayload, summarizeLatencyEvents } from '@/lib/copilot/latency';
 import { grabScreenFrame } from '@/lib/copilot/screenFrame';
+import { onDesktopCommand } from '@/lib/desktop';
 import type { ConnectionState, TailLine } from './copilot/AnswerView';
 import { SuggestionFeed, TranscriptFeed } from './copilot/LiveFeeds';
 import { SessionBar } from './copilot/SessionBar';
@@ -873,6 +874,15 @@ export function LiveCopilotClient() {
       setError(e instanceof Error ? e.message : 'Could not read the shared screen.');
     }
   }, [getDisplayVideoTrack, answerScreen]);
+
+  // Desktop app shortcuts (Ctrl+Shift+A / S) work while the meeting app has focus.
+  useEffect(() => {
+    if (!isActive) return;
+    return onDesktopCommand((command) => {
+      if (command === 'answer-now') answerNow();
+      else if (command === 'solve-screen') void solveScreen();
+    });
+  }, [isActive, answerNow, solveScreen]);
 
   useEffect(() => {
     saveSetup(setup);
