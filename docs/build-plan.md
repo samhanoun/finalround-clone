@@ -431,7 +431,7 @@ Known limitation to verify: on macOS, Chrome reliably captures **tab** audio onl
 >   - Pro stays on while the subscription is active or trialing, plus a 7-day grace for a past-due renewal (enforced through the plan's end date).
 >   - A failed sync now returns 500, so Stripe retries; before, the error was swallowed and the event lost.
 > - **UI:** Settings → Usage & Limits has "Upgrade to Pro" with a currency choice, or "Manage billing", plus a note after returning from Checkout.
-> - **Security:** migration `0026_lock_billing_tables.sql` makes `subscriptions` and `usage_counters` read-only for users. Before, any signed-in user could give themselves a plan or reset their usage. **It isn't applied to "Finalroundy" yet.**
+> - **Security:** migration `0026_lock_billing_tables.sql` makes `subscriptions` and `usage_counters` read-only for users. Before, any signed-in user could give themselves a plan or reset their usage. Applied to "Finalroundy" on 2026-10-21; a test write as a signed-in user is refused (`permission denied`).
 > - **Tests:** unit tests cover the sync logic, the checkout route and the webhook (signature, routing, retry on failure). A browser check confirmed the settings UI against the fakes.
 > - **Not verified:** a real test-mode checkout (test keys, prices and `stripe listen` are needed).
 

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { jsonError } from '@/lib/api';
 import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
+import { endCopilotSession } from '@/lib/copilot/endSession';
 import { rateLimit } from '@/lib/rateLimit';
 import { isSessionHeartbeatExpired, withHeartbeatMetadata } from '@/lib/copilotSession';
 import { sessionExpiredResponse } from '@/lib/copilotApiResponse';
@@ -55,19 +57,11 @@ export async function POST(req: NextRequest, { params }: Params) {
   const nowIso = new Date().toISOString();
 
   if (isSessionHeartbeatExpired(session)) {
-    const { error: expireError } = await supabase
-      .from('copilot_sessions')
-      .update({
-        status: 'expired',
-        stopped_at: nowIso,
-        metadata: {
-          ...withHeartbeatMetadata(session.metadata, nowIso),
-          expired_reason: 'heartbeat_timeout',
-        },
-      })
-      .eq('id', session.id)
-      .eq('user_id', session.user_id)
-      .eq('status', 'active');
+    const { error: expireError } = await endCopilotSession(session, {
+      status: 'expired',
+      endedAt: new Date(nowIso),
+      metadata: { expired_reason: 'heartbeat_timeout' },
+    });
 
     if (expireError) {
       logCopilotRouteError('/api/copilot/sessions/[id]/heartbeat', requestId, 'db_expire_session_failed', {
@@ -79,7 +73,9 @@ export async function POST(req: NextRequest, { params }: Params) {
     return sessionExpiredResponse(session, nowIso);
   }
 
-  const { error: heartbeatError } = await supabase
+  // Users can't write sessions themselves (migration 0028): the heartbeat is
+  // what expiry billing trusts, so only the server records it.
+  const { error: heartbeatError } = await createAdminClient()
     .from('copilot_sessions')
     .update({
       metadata: withHeartbeatMetadata(session.metadata, nowIso),

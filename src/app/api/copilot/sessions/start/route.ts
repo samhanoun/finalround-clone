@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { jsonError } from '@/lib/api';
 import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
+import { endOpenCopilotSessions, SESSION_COLUMNS, type EndableCopilotSession } from '@/lib/copilot/endSession';
 import { rateLimit } from '@/lib/rateLimit';
 import { getCopilotQuotaSnapshot } from '@/lib/copilot';
 import { withHeartbeatMetadata } from '@/lib/copilotSession';
@@ -32,6 +34,18 @@ export async function POST(req: NextRequest) {
   if (userError || !userData.user) return jsonError(401, 'unauthorized');
 
   const userId = userData.user.id;
+
+  // A session left open (tab crashed, Stop never sent) is charged now, before
+  // the quota check, so abandoning sessions can't dodge the minutes limit.
+  const { data: openSessions, error: openError } = await supabase
+    .from('copilot_sessions')
+    .select('id, user_id, status, started_at, metadata')
+    .eq('user_id', userId)
+    .eq('status', 'active');
+  if (openError) return jsonError(500, 'db_error', openError);
+  const { error: closeError } = await endOpenCopilotSessions((openSessions ?? []) as EndableCopilotSession[]);
+  if (closeError) return jsonError(500, 'db_error', closeError);
+
   const quota = await getCopilotQuotaSnapshot(userId);
 
   if (!quota.monthly.allowed || !quota.daily.allowed || !quota.perSession.allowed) {
@@ -69,7 +83,9 @@ export async function POST(req: NextRequest) {
   );
   const metadata = contextPack ? { ...clientMetadata, context_pack: contextPack } : clientMetadata;
 
-  const { data, error } = await supabase
+  // Users can't create sessions themselves (migration 0028): only this route,
+  // after the quota check.
+  const { data, error } = await createAdminClient()
     .from('copilot_sessions')
     .insert({
       user_id: userId,
@@ -79,7 +95,7 @@ export async function POST(req: NextRequest) {
       status: 'active',
       started_at: nowIso,
     })
-    .select('id, user_id, interview_session_id, title, metadata, status, started_at, stopped_at, duration_seconds, consumed_minutes, created_at, updated_at')
+    .select(SESSION_COLUMNS)
     .single();
 
   if (error) return jsonError(500, 'db_error', error);
