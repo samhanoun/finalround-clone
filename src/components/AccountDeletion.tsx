@@ -53,11 +53,11 @@ export function AccountDeletion() {
       <div className="card">
         <div className="cardInner stack">
           <h2 className="cardTitle" style={{ color: 'var(--success)' }}>
-            ✓ Account Deleted
+            Account deleted
           </h2>
           <p>
             Your account has been permanently deleted. All your data has been removed.
-            Redirecting you to the homepage...
+            Taking you to the home page…
           </p>
         </div>
       </div>
@@ -68,40 +68,36 @@ export function AccountDeletion() {
     return (
       <div className="card">
         <div className="cardInner stack">
-          <h2 className="cardTitle">Delete Account</h2>
+          <h2 className="cardTitle">Delete account</h2>
           <p className="cardDesc">
             Permanently delete your account and all associated data. This action cannot be undone.
           </p>
           
           <div 
             style={{ 
-              background: 'var(--error-bg)', 
-              border: '1px solid var(--error)',
-              borderRadius: 8, 
+              background: 'var(--alert-soft)', 
+              border: '1px solid rgba(255, 107, 107, 0.35)',
+              borderRadius: 12, 
               padding: 16,
             }}
           >
-            <p style={{ margin: 0, fontWeight: 600, color: 'var(--error)' }}>
-              ⚠️ Warning: This will permanently delete:
+            <p style={{ margin: 0, fontWeight: 600, color: 'var(--alert-text)' }}>
+              This permanently deletes:
             </p>
             <ul style={{ margin: '8px 0 0', paddingLeft: 20 }}>
               <li>Your profile and account</li>
               <li>All interview sessions</li>
-              <li>All resumes and cover letters</li>
+              <li>All résumés and cover letters</li>
               <li>All usage history and quotas</li>
             </ul>
           </div>
 
           <button
-            className="button"
+            className="button buttonDanger"
             onClick={() => setShowWarning(true)}
-            style={{ 
-              background: 'var(--error)', 
-              color: 'white',
-              alignSelf: 'flex-start',
-            }}
+            style={{ alignSelf: 'flex-start' }}
           >
-            I Understand, Delete My Account
+            Delete my account
           </button>
         </div>
       </div>
@@ -112,15 +108,15 @@ export function AccountDeletion() {
     <div className="card">
       <div className="cardInner stack">
         <h2 className="cardTitle" style={{ color: 'var(--error)' }}>
-          Confirm Account Deletion
+          Confirm account deletion
         </h2>
         <p className="cardDesc">
-          To confirm deletion, please enter your email address and type &quot;DELETE&quot; below.
+          Enter your email address and type DELETE to confirm.
         </p>
 
         <div className="stack" style={{ gap: 16 }}>
           <label className="label">
-            Your Email Address
+            Your email address
             <input
               className="input"
               type="email"
@@ -131,7 +127,7 @@ export function AccountDeletion() {
           </label>
 
           <label className="label">
-            Reason for Leaving (Optional)
+            Why are you leaving? (optional)
             <textarea
               className="input"
               value={reason}
@@ -166,15 +162,11 @@ export function AccountDeletion() {
             Cancel
           </button>
           <button
-            className="button"
+            className="button buttonDanger"
             onClick={handleDelete}
             disabled={saving || email !== email.toLowerCase() || confirmText !== 'DELETE'}
-            style={{ 
-              background: 'var(--error)', 
-              color: 'white',
-            }}
           >
-            {saving ? 'Deleting...' : 'Permanently Delete Account'}
+            {saving ? 'Deleting…' : 'Delete account permanently'}
           </button>
         </div>
 

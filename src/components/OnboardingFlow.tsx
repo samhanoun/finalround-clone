@@ -3,6 +3,8 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/browser';
+import { ApexMark } from './ApexMark';
+import { ChartIcon, JobsIcon, LiveIcon, PracticeIcon, ResumeIcon } from './icons';
 
 // Step types
 type OnboardingStep = 'welcome' | 'plan' | 'profile' | 'tutorial';
@@ -209,8 +211,8 @@ export default function OnboardingFlow() {
   // Render steps
   if (currentStep === 'welcome') {
     return (
-      <WelcomeStep 
-        onNext={nextStep} 
+      <WelcomeStep
+        onNext={nextStep}
         loading={loading}
       />
     );
@@ -218,7 +220,7 @@ export default function OnboardingFlow() {
 
   if (currentStep === 'plan') {
     return (
-      <PlanStep 
+      <PlanStep
         plans={PLANS}
         selectedPlan={plan}
         onSelect={handlePlanSelect}
@@ -231,7 +233,7 @@ export default function OnboardingFlow() {
 
   if (currentStep === 'profile') {
     return (
-      <ProfileStep 
+      <ProfileStep
         profileData={profileData}
         onUpdate={setProfileData}
         onRoleToggle={handleRoleToggle}
@@ -244,7 +246,7 @@ export default function OnboardingFlow() {
 
   if (currentStep === 'tutorial') {
     return (
-      <TutorialStep 
+      <TutorialStep
         onComplete={completeOnboarding}
         onBack={prevStep}
         loading={loading}
@@ -260,37 +262,39 @@ function WelcomeStep({ onNext, loading }: { onNext: () => void; loading: boolean
   return (
     <div className="onboarding-container">
       <div className="onboarding-card">
-        <div className="onboarding-icon">👋</div>
-        <h1>Welcome to FinalRound!</h1>
+        <div className="onboarding-icon">
+          <ApexMark size={52} />
+        </div>
+        <h1>Welcome to Apex Round</h1>
         <p className="onboarding-description">
-          Your AI-powered interview prep companion. Let&apos;s get you set up to land your dream job.
+          Help in the interview, and practice before it. Setup takes about two minutes.
         </p>
-        
+
         <div className="onboarding-features">
           <div className="feature-item">
-            <span className="feature-icon">🎯</span>
-            <span>Mock interviews with AI feedback</span>
+            <span className="feature-icon"><PracticeIcon size={20} /></span>
+            <span>Practice interviews with a score and feedback</span>
           </div>
           <div className="feature-item">
-            <span className="feature-icon">📄</span>
-            <span>Resume optimization for ATS</span>
+            <span className="feature-icon"><ResumeIcon size={20} /></span>
+            <span>Your résumé, checked against each job</span>
           </div>
           <div className="feature-item">
-            <span className="feature-icon">💼</span>
-            <span>Job tracking &amp; applications</span>
+            <span className="feature-icon"><JobsIcon size={20} /></span>
+            <span>Every application, tracked by stage</span>
           </div>
           <div className="feature-item">
-            <span className="feature-icon">⚡</span>
-            <span>Live copilot for real interviews</span>
+            <span className="feature-icon"><LiveIcon size={20} /></span>
+            <span>A live copilot during real interviews</span>
           </div>
         </div>
 
-        <button 
-          className="button buttonPrimary onboarding-button" 
+        <button
+          className="button buttonPrimary onboarding-button"
           onClick={onNext}
           disabled={loading}
         >
-          Get Started →
+          Get started
         </button>
       </div>
     </div>
@@ -298,14 +302,14 @@ function WelcomeStep({ onNext, loading }: { onNext: () => void; loading: boolean
 }
 
 // Plan Step Component
-function PlanStep({ 
-  plans, 
-  selectedPlan, 
-  onSelect, 
-  onNext, 
-  onBack, 
-  loading 
-}: { 
+function PlanStep({
+  plans,
+  selectedPlan,
+  onSelect,
+  onNext,
+  onBack,
+  loading
+}: {
   plans: Plan[];
   selectedPlan: string;
   onSelect: (planId: string) => void;
@@ -316,21 +320,20 @@ function PlanStep({
   return (
     <div className="onboarding-container">
       <div className="onboarding-card">
-        <button className="back-button" onClick={onBack}>← Back</button>
-        <div className="onboarding-icon">💳</div>
-        <h1>Choose Your Plan</h1>
+        <button className="back-button" onClick={onBack}>Back</button>
+        <h1>Choose a plan</h1>
         <p className="onboarding-description">
-          Select the plan that best fits your needs. You can upgrade anytime.
+          Start free and upgrade whenever you need more minutes.
         </p>
 
         <div className="plans-grid">
           {plans.map((plan) => (
-            <div 
+            <div
               key={plan.id}
               className={`plan-card ${selectedPlan === plan.id ? 'selected' : ''} ${plan.popular ? 'popular' : ''}`}
               onClick={() => onSelect(plan.id)}
             >
-              {plan.popular && <span className="popular-badge">Most Popular</span>}
+              {plan.popular && <span className="popular-badge">Most popular</span>}
               <h3>{plan.name}</h3>
               <div className="plan-price">{plan.price}</div>
               <ul className="plan-features">
@@ -345,12 +348,12 @@ function PlanStep({
           ))}
         </div>
 
-        <button 
-          className="button buttonPrimary onboarding-button" 
+        <button
+          className="button buttonPrimary onboarding-button"
           onClick={onNext}
           disabled={loading || !selectedPlan}
         >
-          Continue →
+          Continue
         </button>
       </div>
     </div>
@@ -358,14 +361,14 @@ function PlanStep({
 }
 
 // Profile Step Component
-function ProfileStep({ 
-  profileData, 
-  onUpdate, 
-  onRoleToggle, 
-  onNext, 
-  onBack, 
-  loading 
-}: { 
+function ProfileStep({
+  profileData,
+  onUpdate,
+  onRoleToggle,
+  onNext,
+  onBack,
+  loading
+}: {
   profileData: ProfileData;
   onUpdate: (data: ProfileData) => void;
   onRoleToggle: (role: string) => void;
@@ -373,34 +376,33 @@ function ProfileStep({
   onBack: () => void;
   loading: boolean;
 }) {
-  const isValid = profileData.fullName.trim() !== '' && 
-                   profileData.targetRoles.length > 0 && 
+  const isValid = profileData.fullName.trim() !== '' &&
+                   profileData.targetRoles.length > 0 &&
                    profileData.yearsExperience !== '';
 
   return (
     <div className="onboarding-container">
       <div className="onboarding-card">
-        <button className="back-button" onClick={onBack}>← Back</button>
-        <div className="onboarding-icon">👤</div>
-        <h1>Tell Us About Yourself</h1>
+        <button className="back-button" onClick={onBack}>Back</button>
+        <h1>About you</h1>
         <p className="onboarding-description">
-          This helps us personalize your interview prep experience.
+          Answers and practice questions are tuned to the roles you pick here.
         </p>
 
         <div className="profile-form">
           <div className="form-group">
-            <label className="label">Full Name *</label>
+            <label className="label">Full name</label>
             <input
               className="input"
               type="text"
               value={profileData.fullName}
               onChange={(e) => onUpdate({ ...profileData, fullName: e.target.value })}
-              placeholder="John Doe"
+              placeholder="Your name"
             />
           </div>
 
           <div className="form-group">
-            <label className="label">Target Roles * (select at least one)</label>
+            <label className="label">Roles you are aiming for (pick at least one)</label>
             <div className="role-tags">
               {ROLE_OPTIONS.map((role) => (
                 <button
@@ -416,7 +418,7 @@ function ProfileStep({
           </div>
 
           <div className="form-group">
-            <label className="label">Years of Experience *</label>
+            <label className="label">Years of experience</label>
             <select
               className="input"
               value={profileData.yearsExperience}
@@ -432,23 +434,23 @@ function ProfileStep({
           </div>
 
           <div className="form-group">
-            <label className="label">Industry</label>
+            <label className="label">Industry (optional)</label>
             <input
               className="input"
               type="text"
               value={profileData.industry}
               onChange={(e) => onUpdate({ ...profileData, industry: e.target.value })}
-              placeholder="e.g., Tech, Finance, Healthcare"
+              placeholder="e.g. Tech, finance, healthcare"
             />
           </div>
         </div>
 
-        <button 
-          className="button buttonPrimary onboarding-button" 
+        <button
+          className="button buttonPrimary onboarding-button"
           onClick={onNext}
           disabled={loading || !isValid}
         >
-          Continue →
+          Continue
         </button>
       </div>
     </div>
@@ -456,11 +458,11 @@ function ProfileStep({
 }
 
 // Tutorial Step Component
-function TutorialStep({ 
-  onComplete, 
-  onBack, 
-  loading 
-}: { 
+function TutorialStep({
+  onComplete,
+  onBack,
+  loading
+}: {
   onComplete: () => void;
   onBack: () => void;
   loading: boolean;
@@ -469,41 +471,40 @@ function TutorialStep({
 
   const tutorialSteps = [
     {
-      title: 'Start a Mock Interview',
-      description: 'Practice with our AI-powered mock interviews. Choose from behavioral, technical, or mixed formats.',
-      icon: '🎤',
+      title: 'Practice an interview',
+      description: 'Answer behavioral or technical questions out loud, then read a score and notes on each answer.',
+      Icon: PracticeIcon,
     },
     {
-      title: 'Get Real-Time Feedback',
-      description: 'Receive instant feedback on your answers, body language, and communication style.',
-      icon: '⚡',
+      title: 'See where you improve',
+      description: 'Scores and session history build up on Home and in Analytics.',
+      Icon: ChartIcon,
     },
     {
-      title: 'Use the Live Copilot',
-      description: 'During real interviews, use our live copilot for hints, STAR templates, and confidence boosters.',
-      icon: '🤖',
+      title: 'Use the live copilot',
+      description: 'Share your meeting with audio. When the interviewer asks a question, a short structured answer appears on your screen.',
+      Icon: LiveIcon,
     },
     {
-      title: 'Optimize Your Resume',
-      description: 'Upload your resume and get AI-powered suggestions to pass ATS scanners.',
-      icon: '📄',
+      title: 'Tune your résumé',
+      description: 'Upload it once, then check it against any job description for missing keywords.',
+      Icon: ResumeIcon,
     },
   ];
 
   return (
     <div className="onboarding-container">
       <div className="onboarding-card">
-        <button className="back-button" onClick={onBack}>← Back</button>
-        <div className="onboarding-icon">🎓</div>
-        <h1>How It Works</h1>
+        <button className="back-button" onClick={onBack}>Back</button>
+        <h1>How it works</h1>
         <p className="onboarding-description">
-          Here&apos;s what you can do with FinalRound. Let&apos;s walk you through it!
+          Four things you can do with Apex Round.
         </p>
 
         <div className="tutorial-content">
           <div className="tutorial-progress">
             {tutorialSteps.map((_, idx) => (
-              <div 
+              <div
                 key={idx}
                 className={`progress-dot ${idx <= tutorialStep ? 'active' : ''}`}
                 onClick={() => setTutorialStep(idx)}
@@ -512,36 +513,41 @@ function TutorialStep({
           </div>
 
           <div className="tutorial-step">
-            <div className="tutorial-icon">{tutorialSteps[tutorialStep].icon}</div>
+            <div className="tutorial-icon">
+              {(() => {
+                const StepIcon = tutorialSteps[tutorialStep].Icon;
+                return <StepIcon size={36} />;
+              })()}
+            </div>
             <h3>{tutorialSteps[tutorialStep].title}</h3>
             <p>{tutorialSteps[tutorialStep].description}</p>
           </div>
 
           <div className="tutorial-nav">
-            <button 
+            <button
               className="button"
               onClick={() => setTutorialStep(Math.max(0, tutorialStep - 1))}
               disabled={tutorialStep === 0}
             >
-              ← Previous
+              Previous
             </button>
             <span className="tutorial-count">{tutorialStep + 1} / {tutorialSteps.length}</span>
-            <button 
+            <button
               className="button"
               onClick={() => setTutorialStep(Math.min(tutorialSteps.length - 1, tutorialStep + 1))}
               disabled={tutorialStep === tutorialSteps.length - 1}
             >
-              Next →
+              Next
             </button>
           </div>
         </div>
 
-        <button 
-          className="button buttonPrimary onboarding-button" 
+        <button
+          className="button buttonPrimary onboarding-button"
           onClick={onComplete}
           disabled={loading}
         >
-          {loading ? 'Setting up...' : 'Start Using FinalRound 🚀'}
+          {loading ? 'Setting up…' : 'Start using Apex Round'}
         </button>
       </div>
     </div>

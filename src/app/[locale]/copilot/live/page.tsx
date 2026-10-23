@@ -1,4 +1,3 @@
-import Link from 'next/link';
 import { AppShell } from '@/components/AppShell';
 import { RequireAuth } from '@/components/RequireAuth';
 import { LiveCopilotClient } from '@/components/LiveCopilotClient';
@@ -11,7 +10,7 @@ export default async function LiveCopilotPage() {
 
   if (!userData.user) {
     return (
-      <AppShell title="Live Copilot">
+      <AppShell title="Live copilot">
         <RequireAuth>
           <div />
         </RequireAuth>
@@ -22,29 +21,20 @@ export default async function LiveCopilotPage() {
   const isEnabled = isLiveCopilotBetaEnabled();
 
   return (
-    <AppShell title="Live Copilot">
+    <AppShell title="Live copilot" actions={<span className="badge">Beta</span>}>
       <RequireAuth>
-        <div className="stack">
-          <div className="row" style={{ justifyContent: 'space-between' }}>
-            <p className="help" style={{ margin: 0 }}>
-              <Link href="/dashboard">← Back to dashboard</Link>
-            </p>
-            <span className="badge">Beta</span>
-          </div>
-
-          {isEnabled ? (
-            <LiveCopilotClient />
-          ) : (
-            <div className="card">
-              <div className="cardInner stack">
-                <h2 className="cardTitle">Beta is currently disabled</h2>
-                <p className="cardDesc">
-                  Set <code>NEXT_PUBLIC_BETA_LIVE_COPILOT=true</code> to enable this page in your environment.
-                </p>
-              </div>
+        {isEnabled ? (
+          <LiveCopilotClient />
+        ) : (
+          <div className="card">
+            <div className="cardInner stack">
+              <h2 className="cardTitle">Live copilot is switched off</h2>
+              <p className="cardDesc">
+                Set <code>NEXT_PUBLIC_BETA_LIVE_COPILOT=true</code> to turn it on in this environment.
+              </p>
             </div>
-          )}
-        </div>
+          </div>
+        )}
       </RequireAuth>
     </AppShell>
   );

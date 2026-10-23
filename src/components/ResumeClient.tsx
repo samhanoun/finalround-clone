@@ -88,10 +88,10 @@ export function ResumeClient(props: { initialDocs: Doc[]; initialGenerations: Ge
       setDocs((d) => [json.document, ...d]);
       setSelectedDocId(json.document.id);
       setFile(null);
-      toast.success('Upload Complete', `Parsing ${json.parsed?.status === 'completed' ? 'completed' : 'in progress'}`);
+      toast.success('Uploaded', json.parsed?.status === 'completed' ? 'Your résumé is ready to use.' : 'Reading your résumé. This takes a few seconds.');
     } catch (e) {
       const message = e instanceof Error ? e.message : 'Upload failed';
-      toast.error('Upload Failed', message);
+      toast.error('Upload failed', message);
     } finally {
       setUploading(false);
     }
@@ -116,11 +116,11 @@ export function ResumeClient(props: { initialDocs: Doc[]; initialGenerations: Ge
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.error ?? 'Generate failed');
 
-      toast.success('Generation Started', 'Your resume generation has been queued.');
+      toast.success('Generating', 'Your tailored résumé will appear under History.');
       await refreshHistory();
     } catch (e) {
       const message = e instanceof Error ? e.message : 'Generate failed';
-      toast.error('Generation Failed', message);
+      toast.error('Generation failed', message);
     } finally {
       setGenerating(false);
     }
@@ -139,13 +139,13 @@ export function ResumeClient(props: { initialDocs: Doc[]; initialGenerations: Ge
       window.open(url, '_blank', 'noopener,noreferrer');
     } catch (e) {
       const message = e instanceof Error ? e.message : 'Download failed';
-      toast.error('Download Failed', message);
+      toast.error('Download failed', message);
     }
   }
 
   async function runATSAnalysis() {
     if (!selectedDocId || !jobDescription) {
-      toast.warning('Missing Input', 'Please select a document and provide a job description');
+      toast.warning('Pick a résumé and a job', 'Choose a résumé and paste the job description first.');
       return;
     }
     setAtsResult(null);
@@ -164,7 +164,7 @@ export function ResumeClient(props: { initialDocs: Doc[]; initialGenerations: Ge
       toast.info('ATS Score', `Your resume scored ${json.atsScore}%`);
     } catch (e) {
       const message = e instanceof Error ? e.message : 'Analysis failed';
-      toast.error('Analysis Failed', message);
+      toast.error('Check failed', message);
     } finally {
       setAnalyzing(false);
     }
@@ -172,7 +172,7 @@ export function ResumeClient(props: { initialDocs: Doc[]; initialGenerations: Ge
 
   async function optimizeKeywords() {
     if (!selectedDocId || !jobDescription) {
-      toast.warning('Missing Input', 'Please select a document and provide a job description');
+      toast.warning('Pick a résumé and a job', 'Choose a résumé and paste the job description first.');
       return;
     }
     setAnalyzing(true);
@@ -186,10 +186,10 @@ export function ResumeClient(props: { initialDocs: Doc[]; initialGenerations: Ge
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.error ?? 'Keyword optimization failed');
 
-      toast.success('Keywords Optimized', `Found ${json.suggestedKeywords?.length || 0} keywords to add`);
+      toast.success('Keywords found', `${json.suggestedKeywords?.length || 0} keywords to add`);
     } catch (e) {
       const message = e instanceof Error ? e.message : 'Keyword optimization failed';
-      toast.error('Optimization Failed', message);
+      toast.error('Keyword search failed', message);
     } finally {
       setAnalyzing(false);
     }
@@ -197,7 +197,7 @@ export function ResumeClient(props: { initialDocs: Doc[]; initialGenerations: Ge
 
   async function analyzeBullets() {
     if (!selectedDocId || !bulletInput.trim()) {
-      toast.warning('Missing Input', 'Please enter bullet points to analyze');
+      toast.warning('Add your bullets', 'Paste one bullet point per line first.');
       return;
     }
     setAnalyzing(true);
@@ -213,10 +213,10 @@ export function ResumeClient(props: { initialDocs: Doc[]; initialGenerations: Ge
       if (!res.ok) throw new Error(json?.error ?? 'Bullet analysis failed');
 
       setBulletAnalyses(json.analyses || []);
-      toast.success('Analysis Complete', 'Your bullet points have been analyzed');
+      toast.success('Rewritten', 'Your bullet points are ready below.');
     } catch (e) {
       const message = e instanceof Error ? e.message : 'Bullet analysis failed';
-      toast.error('Analysis Failed', message);
+      toast.error('Check failed', message);
     } finally {
       setAnalyzing(false);
     }
@@ -226,20 +226,20 @@ export function ResumeClient(props: { initialDocs: Doc[]; initialGenerations: Ge
     <div className="grid2" style={{ alignItems: 'start' }}>
       <section className="card" aria-labelledby="resume-builder-heading">
         <div className="cardInner stack">
-          <h2 className="cardTitle" id="resume-builder-heading">Resume Builder</h2>
-          <p className="cardDesc">Upload your resume and optimize it for specific job applications.</p>
+          <h2 className="cardTitle" id="resume-builder-heading">Tune your résumé to a job</h2>
+          <p className="cardDesc">Upload it once, then check it against any job description.</p>
 
           <div className="stack">
             {/* Upload Section */}
             <label className="label" htmlFor={fileInputId}>
-              Upload CV (PDF/DOCX)
+              Résumé file (PDF or DOCX)
               <input
                 className="input"
                 type="file"
                 id={fileInputId}
                 accept=".pdf,.docx,.doc"
                 onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-                aria-label="CV file upload"
+                aria-label="Résumé file"
               />
             </label>
 
@@ -252,11 +252,11 @@ export function ResumeClient(props: { initialDocs: Doc[]; initialGenerations: Ge
                 id={uploadBtnId}
                 aria-describedby={uploading ? 'upload-status' : undefined}
               >
-                {uploading ? 'Uploading…' : 'Upload & Parse'}
+                {uploading ? 'Uploading…' : 'Upload'}
               </button>
               {uploading && (
                 <span id="upload-status" className="srOnly">
-                  Uploading file, please wait...
+                  Uploading your file…
                 </span>
               )}
             </div>
@@ -265,7 +265,7 @@ export function ResumeClient(props: { initialDocs: Doc[]; initialGenerations: Ge
 
             {/* Document Selection */}
             <label className="label" htmlFor={docSelectId}>
-              Select document
+              Résumé
               <select
                 className="select"
                 id={docSelectId}
@@ -275,7 +275,7 @@ export function ResumeClient(props: { initialDocs: Doc[]; initialGenerations: Ge
                   setAtsResult(null);
                 }}
               >
-                <option value="">— Select a document —</option>
+                <option value="">Choose a résumé</option>
                 {docs.map((d) => (
                   <option key={d.id} value={d.id}>
                     {d.filename ?? d.id} {d.ats_score ? `(${d.ats_score}%)` : ''} v{d.version || 1}
@@ -286,7 +286,7 @@ export function ResumeClient(props: { initialDocs: Doc[]; initialGenerations: Ge
 
             {/* Job Description */}
             <label className="label" htmlFor={jobDescId}>
-              Job Description
+              Job description
               <textarea
                 className="textarea"
                 id={jobDescId}
@@ -297,12 +297,12 @@ export function ResumeClient(props: { initialDocs: Doc[]; initialGenerations: Ge
                 aria-describedby="job-desc-help"
               />
               <span id="job-desc-help" className="help">
-                Paste the full job description to enable ATS analysis and keyword optimization
+                The full posting works best: requirements and responsibilities matter most.
               </span>
             </label>
 
             {/* Action Buttons */}
-            <div className="row" style={{ gap: 8, flexWrap: 'wrap' }} role="group" aria-label="Resume actions">
+            <div className="row" style={{ gap: 8, flexWrap: 'wrap' }} role="group" aria-label="Résumé actions">
               <button
                 className="button buttonPrimary"
                 type="button"
@@ -310,7 +310,7 @@ export function ResumeClient(props: { initialDocs: Doc[]; initialGenerations: Ge
                 disabled={!selectedDocId || !jobDescription || analyzing}
                 aria-describedby={analyzing ? atsStatusId : undefined}
               >
-                {analyzing ? 'Analyzing…' : 'Run ATS Analysis'}
+                {analyzing ? 'Checking…' : 'Check against the job'}
               </button>
               <button
                 className="button"
@@ -318,7 +318,7 @@ export function ResumeClient(props: { initialDocs: Doc[]; initialGenerations: Ge
                 onClick={optimizeKeywords}
                 disabled={!selectedDocId || !jobDescription || analyzing}
               >
-                Optimize Keywords
+                Find missing keywords
               </button>
               <button
                 className="button"
@@ -326,7 +326,7 @@ export function ResumeClient(props: { initialDocs: Doc[]; initialGenerations: Ge
                 onClick={generate}
                 disabled={!selectedDocId || generating}
               >
-                {generating ? 'Requesting…' : 'Generate'}
+                {generating ? 'Requesting…' : 'Write a tailored version'}
               </button>
             </div>
 
@@ -340,7 +340,7 @@ export function ResumeClient(props: { initialDocs: Doc[]; initialGenerations: Ge
             {/* ATS Results */}
             {atsResult && (
               <div className="resultBox" role="region" aria-labelledby="ats-results-heading">
-                <h4 id="ats-results-heading">ATS Analysis Results</h4>
+                <h4 id="ats-results-heading">How it matches</h4>
                 <div className="scoreDisplay">
                   <span className="scoreLabel">Score:</span>
                   <span 
@@ -352,7 +352,7 @@ export function ResumeClient(props: { initialDocs: Doc[]; initialGenerations: Ge
                 </div>
                 {atsResult.matchedKeywords.length > 0 && (
                   <div className="keywordSection">
-                    <strong>Matched Keywords:</strong>
+                    <strong>Matched keywords:</strong>
                     <div className="keywordTags" role="list" aria-label="Matched keywords">
                       {atsResult.matchedKeywords.map((k) => (
                         <span key={k} className="keywordTag matched" role="listitem">{k}</span>
@@ -362,7 +362,7 @@ export function ResumeClient(props: { initialDocs: Doc[]; initialGenerations: Ge
                 )}
                 {atsResult.missingKeywords.length > 0 && (
                   <div className="keywordSection">
-                    <strong>Missing Keywords:</strong>
+                    <strong>Missing keywords:</strong>
                     <div className="keywordTags" role="list" aria-label="Missing keywords">
                       {atsResult.missingKeywords.slice(0, 10).map((k) => (
                         <span key={k} className="keywordTag missing" role="listitem">{k}</span>
@@ -385,7 +385,7 @@ export function ResumeClient(props: { initialDocs: Doc[]; initialGenerations: Ge
 
             {/* Bullet Analysis Section */}
             <hr className="hr" />
-            <h3 style={{ margin: 0, fontSize: '1rem' }} id="bullet-rewriter-heading">Bullet Point Rewriter</h3>
+            <h3 style={{ margin: 0, fontSize: '1rem' }} id="bullet-rewriter-heading">Rewrite bullet points</h3>
             <label className="label" htmlFor={bulletInputId}>
               Enter bullet points (one per line)
               <textarea
@@ -409,12 +409,12 @@ export function ResumeClient(props: { initialDocs: Doc[]; initialGenerations: Ge
               onClick={analyzeBullets}
               disabled={!selectedDocId || !bulletInput.trim() || analyzing}
             >
-              {analyzing ? 'Analyzing…' : 'Rewrite Bullets'}
+              {analyzing ? 'Rewriting…' : 'Rewrite bullets'}
             </button>
 
             {bulletAnalyses.length > 0 && (
               <div className="bulletResults" role="region" aria-labelledby="bullet-results-heading">
-                <h4 id="bullet-results-heading" className="srOnly">Bullet Analysis Results</h4>
+                <h4 id="bullet-results-heading" className="srOnly">Rewritten bullets</h4>
                 {bulletAnalyses.map((analysis, i) => (
                   <div key={i} className="bulletAnalysis" role="article" aria-label={`Analysis ${i + 1} of ${bulletAnalyses.length}`}>
                     <div className="bulletOriginal">

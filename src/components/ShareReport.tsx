@@ -31,12 +31,12 @@ export function ShareReport({ report }: ShareReportProps) {
       if (report.score >= 90) {
         message = `🎉 I just scored ${report.score}% on my mock interview practice! Ready to land my dream job!`;
       } else if (report.score >= 70) {
-        message = `📝 I scored ${report.score}% on my interview practice with FinalRound. Getting better every day!`;
+        message = `📝 I scored ${report.score}% on my interview practice with Apex Round. Getting better every day!`;
       } else {
         message = `💪 Working hard on my interview skills! Scored ${report.score}% on my latest practice session.`;
       }
     } else {
-      message = `Just completed an interview practice session on FinalRound! Check out my progress.`;
+      message = `Just completed an interview practice session on Apex Round! Check out my progress.`;
     }
 
     // Record the share
@@ -99,10 +99,10 @@ export function ShareReport({ report }: ShareReportProps) {
             content={{
               title: report.score !== undefined 
                 ? `I scored ${report.score}% on my interview practice!`
-                : `Check out my interview practice session on FinalRound!`,
+                : `Check out my interview practice session on Apex Round!`,
               summary: report.notes 
                 ? `My feedback: ${report.notes.substring(0, 150)}...`
-                : 'Using FinalRound - the AI-powered interview prep platform!',
+                : 'Using Apex Round - the AI-powered interview prep platform!',
               url: shareUrl,
             }}
             onShare={handleShare}
@@ -126,8 +126,8 @@ export function ShareButton({ report, variant = 'text' }: ShareButtonProps) {
     setClicked(true);
     
     const message = report.score !== undefined 
-      ? `I scored ${report.score}% on my interview practice with FinalRound!`
-      : `Just completed an interview practice session on FinalRound!`;
+      ? `I scored ${report.score}% on my interview practice with Apex Round!`
+      : `Just completed an interview practice session on Apex Round!`;
 
     const shareUrl = typeof window !== 'undefined'
       ? `${window.location.origin}/interview/${report.sessionId}/report`

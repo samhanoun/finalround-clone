@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useSyncExternalStore, type ReactNode } from 'react';
-import { splitCodeFences } from '@/lib/copilot/answerText';
+import { splitBullets, splitCodeFences } from '@/lib/copilot/answerText';
 import type { QuestionCategory } from '@/lib/copilot/questionGate';
 import type { CopilotAnswers } from './useCopilotAnswers';
 import styles from './AnswerView.module.css';
@@ -28,7 +28,7 @@ export const MIN_FONT_PX = 13;
 export const MAX_FONT_PX = 26;
 
 /** Prose as text, fenced code as code blocks; partial while the answer streams. */
-function AnswerBody({ text }: { text: string }) {
+export function AnswerBody({ text }: { text: string }) {
   const segments = useMemo(() => splitCodeFences(text), [text]);
   return (
     <>
@@ -38,9 +38,21 @@ function AnswerBody({ text }: { text: string }) {
             <code>{segment.code}</code>
           </pre>
         ) : (
-          <span key={index} className={styles.prose}>
-            {segment.text}
-          </span>
+          <div key={index} className={styles.prose}>
+            {splitBullets(segment.text).map((block, blockIndex) =>
+              block.kind === 'points' ? (
+                <ul key={blockIndex} className={styles.points}>
+                  {block.items.map((item, itemIndex) => (
+                    <li key={itemIndex}>{item}</li>
+                  ))}
+                </ul>
+              ) : (
+                <p key={blockIndex} className={styles.line}>
+                  {block.text}
+                </p>
+              ),
+            )}
+          </div>
         ),
       )}
     </>
@@ -131,7 +143,11 @@ export function AnswerView({
       {tail.length > 0 ? (
         <ol className={styles.tail} aria-label="Latest conversation">
           {tail.map((line, index) => (
-            <li key={`${index}-${line.speaker}`} className={line.live ? styles.liveLine : undefined}>
+            <li
+              key={`${index}-${line.speaker}`}
+              className={line.live ? styles.liveLine : undefined}
+              data-voice={line.speaker === 'interviewer' ? 'interviewer' : 'you'}
+            >
               <span className={styles.speaker}>{line.speaker === 'interviewer' ? 'Interviewer' : 'You'}</span>
               <span>{line.text}</span>
             </li>

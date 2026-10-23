@@ -58,7 +58,7 @@ test.describe('live copilot loop', () => {
     const form = page.getByRole('form', { name: 'Auth form' });
     await form.getByLabel('Email').fill(login.email);
     await form.getByLabel('Password').fill(login.secret);
-    await form.getByRole('button', { name: 'Login' }).click();
+    await form.getByRole('button', { name: 'Sign in' }).click();
     await page.waitForURL('**/copilot/live');
 
     // Setup step: company, role, résumé, job.

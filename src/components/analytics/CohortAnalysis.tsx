@@ -80,7 +80,7 @@ export function CohortAnalysis() {
     retention: cohort.retention,
   }));
 
-  const colors = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
+  const colors = ['var(--ice)', 'var(--live)', 'var(--caution)', 'var(--alert)', 'var(--ice-text)'];
 
   return (
     <div className="card">
@@ -125,7 +125,7 @@ export function CohortAnalysis() {
         <div className="cohort-chart">
           <ResponsiveContainer width="100%" height={250}>
             <LineChart data={trendData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--line)" />
               <XAxis dataKey="name" tick={{ fontSize: 12 }} />
               <YAxis domain={[0, 100]} tickFormatter={(v) => `${v}%`} />
               <Tooltip formatter={(value) => [`${Number(value).toFixed(1)}%`, 'Retention']} />
@@ -161,7 +161,7 @@ export function CohortAnalysis() {
                   <td className="cohort-date">{row.cohort}</td>
                   <td className="cohort-size">{row.size.toLocaleString()}</td>
                   {row.retention.map((val, colIdx) => {
-                    const bgColor = `rgba(59, 130, 246, ${val / 100})`;
+                    const bgColor = `rgba(127, 208, 255, ${val / 100})`;
                     return (
                       <td 
                         key={colIdx} 
@@ -184,7 +184,7 @@ export function CohortAnalysis() {
           display: flex;
           gap: 24px;
           padding: 16px;
-          background: var(--color-bg-subtle, #f8f9fa);
+          background: var(--color-bg-subtle, var(--well));
           border-radius: 8px;
           margin-bottom: 16px;
         }
@@ -199,12 +199,12 @@ export function CohortAnalysis() {
         .summary-value {
           font-size: 1.5rem;
           font-weight: 600;
-          color: #3b82f6;
+          color: var(--ice);
         }
         
         .summary-label {
           font-size: 0.75rem;
-          color: #6b7280;
+          color: var(--mist);
         }
         
         .cohort-chart {
@@ -226,11 +226,11 @@ export function CohortAnalysis() {
         .cohort-table td {
           padding: 8px 12px;
           text-align: center;
-          border: 1px solid #e5e7eb;
+          border: 1px solid var(--line);
         }
         
         .cohort-table th {
-          background: #f8f9fa;
+          background: var(--well);
           font-weight: 600;
         }
         
@@ -240,18 +240,18 @@ export function CohortAnalysis() {
         }
         
         .cohort-size {
-          color: #6b7280;
+          color: var(--mist);
         }
         
         .retention-cell {
-          color: #1f2937;
+          color: var(--paper);
           font-weight: 500;
         }
         
         .metric-toggle {
           display: flex;
           gap: 4px;
-          background: #f3f4f6;
+          background: var(--well);
           padding: 4px;
           border-radius: 6px;
         }
@@ -267,12 +267,12 @@ export function CohortAnalysis() {
         }
         
         .toggle-btn.active {
-          background: white;
+          background: var(--deck);
           box-shadow: 0 1px 2px rgba(0,0,0,0.1);
         }
         
         .error {
-          color: #ef4444;
+          color: var(--alert);
         }
       `}</style>
     </div>

@@ -1,6 +1,6 @@
 {
   "common": {
-    "appName": "FinalRound",
+    "appName": "Apex Round",
     "loading": "Laden...",
     "save": "Speichern",
     "cancel": "Abbrechen",
@@ -24,7 +24,7 @@
     "copilot": "Copilot"
   },
   "dashboard": {
-    "welcome": "Willkommen bei FinalRound",
+    "welcome": "Willkommen bei Apex Round",
     "subtitle": "Ihr KI-gestützter Interview-Assistent",
     "recentActivity": "Letzte Aktivität",
     "quickActions": "Schnellaktionen",
@@ -43,7 +43,14 @@
     "securityNote2": "RLS isoliert Benutzerdaten; Speicher ist privat.",
     "securityNote3": "Anbieter-API-Schlüssel bleiben serverseitig (Vercel-Umgebungsvariablen).",
     "dangerZone": "Gefahrenzone",
-    "deleteAccount": "Konto löschen"
+    "deleteAccount": "Konto löschen",
+    "languages": {
+      "en": "English",
+      "es": "Español",
+      "fr": "Français",
+      "de": "Deutsch",
+      "pt": "Português"
+    }
   },
   "languages": {
     "en": "Englisch",

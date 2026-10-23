@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/browser';
 import { Link } from '@/i18n/routing';
+import { BellIcon, CalendarIcon, JobsIcon, SparkIcon } from './icons';
 
 interface Notification {
   id: string;
@@ -15,7 +16,8 @@ interface Notification {
   created_at: string;
 }
 
-export function NotificationBell() {
+/** `placement="side"`: in the navigation rail, the list opens to the right. */
+export function NotificationBell({ placement = 'below' }: { placement?: 'below' | 'side' } = {}) {
   const supabase = createClient();
   const [unreadCount, setUnreadCount] = useState(0);
   const [isOpen, setIsOpen] = useState(false);
@@ -126,13 +128,13 @@ export function NotificationBell() {
   function getTypeIcon(type: string) {
     switch (type) {
       case 'interview_reminder':
-        return '📅';
+        return <CalendarIcon size={18} />;
       case 'application_update':
-        return '💼';
+        return <JobsIcon size={18} />;
       case 'ai_suggestion':
-        return '💡';
+        return <SparkIcon size={18} />;
       default:
-        return '🔔';
+        return <BellIcon size={18} />;
     }
   }
 
@@ -140,24 +142,19 @@ export function NotificationBell() {
     <div className="notification-bell" ref={dropdownRef} style={{ position: 'relative' }}>
       <button
         onClick={toggleDropdown}
-        className="button"
+        className="button buttonGhost"
         aria-label={`Notifications ${unreadCount > 0 ? `(${unreadCount} unread)` : ''}`}
-        style={{
-          padding: '8px 12px',
-          position: 'relative',
-          background: 'transparent',
-          border: '1px solid var(--border)',
-        }}
+        style={{ padding: 0, width: 44, position: 'relative' }}
       >
-        <span style={{ fontSize: '1.2rem' }}>🔔</span>
+        <BellIcon size={20} />
         {unreadCount > 0 && (
           <span
             style={{
               position: 'absolute',
-              top: -4,
-              right: -4,
-              background: 'var(--red)',
-              color: 'white',
+              top: 4,
+              right: 4,
+              background: 'var(--ember)',
+              color: 'var(--midnight)',
               borderRadius: '50%',
               width: 18,
               height: 18,
@@ -178,16 +175,16 @@ export function NotificationBell() {
           className="notification-dropdown"
           style={{
             position: 'absolute',
-            top: '100%',
-            right: 0,
-            marginTop: 8,
-            width: 360,
+            ...(placement === 'side'
+              ? { left: '100%', bottom: 0, marginLeft: 12 }
+              : { top: '100%', right: 0, marginTop: 8 }),
+            width: 'min(360px, calc(100vw - 32px))',
             maxHeight: 480,
             overflow: 'auto',
-            background: 'var(--bg)',
-            border: '1px solid var(--border)',
-            borderRadius: 8,
-            boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
+            background: 'var(--deck)',
+            border: '1px solid var(--line-strong)',
+            borderRadius: 14,
+            boxShadow: 'var(--float)',
             zIndex: 100,
           }}
         >
@@ -204,13 +201,8 @@ export function NotificationBell() {
             {unreadCount > 0 && (
               <button
                 onClick={markAllAsRead}
-                className="button"
-                style={{
-                  padding: '4px 8px',
-                  fontSize: '0.75rem',
-                  background: 'transparent',
-                  border: '1px solid var(--border)',
-                }}
+                className="button buttonGhost"
+                style={{ minHeight: 32, padding: '0 10px', fontSize: 13 }}
               >
                 Mark all read
               </button>
@@ -240,7 +232,7 @@ export function NotificationBell() {
                   }}
                 >
                   <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-                    <span style={{ fontSize: '1.2rem' }}>{getTypeIcon(notification.type)}</span>
+                    <span style={{ display: 'inline-flex', color: 'var(--mist)' }}>{getTypeIcon(notification.type)}</span>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div
                         style={{
@@ -299,9 +291,9 @@ export function NotificationBell() {
             <Link
               href="/settings"
               scroll={false}
-              style={{ fontSize: '0.85rem', color: 'var(--blue)' }}
+              style={{ fontSize: 14, color: 'var(--ice)' }}
             >
-              Notification settings →
+              Notification settings
             </Link>
           </div>
         </div>

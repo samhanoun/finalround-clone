@@ -188,7 +188,7 @@ export function AnalyticsReconciliation() {
       <style jsx>{`
         .reconciliation-info {
           padding: 8px 12px;
-          background: var(--color-bg-subtle, #f8f9fa);
+          background: var(--color-bg-subtle, var(--well));
           border-radius: 6px;
         }
         
@@ -196,7 +196,7 @@ export function AnalyticsReconciliation() {
           display: flex;
           gap: 16px;
           padding: 12px;
-          background: var(--color-bg-subtle, #f8f9fa);
+          background: var(--color-bg-subtle, var(--well));
           border-radius: 8px;
         }
         
@@ -215,19 +215,19 @@ export function AnalyticsReconciliation() {
         
         .stat-label {
           font-size: 0.75rem;
-          color: var(--color-text-muted, #666);
+          color: var(--color-text-muted, var(--mist));
         }
         
         .stat-consistent .stat-value {
-          color: #10b981;
+          color: var(--live);
         }
         
         .stat-warning .stat-value {
-          color: #f59e0b;
+          color: var(--caution);
         }
         
         .metrics-list {
-          border: 1px solid var(--color-border, #e5e7eb);
+          border: 1px solid var(--color-border, var(--line));
           border-radius: 8px;
           overflow: hidden;
         }
@@ -237,10 +237,10 @@ export function AnalyticsReconciliation() {
           grid-template-columns: 1fr 2fr 120px;
           gap: 12px;
           padding: 12px 16px;
-          background: var(--color-bg-subtle, #f8f9fa);
+          background: var(--color-bg-subtle, var(--well));
           font-weight: 600;
           font-size: 0.875rem;
-          border-bottom: 1px solid var(--color-border, #e5e7eb);
+          border-bottom: 1px solid var(--color-border, var(--line));
         }
         
         .metric-row {
@@ -248,7 +248,7 @@ export function AnalyticsReconciliation() {
           grid-template-columns: 1fr 2fr 120px;
           gap: 12px;
           padding: 12px 16px;
-          border-bottom: 1px solid var(--color-border, #e5e7eb);
+          border-bottom: 1px solid var(--color-border, var(--line));
           align-items: center;
         }
         
@@ -257,15 +257,15 @@ export function AnalyticsReconciliation() {
         }
         
         .metric-row.metric-consistent {
-          background: rgba(16, 185, 129, 0.05);
+          background: rgba(69, 212, 155, 0.05);
         }
         
         .metric-row.metric-warning {
-          background: rgba(245, 158, 11, 0.05);
+          background: rgba(247, 195, 95, 0.05);
         }
         
         .metric-row.metric-critical {
-          background: rgba(239, 68, 68, 0.05);
+          background: rgba(255, 107, 107, 0.05);
         }
         
         .metric-name {
@@ -287,7 +287,7 @@ export function AnalyticsReconciliation() {
         
         .metric-label {
           font-size: 0.7rem;
-          color: var(--color-text-muted, #666);
+          color: var(--color-text-muted, var(--mist));
         }
         
         .metric-value {
@@ -296,11 +296,11 @@ export function AnalyticsReconciliation() {
         }
         
         .metric-value.positive {
-          color: #10b981;
+          color: var(--live);
         }
         
         .metric-value.negative {
-          color: #ef4444;
+          color: var(--alert);
         }
         
         .status-badge {
@@ -312,18 +312,18 @@ export function AnalyticsReconciliation() {
         }
         
         .status-consistent {
-          background: rgba(16, 185, 129, 0.1);
-          color: #10b981;
+          background: rgba(69, 212, 155, 0.1);
+          color: var(--live);
         }
         
         .status-warning {
-          background: rgba(245, 158, 11, 0.1);
-          color: #f59e0b;
+          background: rgba(247, 195, 95, 0.1);
+          color: var(--caution);
         }
         
         .status-critical {
-          background: rgba(239, 68, 68, 0.1);
-          color: #ef4444;
+          background: rgba(255, 107, 107, 0.1);
+          color: var(--alert);
         }
         
         .overall-badge {
@@ -334,22 +334,22 @@ export function AnalyticsReconciliation() {
         }
         
         .overall-healthy {
-          background: rgba(16, 185, 129, 0.1);
-          color: #10b981;
+          background: rgba(69, 212, 155, 0.1);
+          color: var(--live);
         }
         
         .overall-warning {
-          background: rgba(245, 158, 11, 0.1);
-          color: #f59e0b;
+          background: rgba(247, 195, 95, 0.1);
+          color: var(--caution);
         }
         
         .overall-critical {
-          background: rgba(239, 68, 68, 0.1);
-          color: #ef4444;
+          background: rgba(255, 107, 107, 0.1);
+          color: var(--alert);
         }
         
         .error {
-          color: #ef4444;
+          color: var(--alert);
         }
       `}</style>
     </div>

@@ -80,8 +80,8 @@ export function VideoConferencingSettings({ initial }: Props) {
     return (
       <div className="card">
         <div className="cardInner stack">
-          <h2 className="cardTitle">Video Conferencing</h2>
-          <p className="help">Loading settings...</p>
+          <h2 className="cardTitle">Meeting apps</h2>
+          <p className="help">Loading…</p>
         </div>
       </div>
     );
@@ -91,8 +91,8 @@ export function VideoConferencingSettings({ initial }: Props) {
     return (
       <div className="card">
         <div className="cardInner stack">
-          <h2 className="cardTitle">Video Conferencing</h2>
-          <p className="help">Unable to load settings</p>
+          <h2 className="cardTitle">Meeting apps</h2>
+          <p className="help">These settings didn&apos;t load. Reload the page to try again.</p>
         </div>
       </div>
     );
@@ -102,7 +102,6 @@ export function VideoConferencingSettings({ initial }: Props) {
     {
       key: 'zoom' as const,
       name: 'Zoom',
-      icon: '📹',
       enabled: settings.zoom_enabled,
       autoCapture: settings.zoom_auto_capture,
       screenShareDetection: settings.zoom_screen_share_detection,
@@ -110,7 +109,6 @@ export function VideoConferencingSettings({ initial }: Props) {
     {
       key: 'google_meet' as const,
       name: 'Google Meet',
-      icon: '📹',
       enabled: settings.google_meet_enabled,
       autoCapture: settings.google_meet_auto_capture,
       screenShareDetection: settings.google_meet_screen_share_detection,
@@ -118,7 +116,6 @@ export function VideoConferencingSettings({ initial }: Props) {
     {
       key: 'ms_teams' as const,
       name: 'Microsoft Teams',
-      icon: '📹',
       enabled: settings.ms_teams_enabled,
       autoCapture: settings.ms_teams_auto_capture,
       screenShareDetection: settings.ms_teams_screen_share_detection,
@@ -128,10 +125,9 @@ export function VideoConferencingSettings({ initial }: Props) {
   return (
     <div className="card">
       <div className="cardInner stack">
-        <h2 className="cardTitle">Video Conferencing Integrations</h2>
+        <h2 className="cardTitle">Meeting apps</h2>
         <p className="help">
-          Configure integration with Zoom, Google Meet, and Microsoft Teams for 
-          automated screen share detection and audio capture during interviews.
+          How the copilot works with Zoom, Google Meet and Microsoft Teams: audio capture and screen share detection.
         </p>
         
         {error && (
@@ -240,7 +236,7 @@ export function VideoConferencingSettings({ initial }: Props) {
                 alignItems: 'center',
                 marginBottom: '12px'
               }}>
-                <span style={{ fontWeight: 600 }}>{platform.icon} {platform.name}</span>
+                <span style={{ fontWeight: 600 }}>{platform.name}</span>
                 <label className="toggle">
                   <input
                     type="checkbox"

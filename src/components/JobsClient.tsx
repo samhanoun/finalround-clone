@@ -4,6 +4,7 @@ import { useState, useEffect, useId } from 'react';
 import { createClient } from '@/lib/supabase/browser';
 import { useToastHook } from '@/components/Toast';
 import { LoadingSpinner } from '@/components/Skeleton';
+import { SearchIcon } from '@/components/icons';
 
 type ApplicationStage = 'saved' | 'applied' | 'oa' | 'interview' | 'offer' | 'rejected';
 
@@ -63,7 +64,7 @@ export function JobsClient() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [draggedItem, setDraggedItem] = useState<JobWithApplication | null>(null);
   const [announcement, setAnnouncement] = useState('');
-  
+
   const searchId = useId();
   const filterGroupId = useId();
 
@@ -113,7 +114,7 @@ export function JobsClient() {
   const updateStage = async (appId: string, newStage: ApplicationStage) => {
     const updates: Partial<JobApplication> = { stage: newStage };
     const app = applications.find(a => a.id === appId);
-    
+
     if (newStage === 'applied' && !app?.applied_at) {
       updates.applied_at = new Date().toISOString();
     }
@@ -174,17 +175,17 @@ export function JobsClient() {
   };
 
   const filteredApps = applications.filter(app => {
-    const matchesSearch = !searchQuery || 
+    const matchesSearch = !searchQuery ||
       app.company.toLowerCase().includes(searchQuery.toLowerCase()) ||
       app.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
       (app.notes && app.notes.toLowerCase().includes(searchQuery.toLowerCase()));
-    
+
     const matchesStage = filterStage === 'all' || app.stage === filterStage;
-    
+
     return matchesSearch && matchesStage;
   });
 
-  const getAppsByStage = (stage: ApplicationStage) => 
+  const getAppsByStage = (stage: ApplicationStage) =>
     filteredApps.filter(app => app.stage === stage);
 
   const handleDragStart = (app: JobWithApplication) => {
@@ -214,10 +215,10 @@ export function JobsClient() {
   return (
     <div className="jobsContainer">
       {/* Screen reader announcements */}
-      <div 
-        role="status" 
-        aria-live="polite" 
-        aria-atomic="true" 
+      <div
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
         className="srOnly"
       >
         {announcement}
@@ -227,7 +228,7 @@ export function JobsClient() {
       <div className="jobsStats" role="region" aria-label="Application statistics">
         <div className="statItem">
           <span className="statValue" aria-label={`${totalApps} total applications`}>{totalApps}</span>
-          <span className="statLabel">Total Applications</span>
+          <span className="statLabel">Applications</span>
         </div>
         <div className="statItem">
           <span className="statValue" aria-label={`${getStageCount('interview') + getStageCount('offer')} interviewing`}>
@@ -246,10 +247,10 @@ export function JobsClient() {
       {/* Search and Filter Bar */}
       <div className="jobsToolbar" role="search" aria-label="Job applications search and filters">
         <div className="searchBox">
-          <span className="searchIcon" aria-hidden="true">🔍</span>
+          <SearchIcon size={18} className="searchIcon" />
           <input
             type="text"
-            placeholder="Search by company, title, or notes..."
+            placeholder="Search by company, title or notes"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="searchInput"
@@ -260,10 +261,10 @@ export function JobsClient() {
             Filter job applications by company name, job title, or notes
           </span>
         </div>
-        
-        <div 
-          className="filterButtons" 
-          role="group" 
+
+        <div
+          className="filterButtons"
+          role="group"
           aria-label="Filter by application stage"
           id={filterGroupId}
         >
@@ -286,19 +287,15 @@ export function JobsClient() {
           ))}
         </div>
 
-        <button 
-          className="addJobBtn" 
-          onClick={() => setShowAddModal(true)}
-          aria-label="Add new job application"
-        >
-          + Add Job
+        <button className="button buttonPrimary" onClick={() => setShowAddModal(true)}>
+          Add a job
         </button>
       </div>
 
       {/* Kanban Board */}
-      <div 
-        className="kanbanBoard" 
-        role="region" 
+      <div
+        className="kanbanBoard"
+        role="region"
         aria-label="Job applications board - Drag and drop job applications between columns to change their status"
       >
         {STAGE_ORDER.map(stage => (
@@ -331,7 +328,7 @@ export function JobsClient() {
                 >
                   <div className="jobCardHeader">
                     <span className="jobCompany">{app.company}</span>
-                    <button 
+                    <button
                       className="deleteBtn"
                       onClick={() => deleteApplication(app.id)}
                       title="Delete"
@@ -344,7 +341,7 @@ export function JobsClient() {
                   {app.notes && <div className="jobNotes">{app.notes}</div>}
                   <div className="jobMeta">
                     <span className="jobDate">
-                      {app.applied_at 
+                      {app.applied_at
                         ? `Applied: ${new Date(app.applied_at).toLocaleDateString()}`
                         : `Added: ${new Date(app.created_at).toLocaleDateString()}`}
                     </span>
@@ -363,8 +360,8 @@ export function JobsClient() {
 
       {/* Add Job Modal */}
       {showAddModal && (
-        <AddJobModal 
-          onClose={() => setShowAddModal(false)} 
+        <AddJobModal
+          onClose={() => setShowAddModal(false)}
           onSubmit={addJob}
         />
       )}
@@ -411,26 +408,30 @@ export function JobsClient() {
         .searchBox {
           display: flex;
           align-items: center;
-          gap: 8px;
-          padding: 8px 12px;
-          background: rgba(255, 255, 255, 0.03);
-          border: 1px solid var(--border);
-          border-radius: 8px;
+          gap: 10px;
+          min-height: 44px;
+          padding: 0 14px;
+          background: var(--well);
+          border: 1px solid var(--line);
+          border-radius: 10px;
           flex: 1;
           min-width: 250px;
+          color: var(--mist);
         }
 
-        .searchIcon {
-          font-size: 0.9rem;
+        .searchBox:focus-within {
+          border-color: var(--ember);
+          box-shadow: 0 0 0 3px var(--ember-soft);
         }
 
         .searchInput {
           background: transparent;
           border: none;
-          color: var(--text);
+          color: var(--paper);
           flex: 1;
           outline: none;
-          font-size: 0.9rem;
+          font: inherit;
+          font-size: 15px;
         }
 
         .searchInput::placeholder {
@@ -444,39 +445,27 @@ export function JobsClient() {
         }
 
         .filterBtn {
-          padding: 6px 12px;
-          background: rgba(255, 255, 255, 0.03);
-          border: 1px solid var(--border);
-          border-radius: 6px;
-          color: var(--text-light);
-          font-size: 0.8rem;
+          min-height: 34px;
+          padding: 0 12px;
+          background: transparent;
+          border: 1px solid var(--line);
+          border-radius: 999px;
+          color: var(--mist);
+          font: inherit;
+          font-size: 13.5px;
           cursor: pointer;
-          transition: all 0.2s;
+          transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
         }
 
         .filterBtn:hover {
-          background: rgba(255, 255, 255, 0.06);
+          background: var(--deck-2);
+          color: var(--paper);
         }
 
         .filterBtn.active {
-          background: rgba(99, 102, 241, 0.2);
-          border-color: rgba(99, 102, 241, 0.5);
-          color: #818cf8;
-        }
-
-        .addJobBtn {
-          padding: 8px 16px;
-          background: var(--primary);
-          border: none;
-          border-radius: 8px;
-          color: white;
-          font-weight: 600;
-          cursor: pointer;
-          transition: opacity 0.2s;
-        }
-
-        .addJobBtn:hover {
-          opacity: 0.9;
+          background: var(--ember-soft);
+          border-color: rgba(255, 181, 71, 0.5);
+          color: var(--ember-text);
         }
 
         .kanbanBoard {
@@ -635,32 +624,32 @@ export function JobsClient() {
             grid-template-columns: 1fr;
             gap: 16px;
           }
-          
+
           .jobsToolbar {
             flex-direction: column;
             align-items: stretch;
           }
-          
+
           .jobsStats {
             flex-direction: column;
             gap: 16px;
             text-align: center;
           }
-          
+
           .searchBox {
             min-width: 100%;
           }
-          
+
           .filterButtons {
             overflow-x: auto;
             flex-wrap: nowrap;
             padding-bottom: 8px;
           }
-          
+
           .filterBtn {
             white-space: nowrap;
           }
-          
+
           .modalContent {
             margin: 16px;
             max-width: calc(100% - 32px);
@@ -671,15 +660,15 @@ export function JobsClient() {
           .jobsStats {
             padding: 12px;
           }
-          
+
           .statValue {
             font-size: 1.25rem;
           }
-          
+
           .columnHeader {
             padding: 10px;
           }
-          
+
           .jobCard {
             padding: 8px;
           }
@@ -717,8 +706,8 @@ function AddJobModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (da
   };
 
   return (
-    <div 
-      className="modalOverlay" 
+    <div
+      className="modalOverlay"
       onClick={onClose}
       role="dialog"
       aria-modal="true"
@@ -727,9 +716,9 @@ function AddJobModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (da
     >
       <div className="modalContent" onClick={e => e.stopPropagation()}>
         <div className="modalHeader">
-          <h3 id={modalTitleId}>Add New Job</h3>
-          <button 
-            className="closeBtn" 
+          <h3 id={modalTitleId}>Add a job</h3>
+          <button
+            className="closeBtn"
             onClick={onClose}
             aria-label="Close dialog"
           >×</button>
@@ -778,8 +767,8 @@ function AddJobModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (da
             />
           </div>
           <div className="modalActions">
-            <button type="button" className="cancelBtn" onClick={onClose}>Cancel</button>
-            <button type="submit" className="submitBtn">Add Job</button>
+            <button type="button" className="button" onClick={onClose}>Cancel</button>
+            <button type="submit" className="button buttonPrimary">Add job</button>
           </div>
         </form>
       </div>
@@ -872,30 +861,6 @@ function AddJobModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (da
           margin-top: 20px;
         }
 
-        .cancelBtn {
-          padding: 8px 16px;
-          background: transparent;
-          border: 1px solid var(--border);
-          border-radius: 8px;
-          color: var(--text-light);
-          cursor: pointer;
-        }
-
-        .cancelBtn:focus-visible,
-        .submitBtn:focus-visible {
-          outline: 2px solid var(--focus-ring);
-          outline-offset: 2px;
-        }
-
-        .submitBtn {
-          padding: 8px 16px;
-          background: var(--primary);
-          border: none;
-          border-radius: 8px;
-          color: white;
-          font-weight: 600;
-          cursor: pointer;
-        }
       `}</style>
     </div>
   );

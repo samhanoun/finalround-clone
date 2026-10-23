@@ -1,24 +1,26 @@
+/* The answer card: the one element that floats. */
 .view {
   --answer-font: 16px;
   display: grid;
-  gap: 12px;
-  color: var(--text);
+  gap: 16px;
+  color: var(--paper);
 }
 
 .inline {
-  padding: 14px 16px;
-  border: 1px solid var(--border);
+  padding: 22px 26px 18px;
+  border: 1px solid var(--line-glow);
   border-radius: var(--radius);
-  background: var(--panel);
+  background: var(--deck);
+  box-shadow: var(--float);
 }
 
 /* Fills the floating window, which holds nothing else. */
 .window {
   min-height: 100vh;
   box-sizing: border-box;
-  padding: 12px 14px;
+  padding: 14px 16px 12px;
   align-content: start;
-  background: var(--bg);
+  background: var(--midnight);
 }
 
 .header {
@@ -40,60 +42,120 @@
   gap: 6px;
   padding: 3px 10px;
   border-radius: 999px;
-  font-size: 0.8rem;
-  border: 1px solid var(--border);
+  font-size: 13px;
+  line-height: 1.5;
+  background: var(--deck-2);
 }
 
 .pill::before {
   content: '';
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
   background: currentColor;
 }
 
 .live {
-  color: var(--success);
+  color: var(--live-text);
+  background: var(--live-soft);
+}
+
+.live::before {
+  background: var(--live);
+  box-shadow: 0 0 0 0 rgba(69, 212, 155, 0.6);
+  animation: pulse 2.4s ease-out infinite;
 }
 
 .warn {
-  color: var(--warning);
+  color: var(--caution);
+  background: rgba(247, 195, 95, 0.12);
 }
 
 .off {
-  color: var(--muted);
+  color: var(--mist);
+}
+
+@keyframes pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(69, 212, 155, 0.55);
+  }
+  70% {
+    box-shadow: 0 0 0 6px rgba(69, 212, 155, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(69, 212, 155, 0);
+  }
 }
 
 .question {
   display: grid;
-  gap: 6px;
+  gap: 8px;
   justify-items: start;
+}
+
+.question :global(.badge) {
+  background: var(--ice-soft);
+  color: var(--ice-text);
 }
 
 .questionText {
   margin: 0;
-  font-size: calc(var(--answer-font) * 0.95);
-  line-height: 1.45;
+  font-size: calc(var(--answer-font) * 1.08);
+  line-height: 1.4;
   font-weight: 600;
+  color: var(--ice);
 }
 
 .empty {
   margin: 0;
+  line-height: 1.5;
 }
 
 .answer {
   margin: 0;
-  padding: 12px 14px;
-  border-radius: var(--radius);
-  background: rgba(255, 255, 255, 0.04);
-  font-size: var(--answer-font);
-  line-height: 1.55;
-  white-space: pre-wrap;
+  font-size: calc(var(--answer-font) * 1.06);
+  line-height: 1.6;
   overflow-wrap: anywhere;
 }
 
+.line {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.line + .line,
+.line + .points,
+.points + .line {
+  margin-top: 8px;
+}
+
+.points {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 6px;
+  color: #d7deec;
+}
+
+.points li {
+  position: relative;
+  padding-left: 18px;
+}
+
+.points li::before {
+  content: '';
+  position: absolute;
+  left: 3px;
+  top: 0.68em;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ember);
+}
+
 .waiting {
-  color: var(--muted);
+  color: var(--mist);
 }
 
 .prose {
@@ -103,17 +165,19 @@
 .prose + .prose,
 .prose + .code,
 .code + .prose {
-  margin-top: 8px;
+  margin-top: 10px;
 }
 
 .code {
   margin: 0;
-  padding: 10px 12px;
-  border-radius: calc(var(--radius) / 2);
-  background: rgba(0, 0, 0, 0.35);
-  font-family: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: calc(var(--answer-font) * 0.85);
-  line-height: 1.45;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--ink);
+  border: 1px solid #1e2a44;
+  font-family: var(--font-code);
+  font-size: calc(var(--answer-font) * 0.84);
+  line-height: 1.5;
+  color: #d7deec;
   white-space: pre;
   overflow-x: auto;
   overflow-wrap: normal;
@@ -123,10 +187,12 @@
   display: grid;
   gap: 4px;
   margin: 0;
-  padding: 0;
+  padding: 10px 12px;
   list-style: none;
-  font-size: 0.85rem;
-  color: var(--text-secondary);
+  border-radius: var(--radius-sm);
+  background: var(--well);
+  font-size: 13.5px;
+  color: var(--paper-dim);
 }
 
 .tail li {
@@ -139,9 +205,16 @@
   font-weight: 600;
 }
 
+.tail li[data-voice='interviewer'] .speaker {
+  color: var(--ice);
+}
+
+.tail li[data-voice='you'] .speaker {
+  color: var(--ember);
+}
+
 .liveLine {
-  font-style: italic;
-  opacity: 0.8;
+  opacity: 0.75;
 }
 
 .controls {
@@ -149,6 +222,8 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
 }
 
 .fontControls {
@@ -157,7 +232,26 @@
   margin-left: auto;
 }
 
+.fontControls :global(.button) {
+  min-width: 44px;
+  padding: 0 10px;
+  background: transparent;
+  color: var(--mist);
+}
+
 .hint {
   margin: 0;
-  color: var(--muted);
+  color: var(--mist);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .live::before {
+    animation: none;
+  }
+}
+
+@media (max-width: 560px) {
+  .inline {
+    padding: 18px 16px 14px;
+  }
 }

@@ -28,7 +28,7 @@ const badgeIcons: Record<string, string> = {
 };
 
 const badgeColors: Record<string, string> = {
-  first_interview: '#4CAF50',
+  first_interview: 'var(--live)',
   five_sessions: '#2196F3',
   ten_sessions: '#9C27B0',
   first_offer: '#FFD700',
@@ -73,7 +73,7 @@ export function BadgesList() {
           share_type: 'badge',
           platform,
           content_id: selectedBadge.id,
-          content_title: `I just earned the "${selectedBadge.title}" badge on FinalRound!`,
+          content_title: `I just earned the "${selectedBadge.title}" badge on Apex Round!`,
         }),
       });
     } catch (error) {
@@ -82,7 +82,7 @@ export function BadgesList() {
   };
 
   if (loading) {
-    return <div className="small">Loading badges...</div>;
+    return <div className="small">Loading badges…</div>;
   }
 
   if (!badges.length) {
@@ -90,7 +90,7 @@ export function BadgesList() {
       <div className="card">
         <div className="cardInner stack">
           <h3 className="cardTitle">Achievements</h3>
-          <p className="small muted">No badges yet. Complete interviews and activities to earn badges!</p>
+          <p className="small muted">No badges yet. Finish a practice interview or a live session to earn your first.</p>
         </div>
       </div>
     );
@@ -112,7 +112,7 @@ export function BadgesList() {
                 gap: '8px',
                 padding: '12px',
                 background: 'rgba(255,255,255,0.04)',
-                border: selectedBadge?.id === badge.id ? `2px solid ${badgeColors[badge.badge_type] || '#666'}` : '2px solid transparent',
+                border: selectedBadge?.id === badge.id ? `2px solid ${badgeColors[badge.badge_type] || 'var(--mist)'}` : '2px solid transparent',
                 borderRadius: '12px',
                 cursor: 'pointer',
                 transition: 'all 0.2s ease',
@@ -124,7 +124,7 @@ export function BadgesList() {
                   width: '48px',
                   height: '48px',
                   borderRadius: '50%',
-                  backgroundColor: badgeColors[badge.badge_type] || '#666',
+                  backgroundColor: badgeColors[badge.badge_type] || 'var(--mist)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -159,8 +159,8 @@ export function BadgesList() {
               <p className="small" style={{ marginBottom: '8px' }}>Share your achievement:</p>
               <ShareMenu 
                 content={{
-                  title: `I just earned the "${selectedBadge.title}" badge on FinalRound!`,
-                  summary: selectedBadge.description || 'Check out my achievement on FinalRound - the AI-powered interview prep platform!',
+                  title: `I just earned the "${selectedBadge.title}" badge on Apex Round!`,
+                  summary: selectedBadge.description || 'Check out my achievement on Apex Round - the AI-powered interview prep platform!',
                 }}
                 onShare={handleShare}
               />

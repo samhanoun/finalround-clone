@@ -1,6 +1,19 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import styles from './ReferralPanel.module.css';
+
+/** Referral links open the sign-up form. */
+function referralLink(code: string): string {
+  return `${window.location.origin}/auth?mode=signup&ref=${encodeURIComponent(code)}`;
+}
+
+const STATUS_LABEL: Record<string, string> = {
+  pending: 'Clicked',
+  signed_up: 'Signed up',
+  converted: 'Upgraded',
+  expired: 'Expired',
+};
 
 type Referral = {
   id: string;
@@ -31,7 +44,7 @@ export function ReferralPanel() {
   const [referralCode, setReferralCode] = useState<ReferralCode | null>(null);
   const [referrals, setReferrals] = useState<Referral[]>([]);
   const [loading, setLoading] = useState(true);
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState<'link' | 'code' | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -60,12 +73,9 @@ export function ReferralPanel() {
   const copyReferralLink = useCallback(() => {
     if (!referralCode) return;
     
-    // Build referral URL
-    const referralUrl = `${window.location.origin}/signup?ref=${referralCode.code}`;
-    
-    navigator.clipboard.writeText(referralUrl).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+    navigator.clipboard.writeText(referralLink(referralCode.code)).then(() => {
+      setCopied('link');
+      setTimeout(() => setCopied(null), 2000);
     });
   }, [referralCode]);
 
@@ -73,16 +83,16 @@ export function ReferralPanel() {
     if (!referralCode) return;
     
     navigator.clipboard.writeText(referralCode.code).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      setCopied('code');
+      setTimeout(() => setCopied(null), 2000);
     });
   }, [referralCode]);
 
   const shareReferral = useCallback(async (platform: string) => {
     if (!referralCode) return;
 
-    const referralUrl = `${window.location.origin}/signup?ref=${referralCode.code}`;
-    const shareText = `Join me on FinalRound - the AI-powered interview prep platform! Use my referral code: ${referralCode.code}`;
+    const referralUrl = referralLink(referralCode.code);
+    const shareText = `I use Apex Round to prepare for interviews. Sign up with my code ${referralCode.code}.`;
     
     let shareUrl = '';
     const encodedUrl = encodeURIComponent(referralUrl);
@@ -96,7 +106,7 @@ export function ReferralPanel() {
         shareUrl = `https://twitter.com/intent/tweet?text=${encodedText}&url=${encodedUrl}`;
         break;
       case 'email':
-        window.location.href = `mailto:?subject=Join FinalRound&body=${encodedText}%0A%0A${encodedUrl}`;
+        window.location.href = `mailto:?subject=Join Apex Round&body=${encodedText}%0A%0A${encodedUrl}`;
         return;
       default:
         return;
@@ -124,200 +134,81 @@ export function ReferralPanel() {
   }, [referralCode]);
 
   if (loading) {
-    return <div className="small">Loading referral data...</div>;
+    return <div className="small">Loading your invite link…</div>;
   }
 
   if (error) {
     return (
       <div className="card">
         <div className="cardInner stack">
-          <h3 className="cardTitle">Referral Program</h3>
+          <h3 className="cardTitle">Invite a friend</h3>
           <div className="error">{error}</div>
         </div>
       </div>
     );
   }
 
-  const referralUrl = referralCode ? `${window.location.origin}/signup?ref=${referralCode.code}` : '';
+  const referralUrl = referralCode ? referralLink(referralCode.code) : '';
 
   return (
     <div className="card">
       <div className="cardInner stack">
-        <h3 className="cardTitle">Referral Program</h3>
-        <p className="cardDesc">
-          Invite friends to join FinalRound and earn rewards! You get benefits when they sign up and convert.
-        </p>
+        <h3 className="cardTitle">Invite a friend</h3>
+        <p className="cardDesc">Share your link. Everyone who signs up with it shows up here.</p>
 
-        {/* Referral Code & Link */}
-        <div className="referral-code-section" style={{ 
-          padding: '16px', 
-          background: 'rgba(255,255,255,0.04)', 
-          borderRadius: '8px',
-          marginBottom: '16px'
-        }}>
-          <label className="label" style={{ marginBottom: '8px' }}>
-            Your Referral Code
-          </label>
-          <div className="row" style={{ gap: '8px', marginBottom: '12px' }}>
-            <code 
-              style={{ 
-                flex: 1, 
-                padding: '12px', 
-                background: 'rgba(0,0,0,0.3)', 
-                borderRadius: '6px',
-                fontSize: '18px',
-                fontWeight: 'bold',
-                letterSpacing: '2px',
-                textAlign: 'center',
-              }}
-            >
-              {referralCode?.code}
-            </code>
-            <button 
-              className="button"
-              onClick={copyCode}
-              aria-label="Copy referral code"
-            >
-              {copied ? '✓ Copied' : 'Copy'}
-            </button>
-          </div>
-
-          <label className="label" style={{ marginBottom: '8px' }}>
-            Referral Link
-          </label>
-          <div className="row" style={{ gap: '8px' }}>
-            <input 
-              type="text"
-              readOnly
-              value={referralUrl}
-              style={{ 
-                flex: 1, 
-                padding: '12px', 
-                background: 'rgba(0,0,0,0.3)', 
-                border: '1px solid rgba(255,255,255,0.1)',
-                borderRadius: '6px',
-                color: 'var(--muted)',
-                fontSize: '14px',
-              }}
-              aria-label="Referral link"
-            />
-            <button 
-              className="button buttonPrimary"
-              onClick={copyReferralLink}
-              aria-label="Copy referral link"
-            >
-              {copied ? '✓ Copied' : 'Copy Link'}
-            </button>
-          </div>
+        <div className={styles.linkRow}>
+          <input className={`input ${styles.link}`} type="text" readOnly value={referralUrl} aria-label="Your invite link" />
+          <button className="button buttonPrimary" onClick={copyReferralLink}>
+            {copied === 'link' ? 'Copied' : 'Copy link'}
+          </button>
         </div>
 
-        {/* Share Buttons */}
-        <div className="share-section" style={{ marginBottom: '16px' }}>
-          <p className="small" style={{ marginBottom: '8px' }}>Share via:</p>
-          <div className="row" style={{ gap: '8px', flexWrap: 'wrap' }}>
-            <button 
-              className="button"
-              style={{ background: '#0077B5', color: '#fff' }}
-              onClick={() => shareReferral('linkedin')}
-              aria-label="Share on LinkedIn"
-            >
-              LinkedIn
-            </button>
-            <button 
-              className="button"
-              style={{ background: '#1DA1F2', color: '#fff' }}
-              onClick={() => shareReferral('twitter')}
-              aria-label="Share on Twitter"
-            >
-              Twitter/X
-            </button>
-            <button 
-              className="button"
-              style={{ background: '#EA4335', color: '#fff' }}
-              onClick={() => shareReferral('email')}
-              aria-label="Share via Email"
-            >
-              Email
-            </button>
-          </div>
+        <div className={styles.meta}>
+          <span>
+            Code <code className={styles.code}>{referralCode?.code}</code>
+          </span>
+          <button className="button buttonGhost" onClick={copyCode} aria-label="Copy invite code">
+            {copied === 'code' ? 'Copied' : 'Copy code'}
+          </button>
         </div>
 
-        {/* Stats */}
-        <div className="stats-grid" style={{ 
-          display: 'grid', 
-          gridTemplateColumns: '1fr 1fr', 
-          gap: '12px',
-          marginBottom: '16px'
-        }}>
-          <div style={{ 
-            padding: '16px', 
-            background: 'rgba(255,255,255,0.04)', 
-            borderRadius: '8px',
-            textAlign: 'center'
-          }}>
-            <div style={{ fontSize: '32px', fontWeight: 'bold', color: '#4CAF50' }}>
-              {referralCode?.referral_count || 0}
-            </div>
-            <div className="small muted">Total Referrals</div>
-          </div>
-          <div style={{ 
-            padding: '16px', 
-            background: 'rgba(255,255,255,0.04)', 
-            borderRadius: '8px',
-            textAlign: 'center'
-          }}>
-            <div style={{ fontSize: '32px', fontWeight: 'bold', color: '#FFD700' }}>
-              {referralCode?.conversion_count || 0}
-            </div>
-            <div className="small muted">Conversions</div>
-          </div>
+        <div className={styles.share}>
+          <span className={styles.shareLabel}>Share on</span>
+          <button className="button" onClick={() => shareReferral('linkedin')}>
+            LinkedIn
+          </button>
+          <button className="button" onClick={() => shareReferral('twitter')} aria-label="Share on X">
+            X
+          </button>
+          <button className="button" onClick={() => shareReferral('email')} aria-label="Share by email">
+            Email
+          </button>
         </div>
 
-        {/* Referral History */}
+        <dl className={styles.stats}>
+          <div>
+            <dt>Signed up</dt>
+            <dd>{referralCode?.referral_count || 0}</dd>
+          </div>
+          <div>
+            <dt>Upgraded</dt>
+            <dd>{referralCode?.conversion_count || 0}</dd>
+          </div>
+        </dl>
+
         {referrals.length > 0 && (
-          <div className="referral-history">
-            <h4 style={{ marginBottom: '12px' }}>Referral History</h4>
-            <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-              {referrals.map((ref) => (
-                <li 
-                  key={ref.id}
-                  style={{ 
-                    padding: '12px', 
-                    background: 'rgba(255,255,255,0.04)', 
-                    borderRadius: '6px',
-                    marginBottom: '8px',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                  }}
-                >
-                  <div>
-                    <span 
-                      className="badge"
-                      style={{ 
-                        background: ref.status === 'converted' ? '#4CAF50' : 
-                                   ref.status === 'signed_up' ? '#2196F3' : 
-                                   ref.status === 'pending' ? '#FF9800' : '#666',
-                        marginRight: '8px'
-                      }}
-                    >
-                      {ref.status}
-                    </span>
-                    {ref.source && <span className="small muted">via {ref.source}</span>}
-                  </div>
-                  <span className="small mono muted">
-                    {new Date(ref.created_at).toLocaleDateString()}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </div>
+          <ul className={styles.history} aria-label="Invites">
+            {referrals.map((ref) => (
+              <li key={ref.id}>
+                <span className={`badge ${ref.status === 'converted' ? 'badgeLive' : ref.status === 'signed_up' ? 'badgeIce' : ''}`}>
+                  {STATUS_LABEL[ref.status] ?? ref.status}
+                </span>
+                {ref.source && <span className="small muted">via {ref.source}</span>}
+                <span className={`small muted ${styles.when}`}>{new Date(ref.created_at).toLocaleDateString()}</span>
+              </li>
+            ))}
+          </ul>
         )}
-
-        {/* Tracking Link for Signup */}
-        <p className="small muted" style={{ marginTop: '16px' }}>
-          When someone uses your referral link, we will track their progress and credit you when they convert!
-        </p>
       </div>
     </div>
   );

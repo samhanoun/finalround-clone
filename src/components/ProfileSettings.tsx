@@ -154,7 +154,7 @@ export function ProfileSettings() {
     return (
       <div className="card">
         <div className="cardInner stack">
-          <p>Loading profile...</p>
+          <p>Loading profile…</p>
         </div>
       </div>
     );
@@ -163,9 +163,9 @@ export function ProfileSettings() {
   return (
     <div className="card">
       <div className="cardInner stack">
-        <h2 className="cardTitle">Profile Settings</h2>
+        <h2 className="cardTitle">Profile</h2>
         <p className="cardDesc">
-          Manage your personal information and job preferences.
+          Your name, the roles you are aiming for, and your time zone.
         </p>
 
         <div className="stack" style={{ gap: 16 }}>
@@ -180,13 +180,13 @@ export function ProfileSettings() {
               aria-readonly
             />
             <span style={{ fontSize: '0.875rem', color: 'var(--muted)' }}>
-              Email cannot be changed
+              Your sign-in email can&apos;t be changed here.
             </span>
           </label>
 
           {/* Full Name */}
           <label className="label">
-            Full Name
+            Full name
             <input
               className="input"
               type="text"
@@ -199,7 +199,7 @@ export function ProfileSettings() {
 
           {/* Avatar URL */}
           <label className="label">
-            Avatar URL
+            Avatar image URL
             <input
               className="input"
               type="url"
@@ -227,7 +227,7 @@ export function ProfileSettings() {
 
           {/* Target Roles */}
           <fieldset style={{ border: 'none', padding: 0, margin: 0 }}>
-            <legend style={{ fontWeight: 600, marginBottom: 8 }}>Target Roles</legend>
+            <legend style={{ fontWeight: 600, marginBottom: 8 }}>Target roles</legend>
             <p style={{ fontSize: '0.875rem', color: 'var(--muted)', marginBottom: 12 }}>
               Select the roles you&apos;re targeting (max 10)
             </p>
@@ -315,7 +315,7 @@ export function ProfileSettings() {
 
           {/* Language */}
           <label className="label">
-            Language
+            Preferred language
             <select
               className="select"
               value={language}
@@ -331,7 +331,7 @@ export function ProfileSettings() {
 
           {/* Timezone */}
           <label className="label">
-            Timezone
+            Time zone
             <select
               className="select"
               value={timezone}
@@ -362,7 +362,7 @@ export function ProfileSettings() {
             onClick={save}
             disabled={saving}
           >
-            {saving ? 'Saving...' : 'Save Changes'}
+            {saving ? 'Saving…' : 'Save profile'}
           </button>
         </div>
 
