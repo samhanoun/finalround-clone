@@ -7,6 +7,7 @@ jest.mock('next/server', () => ({
 }));
 jest.mock('@/lib/rateLimit', () => ({ rateLimit: jest.fn() }));
 jest.mock('@/lib/supabase/server', () => ({ createClient: jest.fn() }));
+jest.mock('@/lib/supabase/admin', () => ({ createAdminClient: jest.fn() }));
 jest.mock('@/lib/copilot', () => ({
   ...jest.requireActual('@/lib/copilot'),
   getCopilotQuotaSnapshot: jest.fn(),
@@ -15,6 +16,7 @@ jest.mock('@/lib/copilot', () => ({
 
 const { rateLimit } = jest.requireMock('@/lib/rateLimit') as { rateLimit: jest.Mock };
 const { createClient } = jest.requireMock('@/lib/supabase/server') as { createClient: jest.Mock };
+const { createAdminClient } = jest.requireMock('@/lib/supabase/admin') as { createAdminClient: jest.Mock };
 const { getCopilotQuotaSnapshot } = jest.requireMock('@/lib/copilot') as { getCopilotQuotaSnapshot: jest.Mock };
 
 const SESSION_ID = '7f1c2a9e-3b4d-4c5e-8f60-1a2b3c4d5e6f';
@@ -39,8 +41,11 @@ function latencyRow(speechToFirstToken: number, outcome = 'answered') {
 
 function mockSupabase() {
   const update = jest.fn((row: Record<string, unknown>) => ({
-    eq: () => ({ eq: () => ({ select: () => ({ single: async () => ({ data: { id: SESSION_ID, ...row }, error: null }) }) }) }),
+    eq: () => ({
+      eq: () => ({ eq: () => ({ select: () => ({ maybeSingle: async () => ({ data: { id: SESSION_ID, ...row }, error: null }) }) }) }),
+    }),
   }));
+  createAdminClient.mockReturnValue({ from: () => ({ update }) });
   const latencyQuery: { eq: jest.Mock; limit: jest.Mock } = {
     eq: jest.fn(() => latencyQuery),
     limit: jest.fn(async () => ({ data: [latencyRow(900), latencyRow(1400), latencyRow(2000, 'superseded')], error: null })),
@@ -56,7 +61,7 @@ function mockSupabase() {
     auth: { getUser: async () => ({ data: { user: { id: 'user-1' } }, error: null }) },
     from: (table: string) =>
       table === 'copilot_sessions'
-        ? { select: () => ({ eq: () => ({ single: async () => ({ data: session, error: null }) }) }), update }
+        ? { select: () => ({ eq: () => ({ single: async () => ({ data: session, error: null }) }) }) }
         : { select: () => latencyQuery },
   });
   return { update, latencyQuery };

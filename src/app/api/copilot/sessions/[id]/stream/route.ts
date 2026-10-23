@@ -2,7 +2,8 @@ import { NextRequest } from 'next/server';
 import { jsonError } from '@/lib/api';
 import { createClient } from '@/lib/supabase/server';
 import { rateLimit } from '@/lib/rateLimit';
-import { isSessionHeartbeatExpired, withHeartbeatMetadata } from '@/lib/copilotSession';
+import { isSessionHeartbeatExpired } from '@/lib/copilotSession';
+import { endCopilotSession } from '@/lib/copilot/endSession';
 import { buildEventCursor, filterEventsAfterCursor, parseEventCursor } from '@/lib/copilotStreamCursor';
 import { checkIngestConsent } from '@/lib/copilotConsent';
 
@@ -98,23 +99,12 @@ export async function GET(req: NextRequest, { params }: Params) {
         if (isSessionHeartbeatExpired(currentSession)) {
           const nowIso = new Date().toISOString();
 
-          const { data: expiredSession } = await supabase
-            .from('copilot_sessions')
-            .update({
-              status: 'expired',
-              stopped_at: nowIso,
-              metadata: {
-                ...withHeartbeatMetadata(currentSession.metadata, nowIso),
-                expired_reason: 'heartbeat_timeout',
-              },
-            })
-            .eq('id', id)
-            .eq('user_id', userData.user.id)
-            .eq('status', 'active')
-            .select('id, status, title, started_at, stopped_at, consumed_minutes, metadata')
-            .maybeSingle<Pick<SessionRow, 'id' | 'status' | 'title' | 'started_at' | 'stopped_at' | 'consumed_minutes' | 'metadata'>>();
+          const { ended } = await endCopilotSession(
+            { ...currentSession, user_id: userData.user.id },
+            { status: 'expired', endedAt: new Date(nowIso), metadata: { expired_reason: 'heartbeat_timeout' } },
+          );
 
-          const payload = expiredSession ?? { ...currentSession, status: 'expired', stopped_at: nowIso };
+          const payload = ended?.session ?? { ...currentSession, status: 'expired', stopped_at: nowIso };
           controller.enqueue(encoder.encode(sse('session', payload)));
           break;
         }
