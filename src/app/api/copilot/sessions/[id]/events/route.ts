@@ -4,7 +4,8 @@ import { jsonError } from '@/lib/api';
 import { createClient } from '@/lib/supabase/server';
 import { rateLimit } from '@/lib/rateLimit';
 import { sanitizeCopilotText } from '@/lib/copilotSecurity';
-import { isSessionHeartbeatExpired, withHeartbeatMetadata } from '@/lib/copilotSession';
+import { isSessionHeartbeatExpired } from '@/lib/copilotSession';
+import { endCopilotSession } from '@/lib/copilot/endSession';
 import { sessionExpiredResponse } from '@/lib/copilotApiResponse';
 import { checkIngestConsent } from '@/lib/copilotConsent';
 import {
@@ -84,19 +85,11 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   if (isSessionHeartbeatExpired(session)) {
     const nowIso = new Date().toISOString();
-    await supabase
-      .from('copilot_sessions')
-      .update({
-        status: 'expired',
-        stopped_at: nowIso,
-        metadata: {
-          ...withHeartbeatMetadata(session.metadata, nowIso),
-          expired_reason: 'heartbeat_timeout',
-        },
-      })
-      .eq('id', id)
-      .eq('user_id', userData.user.id)
-      .eq('status', 'active');
+    await endCopilotSession(session, {
+      status: 'expired',
+      endedAt: new Date(nowIso),
+      metadata: { expired_reason: 'heartbeat_timeout' },
+    });
 
     clearLatencyTracking(requestId);
     return sessionExpiredResponse(session, nowIso);

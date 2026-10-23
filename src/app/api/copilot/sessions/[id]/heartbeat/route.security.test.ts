@@ -17,11 +17,18 @@ jest.mock('@/lib/supabase/server', () => ({
   createClient: jest.fn(),
 }));
 
+jest.mock('@/lib/supabase/admin', () => ({
+  createAdminClient: jest.fn(),
+}));
+
 const { rateLimit } = jest.requireMock('@/lib/rateLimit') as {
   rateLimit: jest.Mock;
 };
 const { createClient } = jest.requireMock('@/lib/supabase/server') as {
   createClient: jest.Mock;
+};
+const { createAdminClient } = jest.requireMock('@/lib/supabase/admin') as {
+  createAdminClient: jest.Mock;
 };
 
 describe('copilot heartbeat route security responses', () => {
@@ -109,14 +116,19 @@ describe('copilot heartbeat route security responses', () => {
                 single: sessionSingle,
               })),
             })),
-            update: jest.fn(() => ({
-              eq: updateEq,
-            })),
           };
         }
 
         throw new Error(`Unexpected table: ${table}`);
       }),
+    });
+    // The heartbeat is written with the service role (users can't update sessions).
+    createAdminClient.mockReturnValue({
+      from: jest.fn(() => ({
+        update: jest.fn(() => ({
+          eq: updateEq,
+        })),
+      })),
     });
 
     const { POST } = await import('./route');
