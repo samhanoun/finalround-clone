@@ -27,7 +27,8 @@ jobs:
   fakes:
     name: Live loop (fake services)
     if: ${{ github.event_name != 'workflow_dispatch' || !inputs.real }}
-    runs-on: ubuntu-latest
+    # Pinned: Playwright 1.58 cannot install Chromium on ubuntu-latest (26.04).
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
@@ -59,7 +60,8 @@ jobs:
   real:
     name: Live loop (real services)
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.real }}
-    runs-on: ubuntu-latest
+    # Pinned: Playwright 1.58 cannot install Chromium on ubuntu-latest (26.04).
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     env:
       E2E_REAL: '1'
