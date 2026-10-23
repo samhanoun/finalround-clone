@@ -19,7 +19,7 @@ export interface EmailOptions {
 }
 
 const DEFAULT_FROM_EMAIL = process.env.EMAIL_FROM_ADDRESS || 'noreply@finalroundy.com';
-const DEFAULT_FROM_NAME = process.env.EMAIL_FROM_NAME || 'FinalRound';
+const DEFAULT_FROM_NAME = process.env.EMAIL_FROM_NAME || 'Apex Round';
 
 export async function sendEmail(options: EmailOptions): Promise<boolean> {
   if (!apiKey) {

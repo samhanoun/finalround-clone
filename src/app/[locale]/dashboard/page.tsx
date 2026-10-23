@@ -78,7 +78,7 @@ export default async function DashboardPage() {
                             {s.title}
                           </Link>
                           <span className={styles.rowMeta}>
-                            <span className="badge">{s.status}</span>
+                            <span className="badge">{({ draft: 'Not started', in_progress: 'In progress', completed: 'Completed' } as Record<string, string>)[s.status] ?? s.status}</span>
                             <span>{new Date(s.created_at).toLocaleDateString()}</span>
                           </span>
                         </li>

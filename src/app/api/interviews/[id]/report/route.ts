@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import OpenAI from 'openai';
 import { z } from 'zod';
-import { llmProvider, requireEnv } from '@/lib/env';
+import { LLMUnavailableError } from '@/lib/llmRouter';
+import { completeChat, practiceModel } from '@/lib/practice/practice';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { jsonError } from '@/lib/api';
@@ -13,6 +13,9 @@ const GenerateReportSchema = z.object({
 });
 
 // System prompt for report generation
+/** Marks the task for the e2e fake model. */
+const TASK_REPORT = 'TASK: practice_report';
+
 const REPORT_SYSTEM_PROMPT = `You are an expert interview coach. Analyze the candidate's responses to generate a comprehensive mock interview report.
 
 Evaluate each response on four key dimensions:
@@ -83,8 +86,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
 
   const userPrompt = `Interview Mode: ${mode}\n\nInterview Q&A:\n${qaList}\n\nGenerate the report in JSON format.`;
 
-  const provider = llmProvider();
-  if (provider !== 'openai') return jsonError(500, 'unsupported_provider', { provider });
+  const model = practiceModel();
 
   const admin = createAdminClient();
 
@@ -95,8 +97,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       user_id: userData.user.id,
       kind: 'interview_report',
       status: 'running',
-      provider,
-      model: 'gpt-4o-mini',
+      provider: model.startsWith('claude-') ? 'anthropic' : 'openai',
+      model,
       input: { mode, question_count: questions.length },
       started_at: new Date().toISOString(),
     })
@@ -104,19 +106,14 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     .single();
 
   try {
-    const client = new OpenAI({ apiKey: requireEnv('OPENAI_API_KEY') });
-
-    const completion = await client.chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages: [
-        { role: 'system', content: REPORT_SYSTEM_PROMPT },
-        { role: 'user', content: userPrompt },
-      ],
+    const content = await completeChat({
+      model,
+      system: [`${TASK_REPORT}\n${REPORT_SYSTEM_PROMPT}`],
+      messages: [{ role: 'user', content: userPrompt }],
       temperature: 0.3,
-      max_tokens: 2000,
+      maxTokens: 2_000,
+      timeoutMs: 60_000,
     });
-
-    const content = completion.choices[0]?.message?.content ?? '';
     
     // Parse the JSON response
     let parsedReport: unknown;
@@ -129,13 +126,18 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
         throw new Error('No JSON found in response');
       }
     } catch {
-      console.error('[report] Failed to parse LLM response:', content);
-      // Use fallback report
-      parsedReport = {};
+      console.error('[report] Failed to parse LLM response:', content.slice(0, 500));
+      parsedReport = null;
     }
 
-    // Normalize the report
-    const normalizedReport = normalizeMockInterviewReport(parsedReport, mode);
+    // Never save a stand-in: without a real score there is no report.
+    const score = (parsedReport as { overall_score?: unknown } | null)?.overall_score;
+    if (typeof score !== 'number' || Number.isNaN(score)) {
+      throw new Error('The model reply had no usable report');
+    }
+
+    // Normalize the report, keeping only what the model wrote in its lists.
+    const normalizedReport = normalizeMockInterviewReport(parsedReport, mode, { pad: false });
 
     // Save report to database
     const { data: savedReport, error: saveErr } = await admin
@@ -160,6 +162,12 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       console.error('[report] Failed to save report:', saveErr);
     }
 
+    await supabase
+      .from('interview_sessions')
+      .update({ status: 'completed' })
+      .eq('id', id)
+      .eq('user_id', userData.user.id);
+
     // Update job status
     if (job?.id) {
       await admin
@@ -179,6 +187,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'unknown_error';
+    const unavailable = e instanceof LLMUnavailableError;
 
     if (job?.id) {
       await admin
@@ -191,6 +200,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
         .eq('id', job.id);
     }
 
+    if (unavailable) return jsonError(503, 'llm_unavailable');
     return jsonError(500, 'report_generation_failed', { message: msg });
   }
 }

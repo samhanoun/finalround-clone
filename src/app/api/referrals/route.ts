@@ -118,81 +118,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: insertError.message }, { status: 500 });
     }
 
-    // Increment referral count
-    const currentCount = (referralCode as { referral_count?: number }).referral_count || 0;
-    await supabase
-      .from('referral_codes')
-      .update({ referral_count: currentCount + 1 })
-      .eq('user_id', referralCode.user_id);
-
+    // referral_count counts sign-ups (see claimReferral), not clicks.
     return NextResponse.json({ tracking });
   }
 
   return NextResponse.json({ tracking: existingTracking });
 }
 
-// PUT /api/referrals - Update referral status (sign up, conversion)
-export async function PUT(request: Request) {
-  const supabase = await createClient();
-  
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-
-  const body = await request.json();
-  const { referral_code, status } = body;
-
-  if (!referral_code || !status) {
-    return NextResponse.json({ error: 'Referral code and status are required' }, { status: 400 });
-  }
-
-  // Update tracking status
-  const updateData: Record<string, unknown> = { status };
-  if (status === 'signed_up') {
-    updateData.signed_up_at = new Date().toISOString();
-    updateData.referee_id = user.id;
-  } else if (status === 'converted') {
-    updateData.converted_at = new Date().toISOString();
-  }
-
-  const { data: tracking, error } = await supabase
-    .from('referral_tracking')
-    .update(updateData)
-    .eq('referral_code', referral_code.toUpperCase())
-    .eq('referee_id', user.id)
-    .select()
-    .single();
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-
-  // Update conversion count for referrer
-  if (status === 'converted') {
-    const { data: referralCode } = await supabase
-      .from('referral_codes')
-      .select('*')
-      .eq('code', referral_code.toUpperCase())
-      .single();
-
-    if (referralCode) {
-      await supabase
-        .from('referral_codes')
-        .update({ conversion_count: (referralCode.conversion_count || 0) + 1 })
-        .eq('user_id', referralCode.user_id);
-
-      // Award badge to referrer
-      await supabase.from('badges').insert({
-        user_id: referralCode.user_id,
-        badge_type: 'referral_conversion',
-        title: 'Referral Champion',
-        description: 'Successfully referred a new user who converted',
-        icon: 'trophy',
-        metadata: { referee_id: user.id },
-      });
-    }
-  }
-
-  return NextResponse.json({ tracking });
-}
+// Sign-ups are credited by POST /api/referrals/claim and conversions by the
+// Stripe webhook (src/lib/referrals.ts), both with the service role: a
+// browser can't mark its own referral as signed up or paid.
