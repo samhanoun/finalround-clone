@@ -10,6 +10,15 @@ begin;
 insert into auth.users (id, email)
 values ('00000000-0000-4000-8000-000000000027', 'session-guard-test@example.test');
 
+-- Since 0028 users can't write sessions at all. Give the write back for this
+-- transaction only, as a careless future policy might, to show the trigger
+-- still holds on its own.
+grant insert, update on public.copilot_sessions to authenticated;
+create policy "test_0027_write_own" on public.copilot_sessions
+  for all to authenticated
+  using (user_id = (select auth.uid()))
+  with check (user_id = (select auth.uid()));
+
 -- Act as that user, the way PostgREST does for a signed-in request.
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-000000000027","role":"authenticated"}', true);
 set local role authenticated;
