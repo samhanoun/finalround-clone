@@ -1,5 +1,11 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { claimReferral, markReferralConverted, normalizeReferralCode } from '@/lib/referrals';
+import {
+  CLAIM_WINDOW_DAYS,
+  claimReferral,
+  markReferralConverted,
+  normalizeReferralCode,
+  withinClaimWindow,
+} from '@/lib/referrals';
 
 type Call = { table: string; op: 'select' | 'insert' | 'update'; payload?: unknown; filters: Array<[string, unknown]> };
 
@@ -40,13 +46,24 @@ describe('normalizeReferralCode', () => {
   });
 });
 
+describe('withinClaimWindow', () => {
+  const now = new Date('2026-10-23T12:00:00Z');
+  const daysAgo = (d: number) => new Date(now.getTime() - d * 86_400_000).toISOString();
+
+  it('accepts accounts created in the last week only', () => {
+    expect(withinClaimWindow(daysAgo(0.1), now)).toBe(true);
+    expect(withinClaimWindow(daysAgo(CLAIM_WINDOW_DAYS - 0.5), now)).toBe(true);
+    expect(withinClaimWindow(daysAgo(CLAIM_WINDOW_DAYS + 0.5), now)).toBe(false);
+    expect(withinClaimWindow(undefined, now)).toBe(false);
+    expect(withinClaimWindow('not a date', now)).toBe(false);
+  });
+});
+
 describe('claimReferral', () => {
-  it('records the sign-up for the code owner and counts it', async () => {
-    const { admin, calls } = mockAdmin((call) => {
-      if (call.table === 'referral_codes' && call.op === 'select') return { data: { user_id: 'referrer', referral_count: 2 } };
-      if (call.table === 'referral_tracking' && call.op === 'select') return { data: [] };
-      return { data: null, error: null };
-    });
+  it('records the sign-up for the code owner, and touches no counters', async () => {
+    const { admin, calls } = mockAdmin((call) =>
+      call.table === 'referral_codes' ? { data: { user_id: 'referrer' } } : { data: null, error: null },
+    );
 
     await expect(claimReferral(admin, 'ABCD1234', 'new-user')).resolves.toBe('claimed');
     expect(calls.find((c) => c.op === 'insert')?.payload).toMatchObject({
@@ -55,37 +72,41 @@ describe('claimReferral', () => {
       referral_code: 'ABCD1234',
       status: 'signed_up',
     });
-    expect(calls.find((c) => c.table === 'referral_codes' && c.op === 'update')).toMatchObject({
-      payload: { referral_count: 3 },
-      filters: [['user_id', 'referrer']],
-    });
+    expect(calls.some((c) => c.op === 'update')).toBe(false);
   });
 
-  it('refuses your own code, unknown codes and a second claim', async () => {
-    const own = mockAdmin((call) => (call.table === 'referral_codes' ? { data: { user_id: 'me', referral_count: 0 } } : undefined));
+  it('treats the unique-referee violation as already claimed, even for a concurrent claim', async () => {
+    const { admin } = mockAdmin((call) =>
+      call.table === 'referral_codes'
+        ? { data: { user_id: 'referrer' } }
+        : { data: null, error: { code: '23505', message: 'duplicate key value violates unique constraint' } },
+    );
+    await expect(claimReferral(admin, 'ABCD1234', 'me')).resolves.toBe('already_claimed');
+  });
+
+  it('refuses your own code and unknown codes, and reports other database errors', async () => {
+    const own = mockAdmin((call) => (call.table === 'referral_codes' ? { data: { user_id: 'me' } } : undefined));
     await expect(claimReferral(own.admin, 'ABCD1234', 'me')).resolves.toBe('own_code');
+    expect(own.calls.some((c) => c.op === 'insert')).toBe(false);
 
     const unknown = mockAdmin(() => ({ data: null }));
     await expect(claimReferral(unknown.admin, 'ABCD1234', 'me')).resolves.toBe('invalid_code');
 
-    const twice = mockAdmin((call) =>
-      call.table === 'referral_codes' ? { data: { user_id: 'referrer', referral_count: 0 } } : { data: [{ id: 'earlier' }] },
+    const broken = mockAdmin((call) =>
+      call.table === 'referral_codes' ? { data: { user_id: 'referrer' } } : { error: { code: '42501', message: 'denied' } },
     );
-    await expect(claimReferral(twice.admin, 'ABCD1234', 'me')).resolves.toBe('already_claimed');
-    expect(twice.calls.some((c) => c.op !== 'select')).toBe(false);
+    await expect(claimReferral(broken.admin, 'ABCD1234', 'me')).rejects.toThrow('denied');
   });
 });
 
 describe('markReferralConverted', () => {
-  it('converts a signed-up referral once and counts it for the referrer', async () => {
-    const { admin, calls } = mockAdmin((call) => {
-      if (call.table === 'referral_tracking') return { data: { referral_code: 'ABCD1234', referrer_id: 'referrer' } };
-      if (call.table === 'referral_codes' && call.op === 'select') return { data: { conversion_count: 4 } };
-      return { data: null, error: null };
-    });
+  it('converts a signed-up referral once', async () => {
+    const { admin, calls } = mockAdmin(() => ({ data: { id: 'tracking-1' } }));
 
     await expect(markReferralConverted(admin, 'payer')).resolves.toBe(true);
+    expect(calls).toHaveLength(1);
     expect(calls[0]).toMatchObject({
+      table: 'referral_tracking',
       op: 'update',
       payload: expect.objectContaining({ status: 'converted' }),
       filters: [
@@ -93,7 +114,6 @@ describe('markReferralConverted', () => {
         ['status', 'signed_up'],
       ],
     });
-    expect(calls.find((c) => c.table === 'referral_codes' && c.op === 'update')?.payload).toEqual({ conversion_count: 5 });
   });
 
   it('does nothing for an account without a pending referral, and never throws', async () => {

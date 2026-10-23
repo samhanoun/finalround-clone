@@ -1,14 +1,18 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 /**
- * Referral attribution, written with the service role only: users can't
- * credit themselves or anyone else from the browser.
+ * Referral attribution, written with the service role only (migration 0029
+ * leaves users read access): users can't credit themselves or anyone else.
  * - claimReferral: once per new account, after sign-up with ?ref=CODE.
  * - markReferralConverted: when that account starts a paid subscription
  *   (Stripe webhook).
+ * Counts are derived from these rows (GET /api/referrals), not stored.
  */
 
 export type ClaimResult = 'claimed' | 'already_claimed' | 'invalid_code' | 'own_code';
+
+/** A referral can only be claimed this soon after sign-up. */
+export const CLAIM_WINDOW_DAYS = 7;
 
 export function normalizeReferralCode(code: unknown): string | null {
   if (typeof code !== 'string') return null;
@@ -16,22 +20,21 @@ export function normalizeReferralCode(code: unknown): string | null {
   return /^[A-Z0-9]{4,32}$/.test(cleaned) ? cleaned : null;
 }
 
+/** True while the account is new enough to claim the referral it signed up with. */
+export function withinClaimWindow(createdAt: string | undefined, now = new Date()): boolean {
+  const created = createdAt ? new Date(createdAt).getTime() : Number.NaN;
+  if (Number.isNaN(created)) return false;
+  return now.getTime() - created <= CLAIM_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+}
+
 export async function claimReferral(admin: SupabaseClient, code: string, refereeId: string): Promise<ClaimResult> {
   const { data: owner } = await admin
     .from('referral_codes')
-    .select('user_id, referral_count')
+    .select('user_id')
     .eq('code', code)
-    .maybeSingle<{ user_id: string; referral_count: number | null }>();
+    .maybeSingle<{ user_id: string }>();
   if (!owner) return 'invalid_code';
   if (owner.user_id === refereeId) return 'own_code';
-
-  // One referrer per account, ever.
-  const { data: existing } = await admin
-    .from('referral_tracking')
-    .select('id')
-    .eq('referee_id', refereeId)
-    .limit(1);
-  if (existing && existing.length > 0) return 'already_claimed';
 
   const now = new Date().toISOString();
   const { error } = await admin.from('referral_tracking').insert({
@@ -43,37 +46,23 @@ export async function claimReferral(admin: SupabaseClient, code: string, referee
     clicked_at: now,
     signed_up_at: now,
   });
+  // One referrer per account: a unique index on referee_id makes a second claim fail, even a concurrent one.
+  if (error?.code === '23505') return 'already_claimed';
   if (error) throw new Error(`Could not record the referral: ${error.message}`);
-
-  await admin
-    .from('referral_codes')
-    .update({ referral_count: (owner.referral_count ?? 0) + 1 })
-    .eq('user_id', owner.user_id);
   return 'claimed';
 }
 
 /** Marks the account's referral converted the first time it pays. Never throws: billing must not fail over this. */
 export async function markReferralConverted(admin: SupabaseClient, refereeId: string): Promise<boolean> {
   try {
-    const { data: tracking } = await admin
+    const { data } = await admin
       .from('referral_tracking')
       .update({ status: 'converted', converted_at: new Date().toISOString() })
       .eq('referee_id', refereeId)
       .eq('status', 'signed_up')
-      .select('referral_code, referrer_id')
-      .maybeSingle<{ referral_code: string; referrer_id: string }>();
-    if (!tracking) return false;
-
-    const { data: owner } = await admin
-      .from('referral_codes')
-      .select('conversion_count')
-      .eq('user_id', tracking.referrer_id)
-      .maybeSingle<{ conversion_count: number | null }>();
-    await admin
-      .from('referral_codes')
-      .update({ conversion_count: (owner?.conversion_count ?? 0) + 1 })
-      .eq('user_id', tracking.referrer_id);
-    return true;
+      .select('id')
+      .maybeSingle<{ id: string }>();
+    return Boolean(data);
   } catch (error) {
     console.error('[referrals] could not mark the conversion', error instanceof Error ? error.message : error);
     return false;

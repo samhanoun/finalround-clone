@@ -23,34 +23,4 @@ export async function GET() {
   return NextResponse.json({ badges });
 }
 
-// POST /api/badges - Create a new badge (auto-awarded via triggers or manual)
-export async function POST(request: Request) {
-  const supabase = await createClient();
-  
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-
-  const body = await request.json();
-  const { badge_type, title, description, icon, metadata } = body;
-
-  const { data: badge, error } = await supabase
-    .from('badges')
-    .insert({
-      user_id: user.id,
-      badge_type,
-      title,
-      description,
-      icon,
-      metadata: metadata || {},
-    })
-    .select()
-    .single();
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-
-  return NextResponse.json({ badge });
-}
+// Badges are awarded by the server with the service role (migration 0029).

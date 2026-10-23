@@ -3,12 +3,13 @@ import { jsonError } from '@/lib/api';
 import { rateLimit } from '@/lib/rateLimit';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { claimReferral, normalizeReferralCode } from '@/lib/referrals';
+import { claimReferral, normalizeReferralCode, withinClaimWindow } from '@/lib/referrals';
 
 /**
  * Credits the referrer whose link this account signed up with. The code comes
  * from the account's sign-up metadata (set by the sign-up form from ?ref=),
- * so it is safe to call on every visit: only the first claim counts.
+ * so it is safe to call on every visit: only the first claim counts, and only
+ * within CLAIM_WINDOW_DAYS of sign-up.
  */
 export async function POST() {
   const supabase = await createClient();
@@ -21,6 +22,8 @@ export async function POST() {
 
   const code = normalizeReferralCode(user.user_metadata?.referral_code);
   if (!code) return NextResponse.json({ result: 'no_code' });
+  // Metadata is editable by its owner, so only a new account's code counts.
+  if (!withinClaimWindow(user.created_at)) return NextResponse.json({ result: 'expired' });
 
   try {
     const result = await claimReferral(createAdminClient(), code, user.id);

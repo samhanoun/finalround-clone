@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { NextResponse } from 'next/server';
 
 // GET /api/social/shares - Get user's social share history
@@ -65,8 +66,8 @@ export async function POST(request: Request) {
       .eq('user_id', user.id);
 
     if (existingShares && existingShares.length === 1) {
-      // First share - award badge
-      await supabase.from('badges').insert({
+      // First share - award badge (badges are written by the server only)
+      await createAdminClient().from('badges').insert({
         user_id: user.id,
         badge_type: 'referral_signup',
         title: 'Social Sharer',
