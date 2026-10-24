@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { requireAdmin } from '@/lib/adminAuth';
 
 export async function GET(request: NextRequest) {
   try {
+    const auth = await requireAdmin();
+    if (!auth.ok) return auth.response;
+
     const supabase = createAdminClient();
     const { searchParams } = new URL(request.url);
     const page = parseInt(searchParams.get('page') || '1');
@@ -86,6 +90,9 @@ export async function GET(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   try {
+    const auth = await requireAdmin();
+    if (!auth.ok) return auth.response;
+
     const supabase = createAdminClient();
     const body = await request.json();
     const { ticket_id, action, data, assigned_to } = body;
@@ -171,6 +178,9 @@ export async function PATCH(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    const auth = await requireAdmin();
+    if (!auth.ok) return auth.response;
+
     const supabase = createAdminClient();
     const body = await request.json();
     const { user_id, email, full_name, subject, description, category, priority } = body;

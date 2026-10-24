@@ -1,13 +1,11 @@
 import { NextRequest } from 'next/server';
-import OpenAI from 'openai';
 import { z } from 'zod';
 import { jsonError } from '@/lib/api';
-import { llmProvider, requireEnv } from '@/lib/env';
 import { createClient } from '@/lib/supabase/server';
 import { rateLimit } from '@/lib/rateLimit';
 import { sanitizeCopilotText } from '@/lib/copilotSecurity';
-import { isSessionHeartbeatExpired, withHeartbeatMetadata } from '@/lib/copilotSession';
-import { buildSuggestionPrompt, parseSuggestionContent } from '@/lib/copilotSuggestion';
+import { isSessionHeartbeatExpired } from '@/lib/copilotSession';
+import { endCopilotSession } from '@/lib/copilot/endSession';
 import { copilotOk, copilotRateLimited, sessionExpiredResponse } from '@/lib/copilotApiResponse';
 
 interface Params {
@@ -29,6 +27,7 @@ const ChunkSchema = z.object({
   isFinal: z.boolean().default(true),
   interimId: z.string().trim().min(1).max(120).optional(),
   clientTimestamp: z.string().datetime().optional(),
+  /** Ignored: answers come from the question gate and the answer route. */
   autoSuggest: z.boolean().optional(),
 });
 
@@ -90,19 +89,11 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   if (isSessionHeartbeatExpired(session)) {
     const nowIso = new Date().toISOString();
-    await supabase
-      .from('copilot_sessions')
-      .update({
-        status: 'expired',
-        stopped_at: nowIso,
-        metadata: {
-          ...withHeartbeatMetadata(session.metadata, nowIso),
-          expired_reason: 'heartbeat_timeout',
-        },
-      })
-      .eq('id', id)
-      .eq('user_id', userId)
-      .eq('status', 'active');
+    await endCopilotSession(session, {
+      status: 'expired',
+      endedAt: new Date(nowIso),
+      metadata: { expired_reason: 'heartbeat_timeout' },
+    });
 
     return sessionExpiredResponse(session, nowIso);
   }
@@ -110,8 +101,6 @@ export async function POST(req: NextRequest, { params }: Params) {
   if (session.status !== 'active') return jsonError(409, 'session_not_active');
 
   const mode = typeof session.metadata?.mode === 'string' ? session.metadata.mode : 'general';
-  const createdEvents: Array<Record<string, unknown>> = [];
-  const createdSuggestions: Array<Record<string, unknown>> = [];
   let rejected = 0;
 
   const { data: recentTranscriptRows } = await supabase
@@ -124,6 +113,10 @@ export async function POST(req: NextRequest, { params }: Params) {
     .returns<CopilotEventRow[]>();
 
   const recentTranscriptEvents = (recentTranscriptRows ?? []).slice();
+
+  // Each accepted chunk is either an event saved earlier (a retried interim) or a new row.
+  const results: Array<Record<string, unknown> | number> = [];
+  const newRows: Array<Record<string, unknown>> = [];
 
   for (const chunk of parse.data.chunks) {
     const cleanedInput = sanitizeCopilotText(chunk.text);
@@ -138,157 +131,58 @@ export async function POST(req: NextRequest, { params }: Params) {
       : null;
 
     if (duplicateEvent) {
-      createdEvents.push(duplicateEvent);
+      results.push(duplicateEvent);
       continue;
     }
 
-    const payload: EventPayload = {
-      speaker: chunk.speaker,
-      text: cleanedInput.sanitized,
-      mode,
-      transcript_kind: chunk.isFinal ? 'final' : 'interim',
-      interim_id: chunk.interimId ?? null,
-      client_timestamp: chunk.clientTimestamp ?? null,
-      security: {
-        redactions: cleanedInput.redactions,
-        prompt_injection: cleanedInput.hasPromptInjection,
-      },
-    };
+    results.push(newRows.length);
+    newRows.push({
+      session_id: id,
+      user_id: userId,
+      event_type: 'transcript',
+      payload: {
+        speaker: chunk.speaker,
+        text: cleanedInput.sanitized,
+        mode,
+        transcript_kind: chunk.isFinal ? 'final' : 'interim',
+        interim_id: chunk.interimId ?? null,
+        client_timestamp: chunk.clientTimestamp ?? null,
+        security: {
+          redactions: cleanedInput.redactions,
+          prompt_injection: cleanedInput.hasPromptInjection,
+        },
+      } satisfies EventPayload,
+    });
+  }
 
-    const { data: createdEvent, error: insertError } = await supabase
+  if (results.length === 0) {
+    return jsonError(400, 'no_valid_chunks', { accepted: 0, rejected });
+  }
+
+  // One round trip for the whole batch. Answers come from the answer route, not from here.
+  let inserted: Array<Record<string, unknown>> = [];
+  if (newRows.length > 0) {
+    const { data, error: insertError } = await supabase
       .from('copilot_events')
-      .insert({
-        session_id: id,
-        user_id: userId,
-        event_type: 'transcript',
-        payload,
-      })
-      .select('id, event_type, payload, created_at')
-      .single();
+      .insert(newRows)
+      .select('id, event_type, payload, created_at');
 
-    if (insertError || !createdEvent) {
+    if (insertError || !data || data.length !== newRows.length) {
       logCopilotRouteError('/api/copilot/sessions/[id]/transcript', requestId, 'db_insert_transcript_failed', {
         sessionId: id,
         code: insertError?.code ?? null,
       });
       return internalError(requestId);
     }
-
-    createdEvents.push(createdEvent);
-    recentTranscriptEvents.unshift(createdEvent as CopilotEventRow);
-
-    const shouldSuggest =
-      (chunk.autoSuggest ?? true) &&
-      chunk.isFinal &&
-      chunk.speaker === 'interviewer' &&
-      !cleanedInput.hasPromptInjection;
-
-    if (!shouldSuggest) continue;
-
-    const { data: transcriptRows } = await supabase
-      .from('copilot_events')
-      .select('id, payload, created_at')
-      .eq('session_id', id)
-      .eq('event_type', 'transcript')
-      .order('created_at', { ascending: false })
-      .limit(16);
-
-    const ordered = (transcriptRows ?? []).slice().reverse();
-    const transcriptText = ordered
-      .map((row) => {
-        const p = row.payload as EventPayload;
-        const speaker = typeof p.speaker === 'string' ? p.speaker : 'unknown';
-        const text = typeof p.text === 'string' ? p.text : '';
-        return `${speaker}: ${text}`;
-      })
-      .join('\n');
-
-    try {
-      if (llmProvider() !== 'openai') return jsonError(400, 'unsupported_provider');
-
-      const client = new OpenAI({ apiKey: requireEnv('OPENAI_API_KEY') });
-      const completion = await client.chat.completions.create({
-        model: 'gpt-4o-mini',
-        temperature: 0.3,
-        response_format: { type: 'json_object' },
-        messages: buildSuggestionPrompt({
-          mode,
-          transcriptText: transcriptText || `${chunk.speaker}: ${cleanedInput.sanitized}`,
-          latestQuestion: cleanedInput.sanitized,
-        }),
-      });
-
-      const content = completion.choices[0]?.message?.content ?? '{}';
-      const parsedSuggestion = parseSuggestionContent(content, mode);
-
-      const suggestionPayload: EventPayload = {
-        category: 'answer',
-        text: parsedSuggestion.shortAnswer,
-        based_on_event_id: createdEvent.id,
-        mode,
-        structured: parsedSuggestion.structured,
-      };
-
-      if (parsedSuggestion.talkingPoints.length > 0) suggestionPayload.talking_points = parsedSuggestion.talkingPoints;
-      if (parsedSuggestion.followUp) suggestionPayload.follow_up = parsedSuggestion.followUp;
-      if (parsedSuggestion.complexity) suggestionPayload.complexity = parsedSuggestion.complexity;
-      if (parsedSuggestion.edgeCases?.length) suggestionPayload.edge_cases = parsedSuggestion.edgeCases;
-      if (parsedSuggestion.checklist?.length) suggestionPayload.checklist = parsedSuggestion.checklist;
-
-      const { data: suggestionEvent, error: suggestionError } = await supabase
-        .from('copilot_events')
-        .insert({
-          session_id: id,
-          user_id: userId,
-          event_type: 'suggestion',
-          payload: suggestionPayload,
-        })
-        .select('id, event_type, payload, created_at')
-        .single();
-
-      if (suggestionError || !suggestionEvent) {
-        logCopilotRouteError('/api/copilot/sessions/[id]/transcript', requestId, 'db_insert_suggestion_failed', {
-          sessionId: id,
-          code: suggestionError?.code ?? null,
-        });
-        return internalError(requestId);
-      }
-
-      createdSuggestions.push(suggestionEvent);
-    } catch (e) {
-      logCopilotRouteError('/api/copilot/sessions/[id]/transcript', requestId, 'llm_suggestion_failed', {
-        sessionId: id,
-        errorType: e instanceof Error ? e.name : 'unknown',
-      });
-
-      const { data: fallbackSuggestion } = await supabase
-        .from('copilot_events')
-        .insert({
-          session_id: id,
-          user_id: userId,
-          event_type: 'suggestion',
-          payload: {
-            category: 'system',
-            text: 'Suggestion generation is temporarily unavailable. Try rephrasing the question in one short sentence.',
-            based_on_event_id: createdEvent.id,
-            mode,
-            error: 'provider_unavailable',
-          },
-        })
-        .select('id, event_type, payload, created_at')
-        .single();
-
-      if (fallbackSuggestion) createdSuggestions.push(fallbackSuggestion);
-    }
+    inserted = data;
   }
 
-  if (createdEvents.length === 0) {
-    return jsonError(400, 'no_valid_chunks', { accepted: 0, rejected });
-  }
+  const createdEvents = results.map((result) => (typeof result === 'number' ? inserted[result] : result));
 
   const payload = {
     events: createdEvents,
-    suggestions: createdSuggestions,
+    // Kept for older clients; transcript lines no longer produce suggestions.
+    suggestions: [],
     accepted: createdEvents.length,
     rejected,
   };

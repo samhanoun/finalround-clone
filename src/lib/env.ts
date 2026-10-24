@@ -21,6 +21,16 @@ const RawEnvSchema = z.object({
   DEFAULT_MODEL: z.string().min(1).optional(),
   FALLBACK_MODEL: z.string().min(1).optional(),
 
+  // Live copilot models (OpenAI model ids)
+  COPILOT_GATE_MODEL: z.string().min(1).optional(),
+  COPILOT_ANSWER_MODEL: z.string().min(1).optional(),
+  COPILOT_CODING_MODEL: z.string().min(1).optional(),
+
+  // Speech-to-text (server-only; used by the STT relay in server.ts)
+  DEEPGRAM_API_KEY: z.string().min(1).optional(),
+  DEEPGRAM_MODEL: z.string().regex(/^[a-z0-9._-]+$/i).optional(),
+  DEEPGRAM_LANGUAGE: z.string().regex(/^[a-z]{2,3}(-[a-z0-9]{2,8})?$|^multi$/i).optional(),
+
   // Billing (server-only)
   STRIPE_SECRET_KEY: z.string().min(1).optional(),
   STRIPE_WEBHOOK_SECRET: z.string().min(1).optional(),
@@ -38,7 +48,15 @@ const RawEnvSchema = z.object({
   CRON_SECRET: z.string().min(32).optional(),
 });
 
-export const env = RawEnvSchema.parse({
+// `KEY=` lines in .env files arrive as '', which would fail the min(1)/url()
+// checks at import time; treat them as unset instead.
+function blankToUndefined<T extends Record<string, string | undefined>>(values: T): T {
+  return Object.fromEntries(
+    Object.entries(values).map(([key, value]) => [key, value?.trim() === '' ? undefined : value]),
+  ) as T;
+}
+
+export const env = RawEnvSchema.parse(blankToUndefined({
   NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
   NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
   NEXT_PUBLIC_BETA_LIVE_COPILOT: process.env.NEXT_PUBLIC_BETA_LIVE_COPILOT,
@@ -50,6 +68,14 @@ export const env = RawEnvSchema.parse({
   DEFAULT_MODEL: process.env.DEFAULT_MODEL,
   FALLBACK_MODEL: process.env.FALLBACK_MODEL,
 
+  COPILOT_GATE_MODEL: process.env.COPILOT_GATE_MODEL,
+  COPILOT_ANSWER_MODEL: process.env.COPILOT_ANSWER_MODEL,
+  COPILOT_CODING_MODEL: process.env.COPILOT_CODING_MODEL,
+
+  DEEPGRAM_API_KEY: process.env.DEEPGRAM_API_KEY,
+  DEEPGRAM_MODEL: process.env.DEEPGRAM_MODEL,
+  DEEPGRAM_LANGUAGE: process.env.DEEPGRAM_LANGUAGE,
+
   STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY,
   STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET,
   PRICE_ID_PRO_EUR: process.env.PRICE_ID_PRO_EUR,
@@ -60,7 +86,7 @@ export const env = RawEnvSchema.parse({
   UPSTASH_REDIS_REST_TOKEN: process.env.UPSTASH_REDIS_REST_TOKEN,
 
   CRON_SECRET: process.env.CRON_SECRET,
-});
+}));
 
 export function requireEnv(name: keyof typeof env): string {
   const val = env[name];

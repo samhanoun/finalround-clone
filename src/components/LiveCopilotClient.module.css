@@ -453,3 +453,40 @@
     align-items: flex-start;
   }
 }
+
+/* Step 6: latency tables (live drawer and history detail) */
+.latencyTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.latencyTable caption {
+  text-align: left;
+  padding-bottom: 6px;
+}
+
+.latencyTable th,
+.latencyTable td {
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.latencyTable tbody th {
+  font-weight: 500;
+}
+
+.latencyOver td:nth-child(2),
+.latencyOver td:nth-child(3) {
+  color: var(--warning);
+  font-weight: 600;
+}
+
+@media (max-width: 640px) {
+  .latencyTable {
+    display: block;
+    overflow-x: auto;
+  }
+}

@@ -23,6 +23,51 @@ const PROMPT_INJECTION_PATTERNS: RegExp[] = [
   /tool\s+call|function\s+call/i,
 ];
 
+/**
+ * Unambiguous attempts to give the model instructions. Narrower than
+ * PROMPT_INJECTION_PATTERNS, which would drop real résumé lines such as
+ * "Act as liaison…", "reduced function call overhead" or the name "Dan".
+ */
+const INSTRUCTION_INJECTION_PATTERNS: RegExp[] = [
+  /\b(?:ignore|disregard|forget)\s+(?:all\s+|any\s+|the\s+)?(?:previous|prior|above|earlier|preceding)\s+(?:instructions?|rules|prompts?)/i,
+  /\b(?:reveal|print|show|repeat)\s+(?:the\s+|your\s+)?(?:system|developer|hidden)\s+(?:prompt|instructions?|message)/i,
+  /\byou\s+are\s+now\s+(?:a|an|in|the)\b/i,
+  /\b(?:new|updated|override)\s+(?:system\s+)?instructions?\s*:/i,
+  /\b(?:jailbreak|do\s+anything\s+now)\b/i,
+  /\bbypass\s+(?:the\s+)?(?:guardrails|safety|policy|filters)\b/i,
+  /<\/?\s*(?:system|instructions?)\s*>/i,
+];
+
+export type ScreenedReferenceText = { text: string; droppedLines: number; redactions: string[] };
+
+/**
+ * Screens text the user pastes as reference (résumé, job description) before
+ * it goes into a prompt: removes control characters, redacts contact and
+ * secret patterns line by line, and drops lines that try to instruct the model.
+ */
+export function screenReferenceText(input: string): ScreenedReferenceText {
+  const redactions = new Set<string>();
+  let droppedLines = 0;
+  const kept: string[] = [];
+
+  for (const rawLine of input.replace(/\r\n?/g, '\n').split('\n')) {
+    let line = rawLine.replace(CONTROL_CHARS, '');
+    if (INSTRUCTION_INJECTION_PATTERNS.some((pattern) => pattern.test(line))) {
+      droppedLines += 1;
+      continue;
+    }
+    for (const rule of REDACTION_RULES) {
+      rule.pattern.lastIndex = 0;
+      if (rule.pattern.test(line)) redactions.add(rule.name);
+      rule.pattern.lastIndex = 0;
+      line = line.replace(rule.pattern, rule.replacement);
+    }
+    kept.push(line);
+  }
+
+  return { text: kept.join('\n'), droppedLines, redactions: Array.from(redactions) };
+}
+
 export interface SanitizedCopilotText {
   sanitized: string;
   redactions: string[];

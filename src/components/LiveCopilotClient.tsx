@@ -4,35 +4,27 @@ import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent a
 import styles from './LiveCopilotClient.module.css';
 import { formatCopilotActionError } from './liveCopilotDataControls';
 import { sloClient, SLO_TYPE_OVERLAY_INTERACTION, SLO_TYPE_TRANSCRIPT_TO_SUGGESTION, getStatusEmoji, formatLatency, type SLOCompliance, type SLOMetric } from '@/lib/sloClient';
-
-interface SpeechRecognitionAlternativeLite {
-  transcript: string;
-}
-
-interface SpeechRecognitionResultLite {
-  isFinal: boolean;
-  0: SpeechRecognitionAlternativeLite;
-}
-
-interface SpeechRecognitionEventLite extends Event {
-  results: ArrayLike<SpeechRecognitionResultLite>;
-  resultIndex?: number;
-}
-
-interface SpeechRecognitionLite extends EventTarget {
-  continuous: boolean;
-  interimResults: boolean;
-  lang: string;
-  start: () => void;
-  stop: () => void;
-  onresult: ((event: SpeechRecognitionEventLite) => void) | null;
-  onerror: ((event: Event) => void) | null;
-  onend: (() => void) | null;
-}
-
-type SpeechRecognitionCtor = new () => SpeechRecognitionLite;
-
-type CopilotMode = 'general' | 'coding' | 'phone' | 'video';
+import { AudioSourcesPanel } from './copilot/AudioSourcesPanel';
+import { useAudioCapture } from './copilot/useAudioCapture';
+import { useLiveTranscription } from './copilot/useLiveTranscription';
+import { useCopilotAnswers } from './copilot/useCopilotAnswers';
+import { AnswerPanel } from './copilot/AnswerPanel';
+import { AutoEndNotice } from './copilot/AutoEndNotice';
+import { LatencyDrawer, LatencyTable } from './copilot/LatencyDrawer';
+import { isLatencyPayload, summarizeLatencyEvents } from '@/lib/copilot/latency';
+import { grabScreenFrame } from '@/lib/copilot/screenFrame';
+import type { ConnectionState, TailLine } from './copilot/AnswerView';
+import { SuggestionFeed, TranscriptFeed } from './copilot/LiveFeeds';
+import { SessionBar } from './copilot/SessionBar';
+import {
+  SessionSetup,
+  loadSavedSetup,
+  saveSetup,
+  setupStartBody,
+  type CopilotMode,
+  type SessionSetupValue,
+} from './copilot/SessionSetup';
+import type { Utterance } from '@/lib/stt/utterances';
 
 type CopilotSession = {
   id: string;
@@ -247,6 +239,14 @@ function appendUniqueEvents(current: CopilotEvent[], incoming: CopilotEvent[]): 
   return [...current, ...additions];
 }
 
+/** Why a session ended; stored on the session by the stop route. */
+type StopReason = 'user' | 'tab_closed' | 'sharing_stopped';
+
+function isTypingTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  return target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName);
+}
+
 function formatModeLabel(mode: string): string {
   const raw = mode.trim();
   if (!raw) return 'General';
@@ -262,8 +262,8 @@ function calculateDurationMinutes(startedAt?: string | null, stoppedAt?: string 
 }
 
 export function LiveCopilotClient() {
-  const [mode, setMode] = useState<CopilotMode>('general');
-  const [title, setTitle] = useState('');
+  // The page renders only on the client (inside RequireAuth), so reading storage here is safe.
+  const [setup, setSetup] = useState<SessionSetupValue>(loadSavedSetup);
   const [session, setSession] = useState<CopilotSession | null>(null);
   const [transcript, setTranscript] = useState<CopilotEvent[]>([]);
   const [suggestions, setSuggestions] = useState<CopilotEvent[]>([]);
@@ -271,9 +271,9 @@ export function LiveCopilotClient() {
   const [submitting, setSubmitting] = useState(false);
   const [draftText, setDraftText] = useState('');
   const [draftSpeaker, setDraftSpeaker] = useState<'interviewer' | 'candidate'>('interviewer');
-  const [listening, setListening] = useState(false);
-  const [micPreview, setMicPreview] = useState('');
+  const audio = useAudioCapture();
   const [micSyncing, setMicSyncing] = useState(false);
+  const [streamOpen, setStreamOpen] = useState(false);
   const [lastMicSyncAt, setLastMicSyncAt] = useState<string | null>(null);
   const [summary, setSummary] = useState<{ content: string; strengths: string[]; weaknesses: string[]; next_steps: string[] } | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
@@ -309,10 +309,6 @@ export function LiveCopilotClient() {
   const [overlayTimerRunning, setOverlayTimerRunning] = useState(false);
   const [overlayTimerSeconds, setOverlayTimerSeconds] = useState(0);
 
-  // T10: Coding copilot "no full code" guardrail
-  const [noFullCodeMode, setNoFullCodeMode] = useState(false);
-  const [noFullCodeAcknowledged, setNoFullCodeAcknowledged] = useState(false);
-
   // Performance instrumentation for T4: interaction latency tracking
   const [interactionLatency, setInteractionLatency] = useState<{ action: string; latencyMs: number | null }>({ action: '', latencyMs: null });
 
@@ -338,7 +334,6 @@ export function LiveCopilotClient() {
   const transcriptTimestampsRef = useRef<Map<string, number>>(new Map());
 
   const streamRef = useRef<EventSource | null>(null);
-  const recognitionRef = useRef<SpeechRecognitionLite | null>(null);
   const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const transcriptQueueRef = useRef<TranscriptChunkInput[]>([]);
   const transcriptFlushTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -346,6 +341,7 @@ export function LiveCopilotClient() {
   const draftTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   const isActive = session?.status === 'active';
+  const currentSessionId = session?.id ?? null;
 
   useEffect(() => {
     return () => {
@@ -355,8 +351,6 @@ export function LiveCopilotClient() {
         clearInterval(heartbeatRef.current);
         heartbeatRef.current = null;
       }
-      recognitionRef.current?.stop();
-      recognitionRef.current = null;
       transcriptQueueRef.current = [];
       if (transcriptFlushTimeoutRef.current) {
         clearTimeout(transcriptFlushTimeoutRef.current);
@@ -456,52 +450,56 @@ export function LiveCopilotClient() {
     }
   }, []);
 
-  const loadHistoryDetail = useCallback(async (sessionId: string) => {
+  // Bumped by the Retry button to fetch the selected session's detail again.
+  const [detailReload, setDetailReload] = useState(0);
+  const retryHistoryDetail = () => {
     setDetailLoading(true);
     setDetailError(null);
+    setDetailReload((n) => n + 1);
+  };
 
-    try {
-      const res = await fetch(`/api/copilot/sessions/${sessionId}`);
-      const json = (await res.json().catch(() => ({}))) as {
-        session?: CopilotSessionDetail;
-        events?: CopilotEvent[];
-        summaries?: CopilotSummary[];
-        error?: string;
-      };
-      if (!res.ok || !json.session) throw new Error(json.error ?? 'Failed to load session details');
+  const selectPanel = useCallback(
+    (panel: 'live' | 'analytics') => {
+      if (panel === activePanel) return;
+      setActivePanel(panel);
+      setSettingsError(null);
+      setSettingsSuccess(null);
+      if (panel === 'analytics') void loadHistory();
+    },
+    [activePanel, loadHistory],
+  );
 
-      setHistoryDetail({
-        session: json.session,
-        events: Array.isArray(json.events) ? json.events : [],
-        summaries: Array.isArray(json.summaries) ? json.summaries : [],
-      });
-    } catch (e) {
-      setDetailError(e instanceof Error ? e.message : 'Failed to load session details');
-      setHistoryDetail(null);
-    } finally {
-      setDetailLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (activePanel !== 'analytics') return;
-    void loadHistory();
-  }, [activePanel, loadHistory]);
-
+  // detailLoading is set when the selection changes (render-time block next to
+  // filteredHistorySessions) or by Retry; this only fetches.
   useEffect(() => {
     if (activePanel !== 'analytics' || !selectedHistoryId) return;
-    void loadHistoryDetail(selectedHistoryId);
-  }, [activePanel, selectedHistoryId, loadHistoryDetail]);
 
-  useEffect(() => {
-    setDeleteError(null);
-    setDeleteSuccess(null);
-  }, [selectedHistoryId]);
+    const loadDetail = async () => {
+      try {
+        const res = await fetch(`/api/copilot/sessions/${selectedHistoryId}`);
+        const json = (await res.json().catch(() => ({}))) as {
+          session?: CopilotSessionDetail;
+          events?: CopilotEvent[];
+          summaries?: CopilotSummary[];
+          error?: string;
+        };
+        if (!res.ok || !json.session) throw new Error(json.error ?? 'Failed to load session details');
 
-  useEffect(() => {
-    setSettingsError(null);
-    setSettingsSuccess(null);
-  }, [activePanel]);
+        setHistoryDetail({
+          session: json.session,
+          events: Array.isArray(json.events) ? json.events : [],
+          summaries: Array.isArray(json.summaries) ? json.summaries : [],
+        });
+      } catch (e) {
+        setDetailError(e instanceof Error ? e.message : 'Failed to load session details');
+        setHistoryDetail(null);
+      } finally {
+        setDetailLoading(false);
+      }
+    };
+
+    void loadDetail();
+  }, [activePanel, selectedHistoryId, detailReload]);
 
   // T4: Timer effect for overlay countdown
   useEffect(() => {
@@ -596,25 +594,10 @@ export function LiveCopilotClient() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [overlayVisible, updateSLOCompliance]);
 
+  // The legacy-summary fallback and loading flag are set when the inputs change
+  // (render-time block next to filteredHistorySessions); this only fetches.
   useEffect(() => {
-    if (activePanel !== 'analytics' || !selectedHistoryId) {
-      setHistoryReport(null);
-      setHistoryReportError(null);
-      setHistoryReportLoading(false);
-      setHistoryReportCopied(false);
-      return;
-    }
-
-    const fallbackSummary =
-      historyDetail?.session?.id === selectedHistoryId
-        ? historyDetail.summaries.find((item) => item.summary_type === 'mock_interview_report') ?? historyDetail.summaries[0] ?? null
-        : null;
-    const fallbackReport = fallbackSummary ? parseReportPayload(fallbackSummary.payload) : null;
-
-    setHistoryReport(fallbackReport ? { ...fallbackReport, source: 'legacy' } : null);
-    setHistoryReportError(null);
-    setHistoryReportCopied(false);
-    setHistoryReportLoading(true);
+    if (activePanel !== 'analytics' || !selectedHistoryId) return;
 
     let cancelled = false;
 
@@ -655,6 +638,7 @@ export function LiveCopilotClient() {
 
     const es = new EventSource(`/api/copilot/sessions/${sessionId}/stream`);
     streamRef.current = es;
+    setStreamOpen(true);
 
     es.addEventListener('connected', () => {
       setConnecting(false);
@@ -675,10 +659,11 @@ export function LiveCopilotClient() {
       if (!parsed) return;
 
       const next = parsed.payload;
+      // The same event can also arrive in a POST response; keep one copy.
       if (next.event_type === 'transcript') {
-        setTranscript((prev) => [...prev, next]);
+        setTranscript((prev) => appendUniqueEvents(prev, [next]));
       } else if (next.event_type === 'suggestion') {
-        setSuggestions((prev) => [...prev, next]);
+        setSuggestions((prev) => appendUniqueEvents(prev, [next]));
       }
     });
 
@@ -707,25 +692,24 @@ export function LiveCopilotClient() {
     setTranscript([]);
     setSuggestions([]);
     setSummary(null);
-    setMicPreview('');
     setLastMicSyncAt(null);
 
     try {
       const res = await fetch('/api/copilot/sessions/start', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          title: title.trim() || `Live ${mode} session`,
-          metadata: {
-            mode,
-            beta: true,
-            // T10: Include noFullCode guardrail setting in session metadata
-            noFullCodeMode: mode === 'coding' ? noFullCodeMode : false,
-          },
-        }),
+        // T10's "no full code" guardrail is part of the setup and goes in the session metadata.
+        body: JSON.stringify(setupStartBody(setup)),
       });
       const json = (await res.json().catch(() => ({}))) as { session?: CopilotSession; error?: string };
-      if (!res.ok || !json.session) throw new Error(json.error ?? 'Failed to start session');
+      if (!res.ok || !json.session) {
+        const startErrors: Record<string, string> = {
+          resume_not_found: 'That résumé could not be found. Pick another one.',
+          resume_not_parsed: "That résumé hasn't been parsed yet. Open it on the Résumé page first.",
+          quota_exceeded: 'You have no copilot minutes left on your plan.',
+        };
+        throw new Error((json.error && startErrors[json.error]) ?? json.error ?? 'Failed to start session');
+      }
 
       setSession(json.session);
       connectStream(json.session.id);
@@ -736,7 +720,7 @@ export function LiveCopilotClient() {
     }
   }
 
-  async function stopSession() {
+  async function stopSession(reason: StopReason = 'user') {
     if (!session?.id || submitting) return;
 
     setError(null);
@@ -746,7 +730,7 @@ export function LiveCopilotClient() {
       const res = await fetch('/api/copilot/sessions/stop', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ sessionId: session.id }),
+        body: JSON.stringify({ sessionId: session.id, reason }),
       });
       const json = (await res.json().catch(() => ({}))) as { session?: CopilotSession; error?: string };
       if (!res.ok || !json.session) throw new Error(json.error ?? 'Failed to stop session');
@@ -754,6 +738,7 @@ export function LiveCopilotClient() {
       setSession(json.session);
       streamRef.current?.close();
       streamRef.current = null;
+      setStreamOpen(false);
       stopHeartbeat();
       setConnecting(false);
       transcriptQueueRef.current = [];
@@ -761,7 +746,6 @@ export function LiveCopilotClient() {
         clearTimeout(transcriptFlushTimeoutRef.current);
         transcriptFlushTimeoutRef.current = null;
       }
-      setMicPreview('');
       setMicSyncing(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to stop session');
@@ -770,19 +754,8 @@ export function LiveCopilotClient() {
     }
   }
 
-  function getSpeechRecognitionCtor(): SpeechRecognitionCtor | null {
-    if (typeof window === 'undefined') return null;
-
-    const withSpeech = window as Window & {
-      SpeechRecognition?: SpeechRecognitionCtor;
-      webkitSpeechRecognition?: SpeechRecognitionCtor;
-    };
-
-    return withSpeech.SpeechRecognition ?? withSpeech.webkitSpeechRecognition ?? null;
-  }
-
   const flushTranscriptQueue = useCallback(async () => {
-    if (!session?.id || !isActive) return;
+    if (!currentSessionId || !isActive) return;
     if (transcriptFlushInFlightRef.current) return;
 
     const queue = transcriptQueueRef.current;
@@ -792,12 +765,12 @@ export function LiveCopilotClient() {
     setMicSyncing(true);
 
     try {
-      while (queue.length > 0 && session?.id) {
+      while (queue.length > 0) {
         const batch = queue.splice(0, 8);
         // Track submission time for SLO
         const submitTime = Date.now();
-        
-        const res = await fetch(`/api/copilot/sessions/${session.id}/transcript`, {
+
+        const res = await fetch(`/api/copilot/sessions/${currentSessionId}/transcript`, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ chunks: batch }),
@@ -829,7 +802,7 @@ export function LiveCopilotClient() {
       transcriptFlushInFlightRef.current = false;
       setMicSyncing(false);
     }
-  }, [isActive, session?.id, updateSLOCompliance]);
+  }, [currentSessionId, isActive, updateSLOCompliance]);
 
   const enqueueTranscriptChunk = useCallback(
     (chunk: TranscriptChunkInput) => {
@@ -847,94 +820,118 @@ export function LiveCopilotClient() {
     [flushTranscriptQueue],
   );
 
+  // Answers stream into the Current question card; saved answers reach the
+  // suggestions list through the session stream.
+  const answers = useCopilotAnswers({ sessionId: isActive && session ? session.id : null });
+
+  // Every finished utterance is saved as it is; the question gate decides
+  // which interviewer lines get an answer.
+  const observeUtterance = answers.observe;
+  const handleUtterance = useCallback(
+    (utterance: Utterance) => {
+      enqueueTranscriptChunk({
+        speaker: utterance.role,
+        text: utterance.text,
+        isFinal: true,
+        autoSuggest: false,
+        clientTimestamp: new Date(utterance.completedAt).toISOString(),
+      });
+      observeUtterance(utterance);
+    },
+    [enqueueTranscriptChunk, observeUtterance],
+  );
+
+  const transcription = useLiveTranscription({
+    sessionId: isActive && session ? session.id : null,
+    capture: audio,
+    onUtterance: handleUtterance,
+  });
+
+  const addTypedLine = answers.addTypedLine;
+  const stopAnswer = answers.stop;
+  const requestAnswerNow = answers.answerNow;
+  const interviewerCaption = transcription.captions.interviewer;
+  const answerNow = useCallback(() => {
+    if (!requestAnswerNow(interviewerCaption)) {
+      setError('There is no interviewer question to answer yet.');
+    }
+  }, [interviewerCaption, requestAnswerNow]);
+
+  // Solve screen reads the tab or screen already shared for audio: no second prompt.
+  const getDisplayVideoTrack = audio.getDisplayVideoTrack;
+  const answerScreen = answers.answerScreen;
+  const solveScreen = useCallback(async () => {
+    const track = getDisplayVideoTrack();
+    if (!track) {
+      setError('Start listening and share the meeting tab or your screen first: Solve screen reads what you share.');
+      return;
+    }
+    try {
+      const frame = await grabScreenFrame(track);
+      if (!answerScreen(frame)) setError('Start a session first.');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not read the shared screen.');
+    }
+  }, [getDisplayVideoTrack, answerScreen]);
+
   useEffect(() => {
-    if (!isActive || !session?.id) {
+    saveSetup(setup);
+  }, [setup]);
+
+  // Closing the tab ends the session (and its billed minutes) instead of
+  // leaving it to expire. A beacon still goes out while the page unloads.
+  const activeSessionId = isActive && session ? session.id : null;
+  useEffect(() => {
+    if (!activeSessionId) return;
+    const onPageHide = () => {
+      const body = new Blob([JSON.stringify({ sessionId: activeSessionId, reason: 'tab_closed' })], {
+        type: 'application/json',
+      });
+      navigator.sendBeacon?.('/api/copilot/sessions/stop', body);
+    };
+    window.addEventListener('pagehide', onPageHide);
+    return () => window.removeEventListener('pagehide', onPageHide);
+  }, [activeSessionId]);
+
+  // Stopping the meeting share starts a countdown to end the session (see AutoEndNotice).
+  const [keepOpenAfterStop, setKeepOpenAfterStop] = useState<number | null>(null);
+  const sharingStoppedAt =
+    isActive && audio.status !== 'live' && audio.ended?.source === 'interviewer' ? audio.ended.at : null;
+
+  const connection = useMemo<ConnectionState>(() => {
+    if (audio.status !== 'live') {
+      return { label: audio.status === 'starting' ? 'Starting audio…' : 'Not listening', tone: 'off' };
+    }
+    if (transcription.status === 'live') return { label: 'Live', tone: 'live' };
+    if (transcription.status === 'error') return { label: 'Transcription stopped', tone: 'off' };
+    return { label: transcription.status === 'reconnecting' ? 'Reconnecting…' : 'Connecting…', tone: 'warn' };
+  }, [audio.status, transcription.status]);
+
+  // A flush still in flight when the session ends clears micSyncing itself;
+  // until then the badge reads it only while the session is active.
+  useEffect(() => {
+    if (!isActive || !currentSessionId) {
       transcriptQueueRef.current = [];
       if (transcriptFlushTimeoutRef.current) {
         clearTimeout(transcriptFlushTimeoutRef.current);
         transcriptFlushTimeoutRef.current = null;
       }
-      setMicSyncing(false);
       return;
     }
 
     if (transcriptQueueRef.current.length > 0) {
       void flushTranscriptQueue();
     }
-  }, [flushTranscriptQueue, isActive, session?.id]);
+  }, [flushTranscriptQueue, isActive, currentSessionId]);
 
-  const startListening = useCallback(() => {
-    if (!session?.id || !isActive) return;
-
-    const Ctor = getSpeechRecognitionCtor();
-    if (!Ctor) {
-      setError('Browser speech recognition not supported. Use manual transcript input.');
-      return;
-    }
-
-    setError(null);
-    const recognition = new Ctor();
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    recognition.lang = 'en-US';
-
-    recognition.onresult = (event) => {
-      const finalChunks: string[] = [];
-      const interimChunks: string[] = [];
-      const startIndex = Number.isInteger(event.resultIndex) ? (event.resultIndex as number) : 0;
-
-      for (let i = startIndex; i < event.results.length; i += 1) {
-        const result = event.results[i];
-        const alt = result[0];
-        const nextText = alt?.transcript?.trim();
-        if (!nextText) continue;
-
-        if (result.isFinal) {
-          finalChunks.push(nextText);
-        } else {
-          interimChunks.push(nextText);
-        }
-      }
-
-      setMicPreview(interimChunks.join(' ').trim());
-
-      for (const text of finalChunks) {
-        enqueueTranscriptChunk({
-          speaker: draftSpeaker,
-          text,
-          isFinal: true,
-          autoSuggest: draftSpeaker === 'interviewer',
-          clientTimestamp: new Date().toISOString(),
-        });
-      }
-    };
-
-    recognition.onerror = () => {
-      setError('Mic transcription failed. You can continue with manual input.');
-      setListening(false);
-      setMicPreview('');
-    };
-
-    recognition.onend = () => {
-      setListening(false);
-      setMicPreview('');
-    };
-
-    recognition.start();
-    recognitionRef.current = recognition;
-    setListening(true);
-  }, [draftSpeaker, enqueueTranscriptChunk, isActive, session?.id]);
-
-  const stopListening = useCallback(() => {
-    recognitionRef.current?.stop();
-    recognitionRef.current = null;
-    setListening(false);
-    setMicPreview('');
-    void flushTranscriptQueue();
-  }, [flushTranscriptQueue]);
+  // Release the mic and the shared tab as soon as the session stops or expires.
+  const stopAudio = audio.stop;
+  useEffect(() => {
+    if (!isActive) stopAudio();
+  }, [isActive, stopAudio]);
 
   const submitTranscriptEvent = useCallback(async () => {
-    if (!session?.id || !draftText.trim() || submitting) return;
+    if (!currentSessionId || !draftText.trim() || submitting) return;
 
     setError(null);
     setSubmitting(true);
@@ -943,7 +940,7 @@ export function LiveCopilotClient() {
     const transcriptSubmitTime = Date.now();
 
     try {
-      const res = await fetch(`/api/copilot/sessions/${session.id}/transcript`, {
+      const res = await fetch(`/api/copilot/sessions/${currentSessionId}/transcript`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
@@ -952,7 +949,6 @@ export function LiveCopilotClient() {
               speaker: draftSpeaker,
               text: draftText.trim(),
               isFinal: true,
-              autoSuggest: draftSpeaker === 'interviewer',
               clientTimestamp: new Date().toISOString(),
             },
           ],
@@ -980,12 +976,14 @@ export function LiveCopilotClient() {
       
       setLastMicSyncAt(new Date().toISOString());
       setDraftText('');
+      // Typed interviewer lines are always answered; typed candidate lines add context.
+      addTypedLine(draftSpeaker, draftText.trim());
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to submit transcript event');
     } finally {
       setSubmitting(false);
     }
-  }, [draftSpeaker, draftText, session?.id, submitting, updateSLOCompliance]);
+  }, [addTypedLine, currentSessionId, draftSpeaker, draftText, submitting, updateSLOCompliance]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -1001,10 +999,11 @@ export function LiveCopilotClient() {
 
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'm') {
         event.preventDefault();
-        if (listening) {
-          stopListening();
-        } else {
-          startListening();
+        // The keypress counts as the user gesture the screen-share prompt needs.
+        if (audio.status === 'live') {
+          audio.stop();
+        } else if (audio.status !== 'starting') {
+          void audio.start();
         }
       }
 
@@ -1012,11 +1011,21 @@ export function LiveCopilotClient() {
         event.preventDefault();
         draftTextareaRef.current?.focus();
       }
+
+      // A = Answer now and Esc = stop the answer, unless the user is typing.
+      if (!event.metaKey && !event.ctrlKey && !event.altKey && !isTypingTarget(event.target)) {
+        if (event.key.toLowerCase() === 'a') {
+          event.preventDefault();
+          answerNow();
+        } else if (event.key === 'Escape') {
+          stopAnswer();
+        }
+      }
     };
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [activePanel, isActive, listening, session?.id, startListening, stopListening, submitTranscriptEvent, submitting]);
+  }, [activePanel, answerNow, audio, isActive, session?.id, stopAnswer, submitTranscriptEvent, submitting]);
 
   function injectFillerLine() {
     setDraftSpeaker('candidate');
@@ -1204,12 +1213,24 @@ export function LiveCopilotClient() {
     [transcript],
   );
 
+  const answerTail = useMemo<TailLine[]>(() => {
+    const said = transcriptRows
+      .filter((row) => row.speaker === 'interviewer' || row.speaker === 'candidate')
+      .slice(-4)
+      .map((row) => ({ speaker: row.speaker as TailLine['speaker'], text: row.text }));
+    const speaking: TailLine[] = [];
+    if (transcription.captions.interviewer) speaking.push({ speaker: 'interviewer', text: transcription.captions.interviewer, live: true });
+    if (transcription.captions.candidate) speaking.push({ speaker: 'candidate', text: transcription.captions.candidate, live: true });
+    return [...said, ...speaking].slice(-5);
+  }, [transcriptRows, transcription.captions]);
+
   const suggestionRows = useMemo(
     () =>
       suggestions.map((item) => ({
         id: item.id,
         text: asText(item.payload.text, asText(item.payload.content, '')).trim(),
         category: asText(item.payload.category, 'suggestion'),
+        question: asText(item.payload.question, '').trim(),
         followUp: asText(item.payload.follow_up, '').trim(),
         complexity: asText(item.payload.complexity, '').trim(),
         edgeCases: Array.isArray(item.payload.edge_cases)
@@ -1254,16 +1275,47 @@ export function LiveCopilotClient() {
     });
   }, [historyModeFilter, historyQuery, historySessions]);
 
-  const selectedHistorySession = useMemo(
-    () => historySessions.find((item) => item.id === selectedHistoryId) ?? null,
-    [historySessions, selectedHistoryId],
-  );
+  const selectedHistorySession = historySessions.find((item) => item.id === selectedHistoryId) ?? null;
 
-  useEffect(() => {
-    if (!selectedHistoryId) return;
-    if (filteredHistorySessions.some((item) => item.id === selectedHistoryId)) return;
+  // Keep the selection inside the filtered list.
+  if (selectedHistoryId && !filteredHistorySessions.some((item) => item.id === selectedHistoryId)) {
     setSelectedHistoryId(filteredHistorySessions[0]?.id ?? null);
-  }, [filteredHistorySessions, selectedHistoryId]);
+  }
+
+  // Reset analytics state when the panel, selection or loaded detail changes
+  // (React's "adjust state when inputs change" pattern). The effects above only
+  // fetch the detail and the report.
+  const [historyInputs, setHistoryInputs] = useState({ panel: activePanel, id: selectedHistoryId, detail: historyDetail });
+  if (historyInputs.panel !== activePanel || historyInputs.id !== selectedHistoryId || historyInputs.detail !== historyDetail) {
+    const idChanged = historyInputs.id !== selectedHistoryId;
+    const viewChanged = idChanged || historyInputs.panel !== activePanel;
+    const viewing = activePanel === 'analytics' && selectedHistoryId !== null;
+    setHistoryInputs({ panel: activePanel, id: selectedHistoryId, detail: historyDetail });
+
+    if (idChanged) {
+      setDeleteError(null);
+      setDeleteSuccess(null);
+    }
+    if (viewChanged && viewing) {
+      setDetailLoading(true);
+      setDetailError(null);
+    }
+
+    if (!viewing) {
+      setHistoryReport(null);
+      setHistoryReportLoading(false);
+    } else {
+      const fallbackSummary =
+        historyDetail?.session?.id === selectedHistoryId
+          ? historyDetail.summaries.find((item) => item.summary_type === 'mock_interview_report') ?? historyDetail.summaries[0] ?? null
+          : null;
+      const fallbackReport = fallbackSummary ? parseReportPayload(fallbackSummary.payload) : null;
+      setHistoryReport(fallbackReport ? { ...fallbackReport, source: 'legacy' } : null);
+      setHistoryReportLoading(true);
+    }
+    setHistoryReportError(null);
+    setHistoryReportCopied(false);
+  }
 
   const historyInsights = useMemo(() => {
     if (!historyDetail) {
@@ -1298,20 +1350,26 @@ export function LiveCopilotClient() {
   }, [historyDetail, selectedHistorySession]);
 
   const historyEventBreakdown = useMemo(() => {
-    if (!historyDetail) return { transcripts: [], suggestions: [], systems: [] } as {
-      transcripts: CopilotEvent[];
-      suggestions: CopilotEvent[];
-      systems: CopilotEvent[];
-    };
+    if (!historyDetail) {
+      return { transcripts: [], suggestions: [], systems: [], latency: summarizeLatencyEvents([]) } as {
+        transcripts: CopilotEvent[];
+        suggestions: CopilotEvent[];
+        systems: CopilotEvent[];
+        latency: ReturnType<typeof summarizeLatencyEvents>;
+      };
+    }
 
     return {
       transcripts: historyDetail.events.filter((item) => item.event_type === 'transcript'),
       suggestions: historyDetail.events.filter((item) => item.event_type === 'suggestion'),
-      systems: historyDetail.events.filter((item) => item.event_type !== 'transcript' && item.event_type !== 'suggestion'),
+      systems: historyDetail.events.filter(
+        (item) => item.event_type !== 'transcript' && item.event_type !== 'suggestion' && !isLatencyPayload(item.payload),
+      ),
+      latency: summarizeLatencyEvents(historyDetail.events.map((item) => item.payload)),
     };
   }, [historyDetail]);
 
-  const streamState = connecting ? 'Connecting…' : streamRef.current ? 'Connected' : 'Disconnected';
+  const streamState = connecting ? 'Connecting…' : streamOpen ? 'Connected' : 'Disconnected';
 
   const handlePanelTabKeyDown = useCallback(
     (event: ReactKeyboardEvent<HTMLDivElement>) => {
@@ -1321,296 +1379,65 @@ export function LiveCopilotClient() {
 
       if (event.key === 'ArrowRight') {
         event.preventDefault();
-        setActivePanel(panelOrder[(currentIndex + 1) % panelOrder.length]);
+        selectPanel(panelOrder[(currentIndex + 1) % panelOrder.length]);
       } else if (event.key === 'ArrowLeft') {
         event.preventDefault();
-        setActivePanel(panelOrder[(currentIndex - 1 + panelOrder.length) % panelOrder.length]);
+        selectPanel(panelOrder[(currentIndex - 1 + panelOrder.length) % panelOrder.length]);
       } else if (event.key === 'Home') {
         event.preventDefault();
-        setActivePanel(panelOrder[0]);
+        selectPanel(panelOrder[0]);
       } else if (event.key === 'End') {
         event.preventDefault();
-        setActivePanel(panelOrder[panelOrder.length - 1]);
+        selectPanel(panelOrder[panelOrder.length - 1]);
       }
     },
-    [activePanel],
+    [activePanel, selectPanel],
   );
 
   return (
     <div className="stack" style={{ gap: 16 }}>
-      <section className="card">
-        <div className="cardInner stack" style={{ gap: 14 }}>
-          <div className="row" style={{ justifyContent: 'space-between' }}>
-            <div className="stack" style={{ gap: 4 }}>
-              <h2 className="cardTitle">Live session controls</h2>
-              <p className="small" style={{ margin: 0 }}>Start a focused session, then stream questions to get real-time guidance.</p>
-            </div>
-            <span className={`badge ${isActive ? styles.badgeActive : ''}`}>{isActive ? 'Running' : 'Idle'}</span>
-          </div>
+      {isActive && session ? (
+        <SessionBar session={session} streamState={streamState} onStop={stopSession} stopping={submitting} />
+      ) : (
+        <SessionSetup value={setup} onChange={setSetup} onStart={startSession} starting={submitting} />
+      )}
 
-          <div className="grid2">
-            <label className="label">
-              Interview mode
-              <select
-                className="select"
-                value={mode}
-                onChange={(e) => setMode(e.target.value as CopilotMode)}
-                disabled={isActive || submitting}
-              >
-                <option value="general">General interview</option>
-                <option value="coding">Coding interview</option>
-                <option value="phone">Phone screen</option>
-                <option value="video">Video call</option>
-              </select>
-            </label>
+      {error ? <div className="error" role="status" aria-live="polite">{error}</div> : null}
 
-            <label className="label">
-              Session title
-              <input
-                className="input"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder="e.g. Senior SWE at Acme"
-                disabled={isActive || submitting}
+      {isActive ? (
+        <section className="card" aria-label="Live assistance">
+          <div className="cardInner stack" style={{ gap: 14 }}>
+            {sharingStoppedAt !== null && keepOpenAfterStop !== sharingStoppedAt ? (
+              <AutoEndNotice
+                key={sharingStoppedAt}
+                startedAt={sharingStoppedAt}
+                onExpire={() => void stopSession('sharing_stopped')}
+                onKeepOpen={() => setKeepOpenAfterStop(sharingStoppedAt)}
               />
-            </label>
+            ) : null}
+            <AudioSourcesPanel capture={audio} transcription={transcription} disabled={!isActive} />
+            <AnswerPanel
+              answers={answers}
+              onAnswerNow={answerNow}
+              onSolveScreen={solveScreen}
+              screenDisabled={audio.status !== 'live'}
+              disabled={!isActive}
+              connection={connection}
+              tail={answerTail}
+            />
+            <LatencyDrawer answers={answers} />
           </div>
+        </section>
+      ) : null}
 
-          <div className={styles.controlGrid}>
-            <button className="button buttonPrimary" onClick={startSession} disabled={isActive || submitting} type="button">
-              {submitting && !isActive ? 'Starting…' : 'Start session'}
-            </button>
-            <button className="button buttonDanger" onClick={stopSession} disabled={!isActive || submitting} type="button">
-              {submitting && isActive ? 'Stopping…' : 'Stop session'}
-            </button>
-            <div className={styles.inlineMeta}>
-              <span className="small">Stream</span>
-              <span className="badge" aria-live="polite">{streamState}</span>
-            </div>
-          </div>
-
-          {session ? (
-            <p className="small mono" style={{ margin: 0 }}>
-              Session {session.id.slice(0, 8)} · {session.status} · {new Date(session.started_at).toLocaleString()}
-            </p>
-          ) : (
-            <p className="small" style={{ margin: 0 }}>No active session yet.</p>
-          )}
-
-          {/* T4: Overlay controls with hotkey hints and performance instrumentation */}
-          <section className={styles.settingsCard} aria-label="Overlay controls">
-            <div className={styles.panelHeader}>
-              <h3 className={styles.sectionTitle} style={{ margin: 0 }}>Overlay controls</h3>
-              <span className="small">Hotkeys: Ctrl+H (hide/show), Ctrl+M (mute), Ctrl+T (timer)</span>
-            </div>
-            <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
-              <button
-                className="button"
-                type="button"
-                onClick={() => {
-                  const start = performance.now();
-                  setOverlayVisible((prev) => {
-                    const latencyMs = Math.round(performance.now() - start);
-                    setInteractionLatency({ action: 'toggleOverlay', latencyMs });
-                    sloClient.recordMetric(SLO_TYPE_OVERLAY_INTERACTION, 'toggleOverlay', latencyMs);
-                    updateSLOCompliance();
-                    
-                    return !prev;
-                  });
-                }}
-                aria-pressed={overlayVisible}
-              >
-                {overlayVisible ? 'Hide Overlay' : 'Show Overlay'}
-              </button>
-              <button
-                className="button"
-                type="button"
-                onClick={() => {
-                  const start = performance.now();
-                  setOverlayMuted((prev) => {
-                    const latencyMs = Math.round(performance.now() - start);
-                    setInteractionLatency({ action: 'toggleMute', latencyMs });
-                    sloClient.recordMetric(SLO_TYPE_OVERLAY_INTERACTION, 'toggleMute', latencyMs);
-                    updateSLOCompliance();
-                    
-                    return !prev;
-                  });
-                }}
-                aria-pressed={overlayMuted}
-              >
-                {overlayMuted ? 'Unmute' : 'Mute'}
-              </button>
-              <button
-                className="button"
-                type="button"
-                onClick={() => {
-                  const start = performance.now();
-                  setOverlayTimerRunning((prev) => {
-                    const latencyMs = Math.round(performance.now() - start);
-                    setInteractionLatency({ action: 'toggleTimer', latencyMs });
-                    sloClient.recordMetric(SLO_TYPE_OVERLAY_INTERACTION, 'toggleTimer', latencyMs);
-                    updateSLOCompliance();
-                    
-                    return !prev;
-                  });
-                }}
-                aria-pressed={overlayTimerRunning}
-              >
-                {overlayTimerRunning ? 'Pause Timer' : 'Start Timer'}
-              </button>
-              <button
-                className="button"
-                type="button"
-                onClick={() => {
-                  const start = performance.now();
-                  setOverlayTimerSeconds(0);
-                  setOverlayTimerRunning(false);
-                  const latencyMs = Math.round(performance.now() - start);
-                  setInteractionLatency({ action: 'resetTimer', latencyMs });
-                  sloClient.recordMetric(SLO_TYPE_OVERLAY_INTERACTION, 'resetTimer', latencyMs);
-                  updateSLOCompliance();
-                  
-                }}
-                disabled={overlayTimerSeconds === 0}
-              >
-                Reset Timer
-              </button>
-              <span className="badge" style={{ fontSize: '1rem', padding: '6px 12px' }}>
-                {Math.floor(overlayTimerSeconds / 60).toString().padStart(2, '0')}:{(overlayTimerSeconds % 60).toString().padStart(2, '0')}
-              </span>
-              {overlayMuted && <span className="badge badgeDanger">Muted</span>}
-            </div>
-            {/* Performance metrics display for SLO verification */}
-            {interactionLatency.latencyMs !== null && (
-              <p className="small" style={{ margin: '8px 0 0' }}>
-                Last interaction: <strong>{interactionLatency.action}</strong> — <strong>{interactionLatency.latencyMs}ms</strong>
-                {interactionLatency.latencyMs <= 100 ? (
-                  <span className="success" style={{ marginLeft: 8 }}>✓ Within SLO (&lt;100ms)</span>
-                ) : (
-                  <span className="error" style={{ marginLeft: 8 }}>⚠ Exceeds SLO (&lt;100ms)</span>
-                )}
-              </p>
-            )}
-          </section>
-
-          {/* PRD T4: Real-time SLO compliance status display */}
-          <section className={styles.settingsCard} aria-label="SLO compliance status">
-            <div className={styles.panelHeader}>
-              <h3 className={styles.sectionTitle} style={{ margin: 0 }}>SLO Compliance</h3>
-              <span className="small">Real-time performance</span>
-            </div>
-            <div className={styles.metricGrid}>
-              {sloCompliance.map((compliance) => {
-                const isOverlay = compliance.type === 'overlay_interaction';
-                const targetLabel = isOverlay ? 'Overlay Interaction' : 'Transcript → Suggestion';
-                const targetSlo = isOverlay ? '<100ms' : '<3s';
-                
-                return (
-                  <div key={compliance.type} className={styles.metricCard}>
-                    <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span className="small" style={{ fontWeight: 600 }}>{targetLabel}</span>
-                      <span className={`badge ${compliance.currentStatus === 'healthy' ? styles.badgeActive : compliance.currentStatus === 'warning' ? '' : styles.badgeDanger}`}>
-                        {getStatusEmoji(compliance.currentStatus)} {compliance.currentStatus}
-                      </span>
-                    </div>
-                    {compliance.totalSamples > 0 ? (
-                      <>
-                        <div className="row" style={{ gap: 12, marginTop: 4 }}>
-                          <span className="small">p50: <strong>{formatLatency(compliance.p50)}</strong></span>
-                          <span className="small">p95: <strong>{formatLatency(compliance.p95)}</strong></span>
-                        </div>
-                        <div className={styles.progressTrack} style={{ marginTop: 6 }}>
-                          <span
-                            className={`${styles.progressFill} ${compliance.p95 <= (isOverlay ? 100 : 3000) ? styles.progressFillhigh : compliance.p95 <= (isOverlay ? 150 : 4000) ? styles.progressFillmedium : styles.progressFilllow}`}
-                            style={{ width: `${Math.min(100, (compliance.withinTarget / compliance.totalSamples) * 100)}%` }}
-                          />
-                        </div>
-                        <span className="small" style={{ color: 'var(--muted)' }}>
-                          {compliance.withinTarget}/{compliance.totalSamples} within SLO ({targetSlo})
-                        </span>
-                      </>
-                    ) : (
-                      <p className="small" style={{ margin: '4px 0 0', color: 'var(--muted)' }}>
-                        No samples yet. Interact to collect metrics.
-                      </p>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-            {/* Recent metrics mini-display */}
-            {recentSloMetrics.length > 0 && (
-              <div style={{ marginTop: 8 }}>
-                <span className="small" style={{ display: 'block', marginBottom: 4 }}>Recent:</span>
-                <div className="row" style={{ gap: 4, flexWrap: 'wrap' }}>
-                  {recentSloMetrics.slice(-5).reverse().map((metric, idx) => (
-                    <span
-                      key={`${metric.timestamp}-${idx}`}
-                      className="badge"
-                      style={{
-                        fontSize: '0.75rem',
-                        padding: '2px 6px',
-                        borderColor: metric.status === 'healthy' ? 'rgba(26, 194, 115, 0.5)' : metric.status === 'warning' ? 'rgba(255, 191, 91, 0.5)' : 'rgba(255, 92, 138, 0.5)',
-                      }}
-                      title={`${metric.action}: ${metric.latencyMs}ms`}
-                    >
-                      {formatLatency(metric.latencyMs)}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-          </section>
-
-          {/* T10: Coding copilot "no full code" guardrail */}
-          {mode === 'coding' && (
-            <section className={styles.settingsCard} aria-label="Coding copilot guardrail settings">
-              <div className={styles.panelHeader}>
-                <h3 className={styles.sectionTitle} style={{ margin: 0 }}>Coding guardrail</h3>
-              </div>
-              <label className="row" style={{ gap: 8, alignItems: 'center', cursor: 'pointer' }}>
-                <input
-                  type="checkbox"
-                  checked={noFullCodeMode}
-                  onChange={(e) => {
-                    setNoFullCodeMode(e.target.checked);
-                    if (!e.target.checked) setNoFullCodeAcknowledged(false);
-                  }}
-                  disabled={!isActive}
-                />
-                <span>Enable &quot;no full code&quot; mode</span>
-                <span className="badge">{noFullCodeMode ? 'ON' : 'OFF'}</span>
-              </label>
-              {noFullCodeMode && !noFullCodeAcknowledged && (
-                <div className={styles.actionCard} style={{ marginTop: 8, borderColor: 'rgba(255, 191, 91, 0.45)', background: 'rgba(255, 191, 91, 0.08)' }}>
-                  <p className="small" style={{ margin: 0 }}>
-                    <strong>Learning mode:</strong> When enabled, the copilot will provide hints and guidance but will not show complete solutions.
-                    This helps you learn by working through problems rather than copying answers.
-                  </p>
-                  <label className="row" style={{ gap: 8, alignItems: 'center', marginTop: 8 }}>
-                    <input
-                      type="checkbox"
-                      checked={noFullCodeAcknowledged}
-                      onChange={(e) => setNoFullCodeAcknowledged(e.target.checked)}
-                    />
-                    <span className="small">I understand that full solutions will be blocked in this mode</span>
-                  </label>
-                </div>
-              )}
-              {noFullCodeMode && noFullCodeAcknowledged && (
-                <p className="small success" style={{ margin: '8px 0 0' }}>
-                  ✓ &quot;No full code&quot; mode active — hints and guidance only
-                </p>
-              )}
-            </section>
-          )}
-
+      <section className="card" aria-label="Typed lines and tools">
+        <div className="cardInner stack" style={{ gap: 14 }}>
           <div className={styles.composerCard}>
             <div className={styles.composerHeader}>
               <h3 className={styles.sectionTitle}>Transcript composer</h3>
               <div className={styles.chipRow}>
-                <span className="badge">Mic {listening ? 'on' : 'off'}</span>
-                <span className="badge">{micSyncing ? 'Transcribing…' : 'Synced'}</span>
+                <span className="badge">Audio {audio.status === 'live' ? 'live' : 'off'}</span>
+                <span className="badge">{micSyncing && isActive ? 'Transcribing…' : 'Synced'}</span>
                 {lastMicSyncAt ? <span className="small mono">{new Date(lastMicSyncAt).toLocaleTimeString()}</span> : null}
               </div>
             </div>
@@ -1620,7 +1447,7 @@ export function LiveCopilotClient() {
                 value={draftSpeaker}
                 onChange={(e) => setDraftSpeaker(e.target.value as 'interviewer' | 'candidate')}
                 disabled={!isActive || submitting}
-                aria-label="Transcript speaker"
+                aria-label="Speaker for the typed line"
               >
                 <option value="interviewer">Interviewer</option>
                 <option value="candidate">Candidate</option>
@@ -1632,9 +1459,6 @@ export function LiveCopilotClient() {
                 disabled={!isActive || !draftText.trim() || submitting}
               >
                 {submitting && isActive ? 'Sending…' : 'Send line'}
-              </button>
-              <button className="button" type="button" onClick={listening ? stopListening : startListening} disabled={!isActive || submitting}>
-                {listening ? 'Stop mic' : 'Start mic'}
               </button>
               <button className="button" type="button" onClick={injectFillerLine} disabled={!isActive || submitting}>
                 Add 10-sec filler
@@ -1653,16 +1477,179 @@ export function LiveCopilotClient() {
               disabled={!isActive || submitting}
             />
             <p className="small" style={{ margin: 0 }}>
-              Shortcuts: Ctrl/Cmd+Enter send · Ctrl/Cmd+M mic toggle · Ctrl/Cmd+K focus composer
+              Shortcuts: Ctrl/Cmd+Enter send · Ctrl/Cmd+M start/stop listening · Ctrl/Cmd+K focus composer
             </p>
-            {listening ? (
-              <p className="small" style={{ margin: 0 }}>
-                Live mic preview: {micPreview || 'Listening…'}
-              </p>
-            ) : null}
           </div>
 
-          {error ? <div className="error" role="status" aria-live="polite">{error}</div> : null}
+          <details className={styles.settingsCard}>
+            <summary className="small" style={{ cursor: 'pointer' }}>
+              <strong>Diagnostics</strong>: overlay controls and SLO compliance
+            </summary>
+            {/* T4: Overlay controls with hotkey hints and performance instrumentation */}
+            <section className={styles.settingsCard} aria-label="Overlay controls">
+              <div className={styles.panelHeader}>
+                <h3 className={styles.sectionTitle} style={{ margin: 0 }}>Overlay controls</h3>
+                <span className="small">Hotkeys: Ctrl+H (hide/show), Ctrl+M (mute), Ctrl+T (timer)</span>
+              </div>
+              <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+                <button
+                  className="button"
+                  type="button"
+                  onClick={() => {
+                    const start = performance.now();
+                    setOverlayVisible((prev) => {
+                      const latencyMs = Math.round(performance.now() - start);
+                      setInteractionLatency({ action: 'toggleOverlay', latencyMs });
+                      sloClient.recordMetric(SLO_TYPE_OVERLAY_INTERACTION, 'toggleOverlay', latencyMs);
+                      updateSLOCompliance();
+                      
+                      return !prev;
+                    });
+                  }}
+                  aria-pressed={overlayVisible}
+                >
+                  {overlayVisible ? 'Hide Overlay' : 'Show Overlay'}
+                </button>
+                <button
+                  className="button"
+                  type="button"
+                  onClick={() => {
+                    const start = performance.now();
+                    setOverlayMuted((prev) => {
+                      const latencyMs = Math.round(performance.now() - start);
+                      setInteractionLatency({ action: 'toggleMute', latencyMs });
+                      sloClient.recordMetric(SLO_TYPE_OVERLAY_INTERACTION, 'toggleMute', latencyMs);
+                      updateSLOCompliance();
+                      
+                      return !prev;
+                    });
+                  }}
+                  aria-pressed={overlayMuted}
+                >
+                  {overlayMuted ? 'Unmute' : 'Mute'}
+                </button>
+                <button
+                  className="button"
+                  type="button"
+                  onClick={() => {
+                    const start = performance.now();
+                    setOverlayTimerRunning((prev) => {
+                      const latencyMs = Math.round(performance.now() - start);
+                      setInteractionLatency({ action: 'toggleTimer', latencyMs });
+                      sloClient.recordMetric(SLO_TYPE_OVERLAY_INTERACTION, 'toggleTimer', latencyMs);
+                      updateSLOCompliance();
+                      
+                      return !prev;
+                    });
+                  }}
+                  aria-pressed={overlayTimerRunning}
+                >
+                  {overlayTimerRunning ? 'Pause Timer' : 'Start Timer'}
+                </button>
+                <button
+                  className="button"
+                  type="button"
+                  onClick={() => {
+                    const start = performance.now();
+                    setOverlayTimerSeconds(0);
+                    setOverlayTimerRunning(false);
+                    const latencyMs = Math.round(performance.now() - start);
+                    setInteractionLatency({ action: 'resetTimer', latencyMs });
+                    sloClient.recordMetric(SLO_TYPE_OVERLAY_INTERACTION, 'resetTimer', latencyMs);
+                    updateSLOCompliance();
+                    
+                  }}
+                  disabled={overlayTimerSeconds === 0}
+                >
+                  Reset Timer
+                </button>
+                <span className="badge" style={{ fontSize: '1rem', padding: '6px 12px' }}>
+                  {Math.floor(overlayTimerSeconds / 60).toString().padStart(2, '0')}:{(overlayTimerSeconds % 60).toString().padStart(2, '0')}
+                </span>
+                {overlayMuted && <span className="badge badgeDanger">Muted</span>}
+              </div>
+              {/* Performance metrics display for SLO verification */}
+              {interactionLatency.latencyMs !== null && (
+                <p className="small" style={{ margin: '8px 0 0' }}>
+                  Last interaction: <strong>{interactionLatency.action}</strong> — <strong>{interactionLatency.latencyMs}ms</strong>
+                  {interactionLatency.latencyMs <= 100 ? (
+                    <span className="success" style={{ marginLeft: 8 }}>✓ Within SLO (&lt;100ms)</span>
+                  ) : (
+                    <span className="error" style={{ marginLeft: 8 }}>⚠ Exceeds SLO (&lt;100ms)</span>
+                  )}
+                </p>
+              )}
+            </section>
+
+            {/* PRD T4: Real-time SLO compliance status display */}
+            <section className={styles.settingsCard} aria-label="SLO compliance status">
+              <div className={styles.panelHeader}>
+                <h3 className={styles.sectionTitle} style={{ margin: 0 }}>SLO Compliance</h3>
+                <span className="small">Real-time performance</span>
+              </div>
+              <div className={styles.metricGrid}>
+                {sloCompliance.map((compliance) => {
+                  const isOverlay = compliance.type === 'overlay_interaction';
+                  const targetLabel = isOverlay ? 'Overlay Interaction' : 'Transcript → Suggestion';
+                  const targetSlo = isOverlay ? '<100ms' : '<3s';
+                  
+                  return (
+                    <div key={compliance.type} className={styles.metricCard}>
+                      <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span className="small" style={{ fontWeight: 600 }}>{targetLabel}</span>
+                        <span className={`badge ${compliance.currentStatus === 'healthy' ? styles.badgeActive : compliance.currentStatus === 'warning' ? '' : styles.badgeDanger}`}>
+                          {getStatusEmoji(compliance.currentStatus)} {compliance.currentStatus}
+                        </span>
+                      </div>
+                      {compliance.totalSamples > 0 ? (
+                        <>
+                          <div className="row" style={{ gap: 12, marginTop: 4 }}>
+                            <span className="small">p50: <strong>{formatLatency(compliance.p50)}</strong></span>
+                            <span className="small">p95: <strong>{formatLatency(compliance.p95)}</strong></span>
+                          </div>
+                          <div className={styles.progressTrack} style={{ marginTop: 6 }}>
+                            <span
+                              className={`${styles.progressFill} ${compliance.p95 <= (isOverlay ? 100 : 3000) ? styles.progressFillhigh : compliance.p95 <= (isOverlay ? 150 : 4000) ? styles.progressFillmedium : styles.progressFilllow}`}
+                              style={{ width: `${Math.min(100, (compliance.withinTarget / compliance.totalSamples) * 100)}%` }}
+                            />
+                          </div>
+                          <span className="small" style={{ color: 'var(--muted)' }}>
+                            {compliance.withinTarget}/{compliance.totalSamples} within SLO ({targetSlo})
+                          </span>
+                        </>
+                      ) : (
+                        <p className="small" style={{ margin: '4px 0 0', color: 'var(--muted)' }}>
+                          No samples yet. Interact to collect metrics.
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              {/* Recent metrics mini-display */}
+              {recentSloMetrics.length > 0 && (
+                <div style={{ marginTop: 8 }}>
+                  <span className="small" style={{ display: 'block', marginBottom: 4 }}>Recent:</span>
+                  <div className="row" style={{ gap: 4, flexWrap: 'wrap' }}>
+                    {recentSloMetrics.slice(-5).reverse().map((metric, idx) => (
+                      <span
+                        key={`${metric.timestamp}-${idx}`}
+                        className="badge"
+                        style={{
+                          fontSize: '0.75rem',
+                          padding: '2px 6px',
+                          borderColor: metric.status === 'healthy' ? 'rgba(26, 194, 115, 0.5)' : metric.status === 'warning' ? 'rgba(255, 191, 91, 0.5)' : 'rgba(255, 92, 138, 0.5)',
+                        }}
+                        title={`${metric.action}: ${metric.latencyMs}ms`}
+                      >
+                        {formatLatency(metric.latencyMs)}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </section>
+          </details>
         </div>
       </section>
 
@@ -1677,7 +1664,7 @@ export function LiveCopilotClient() {
               tabIndex={activePanel === 'live' ? 0 : -1}
               aria-selected={activePanel === 'live'}
               aria-controls="copilot-panel-live"
-              onClick={() => setActivePanel('live')}
+              onClick={() => selectPanel('live')}
             >
               Live feed
             </button>
@@ -1689,7 +1676,7 @@ export function LiveCopilotClient() {
               tabIndex={activePanel === 'analytics' ? 0 : -1}
               aria-selected={activePanel === 'analytics'}
               aria-controls="copilot-panel-analytics"
-              onClick={() => setActivePanel('analytics')}
+              onClick={() => selectPanel('analytics')}
             >
               Analytics
             </button>
@@ -1718,100 +1705,8 @@ export function LiveCopilotClient() {
             </div>
           </section>
           <div className={liveLayout === 'split' ? 'grid2' : 'stack'} style={{ alignItems: 'start' }}>
-            {liveLayout !== 'suggestions' ? <section className="card" aria-label="Live transcript panel">
-              <div className="cardInner stack" style={{ gap: 12 }}>
-                <div className={styles.panelHeader}>
-                  <h2 className="cardTitle">Transcript</h2>
-                  <span className="small">{transcriptRows.length} lines</span>
-                </div>
-                {!isActive && transcriptRows.length === 0 ? <p className={styles.emptyState}>Start a session to capture transcript lines.</p> : null}
-                {isActive && transcriptRows.length === 0 ? <p className={styles.emptyState}>Waiting for transcript input…</p> : null}
-                <ol className={styles.feedList}>
-                  {transcriptRows.map((row) => (
-                    <li key={row.id} className={styles.feedCard}>
-                      <div className={styles.feedMeta}>
-                        <span className="badge">{row.speaker}</span>
-                        <span className="small mono">{new Date(row.created_at).toLocaleTimeString()}</span>
-                      </div>
-                      <p className={styles.feedText}>{row.text}</p>
-                    </li>
-                  ))}
-                </ol>
-              </div>
-            </section> : null}
-
-            {liveLayout !== 'transcript' ? <section className="card" aria-label="Live suggestions panel">
-              <div className="cardInner stack" style={{ gap: 12 }}>
-                <div className={styles.panelHeader}>
-                  <h2 className="cardTitle">Suggestions</h2>
-                  <span className="small">{suggestionRows.length} tips</span>
-                </div>
-                {!isActive && suggestionRows.length === 0 ? (
-                  <p className={styles.emptyState}>Start a session and send transcript lines to get suggestions.</p>
-                ) : null}
-                {isActive && suggestionRows.length === 0 ? (
-                  <p className={styles.emptyState}>Suggestions will appear after transcript lines are sent.</p>
-                ) : null}
-                <ol className={styles.feedList}>
-                  {suggestionRows.map((row) => (
-                    <li key={row.id} className={styles.feedCard}>
-                      <div className={styles.feedMeta}>
-                        <span className="badge">{row.category}</span>
-                        <span className="small mono">{new Date(row.created_at).toLocaleTimeString()}</span>
-                      </div>
-                      <p className={styles.feedText}>{row.text}</p>
-                      {row.complexity ? (
-                        <p className="small" style={{ margin: 0 }}>
-                          <strong>Complexity:</strong> {row.complexity}
-                        </p>
-                      ) : null}
-                      {row.edgeCases.length ? (
-                        <div>
-                          <p className="small" style={{ margin: '0 0 4px' }}>
-                            <strong>Edge cases</strong>
-                          </p>
-                          <ul className={styles.pointsList}>
-                            {row.edgeCases.map((edgeCase, idx) => (
-                              <li key={`${row.id}-edge-${idx}`} className="small">
-                                {edgeCase}
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      ) : null}
-                      {row.checklist.length ? (
-                        <div>
-                          <p className="small" style={{ margin: '0 0 4px' }}>
-                            <strong>Checklist</strong>
-                          </p>
-                          <ul className={styles.pointsList}>
-                            {row.checklist.map((item, idx) => (
-                              <li key={`${row.id}-check-${idx}`} className="small">
-                                {item}
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      ) : null}
-                      {row.talkingPoints.length ? (
-                        <ul className={styles.pointsList}>
-                          {row.talkingPoints.map((point, idx) => (
-                            <li key={`${row.id}-point-${idx}`} className="small">
-                              {point}
-                            </li>
-                          ))}
-                        </ul>
-                      ) : null}
-                      {row.followUp ? (
-                        <p className="small" style={{ margin: 0 }}>
-                          <strong>Follow-up:</strong> {row.followUp}
-                        </p>
-                      ) : null}
-                    </li>
-                  ))}
-                </ol>
-              </div>
-            </section> : null}
+            {liveLayout !== 'suggestions' ? <TranscriptFeed rows={transcriptRows} isActive={isActive} /> : null}
+            {liveLayout !== 'transcript' ? <SuggestionFeed rows={suggestionRows} isActive={isActive} /> : null}
           </div>
 
           <section className="card" aria-label="Session summary">
@@ -2024,7 +1919,7 @@ export function LiveCopilotClient() {
                 {selectedHistoryId && detailError ? (
                   <div className="stack" style={{ gap: 10 }}>
                     <div className="error">{detailError}</div>
-                    <button className="button" type="button" onClick={() => void loadHistoryDetail(selectedHistoryId)}>
+                    <button className="button" type="button" onClick={retryHistoryDetail}>
                       Retry loading details
                     </button>
                   </div>
@@ -2061,6 +1956,15 @@ export function LiveCopilotClient() {
                       <div className={styles.metricCard}><span className="small">Suggestions</span><strong>{historyInsights.suggestions}</strong></div>
                       <div className={styles.metricCard}><span className="small">System events</span><strong>{historyEventBreakdown.systems.length}</strong></div>
                     </div>
+
+                    {historyEventBreakdown.latency.turns > 0 ? (
+                      <div className={styles.summaryCard}>
+                        <LatencyTable
+                          summary={historyEventBreakdown.latency.stages}
+                          caption={`Latency per stage: ${historyEventBreakdown.latency.outcomes.answered} answered, ${historyEventBreakdown.latency.outcomes.superseded} replaced, ${historyEventBreakdown.latency.outcomes.error} failed`}
+                        />
+                      </div>
+                    ) : null}
 
                     <div className={styles.summaryColumns}>
                       <article className={styles.summaryCard}>

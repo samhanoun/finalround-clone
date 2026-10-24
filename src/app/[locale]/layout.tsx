@@ -4,6 +4,7 @@ import { NextIntlClientProvider } from 'next-intl';
 import { getMessages } from 'next-intl/server';
 import { notFound } from 'next/navigation';
 import { routing } from '@/i18n/routing';
+import { ClientProviders } from '@/components/ClientProviders';
 import '@/app/globals.css';
 
 const geistSans = Geist({
@@ -90,7 +91,8 @@ export default async function RootLayout({
         />
         
         <NextIntlClientProvider messages={messages}>
-          {children}
+          {/* Toasts: DashboardClient, JobsClient, ResumeClient and SettingsClient call useToast. */}
+          <ClientProviders>{children}</ClientProviders>
         </NextIntlClientProvider>
       </body>
     </html>

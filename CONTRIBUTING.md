@@ -65,7 +65,7 @@ src/
 │   └── (page routes)
 ├── lib/                    # Shared utilities
 │   ├── supabase/          # Supabase clients (server, browser, admin)
-│   ├── sttProviders/      # Speech-to-text integrations
+│   ├── stt/               # Live speech-to-text (Deepgram streaming)
 │   └── ...
 └── styles/                # Global styles
 ```

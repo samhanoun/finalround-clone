@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { ShareMenu } from './SocialShareButton';
 
 type Badge = {
@@ -46,21 +46,21 @@ export function BadgesList() {
   const [loading, setLoading] = useState(true);
   const [selectedBadge, setSelectedBadge] = useState<Badge | null>(null);
 
-  const fetchBadges = useCallback(async () => {
-    try {
-      const response = await fetch('/api/badges');
-      const data = await response.json();
-      setBadges(data.badges || []);
-    } catch (error) {
-      console.error('Failed to fetch badges:', error);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
   useEffect(() => {
+    const fetchBadges = async () => {
+      try {
+        const response = await fetch('/api/badges');
+        const data = await response.json();
+        setBadges(data.badges || []);
+      } catch (error) {
+        console.error('Failed to fetch badges:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
     fetchBadges();
-  }, [fetchBadges]);
+  }, []);
 
   const handleShare = async (platform: string) => {
     if (!selectedBadge) return;

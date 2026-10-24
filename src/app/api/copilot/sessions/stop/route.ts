@@ -3,16 +3,14 @@ import { z } from 'zod';
 import { jsonError } from '@/lib/api';
 import { createClient } from '@/lib/supabase/server';
 import { rateLimit } from '@/lib/rateLimit';
-import {
-  getBillableMinutes,
-  getCopilotQuotaSnapshot,
-  getElapsedUsage,
-  recordCopilotUsage,
-} from '@/lib/copilot';
+import { endCopilotSession } from '@/lib/copilot/endSession';
 import { revokeConsentMetadata } from '@/lib/copilotConsent';
+import { summarizeLatencyEvents } from '@/lib/copilot/latency';
 
 const BodySchema = z.object({
   sessionId: z.string().uuid(),
+  /** Why the session ended: the Stop button, the tab closing, or meeting audio sharing stopping. */
+  reason: z.enum(['user', 'tab_closed', 'sharing_stopped']).default('user'),
 });
 
 export async function POST(req: NextRequest) {
@@ -49,36 +47,42 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  const usage = getElapsedUsage(session.started_at);
-  const quota = await getCopilotQuotaSnapshot(userId);
-  const billableMinutes = getBillableMinutes(usage.elapsedMinutes, quota);
-
-  await recordCopilotUsage(userId, billableMinutes);
+  // Latency per stage for this session (Step 6): stored on the session and logged.
+  const { data: latencyRows } = await supabase
+    .from('copilot_events')
+    .select('payload')
+    .eq('session_id', session.id)
+    .eq('event_type', 'system')
+    .eq('payload->>kind', 'latency')
+    .limit(1000);
+  const latencySummary = summarizeLatencyEvents((latencyRows ?? []).map((row) => row.payload));
+  console.log(
+    JSON.stringify({ scope: 'copilot', event: 'latency_summary', sessionId: session.id, reason: parse.data.reason, ...latencySummary }),
+  );
 
   // Revoke consent when session is stopped
   const nowIso = new Date().toISOString();
   const consentRevocation = revokeConsentMetadata(session.metadata, nowIso);
 
-  const { data: updated, error: updateError } = await supabase
-    .from('copilot_sessions')
-    .update({
-      status: 'stopped',
-      stopped_at: nowIso,
-      duration_seconds: usage.elapsedSeconds,
-      consumed_minutes: billableMinutes,
-      metadata: {
-        ...(typeof session.metadata === 'object' && session.metadata !== null ? session.metadata : {}),
-        quota_snapshot: quota,
-        requested_minutes: usage.elapsedMinutes,
-        ...consentRevocation,
-      },
-    })
-    .eq('id', session.id)
-    .eq('user_id', userId)
-    .select('id, user_id, interview_session_id, title, metadata, status, started_at, stopped_at, duration_seconds, consumed_minutes, created_at, updated_at')
-    .single();
+  // Charges the minutes and closes the session (service role, once).
+  const { ended, error: endError } = await endCopilotSession(session, {
+    status: 'stopped',
+    endedAt: new Date(nowIso),
+    metadata: {
+      stop_reason: parse.data.reason,
+      latency_summary: { ...latencySummary, computed_at: nowIso },
+      ...consentRevocation,
+    },
+  });
+  if (endError) return jsonError(500, 'db_error', endError);
 
-  if (updateError) return jsonError(500, 'db_error', updateError);
+  // Another request (an expiry, a second Stop) ended it first and charged it.
+  if (!ended.session) {
+    return NextResponse.json({ session, usage: { already_stopped: true } });
+  }
+
+  const { usage, billableMinutes, quota } = ended;
+  const updated = ended.session;
 
   return NextResponse.json({
     session: updated,

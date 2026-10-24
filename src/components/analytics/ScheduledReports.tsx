@@ -25,21 +25,21 @@ export function ScheduledReports() {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
+    async function fetchReports() {
+      try {
+        const res = await fetch('/api/analytics/reports');
+        if (!res.ok) throw new Error('Failed to fetch reports');
+        const data = await res.json();
+        setReports(data.reports || []);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Failed to load');
+      } finally {
+        setLoading(false);
+      }
+    }
+
     fetchReports();
   }, []);
-
-  async function fetchReports() {
-    try {
-      const res = await fetch('/api/analytics/reports');
-      if (!res.ok) throw new Error('Failed to fetch reports');
-      const data = await res.json();
-      setReports(data.reports || []);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to load');
-    } finally {
-      setLoading(false);
-    }
-  }
 
   async function handleCreateReport(e: React.FormEvent) {
     e.preventDefault();

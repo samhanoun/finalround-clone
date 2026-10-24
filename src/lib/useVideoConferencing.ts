@@ -308,42 +308,47 @@ export function useAudioCapture(
   };
 }
 
+type DetectedPlatform = {
+  platform: VideoPlatform | 'unknown';
+  confidence: number;
+  isActive: boolean;
+};
+
+/** Asks the server which meeting platform the current page is on; null if the request fails. */
+async function requestPlatformDetection(): Promise<DetectedPlatform | null> {
+  const res = await fetch('/api/video-sessions/detect', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url: window.location.href, title: document.title }),
+  });
+  if (!res.ok) return null;
+
+  const data = await res.json();
+  return {
+    platform: data.platform,
+    confidence: data.confidence,
+    isActive: data.isMeetingActive,
+  };
+}
+
 /**
  * Hook for platform auto-detection
  */
 export function usePlatformDetection() {
-  const [currentPlatform, setCurrentPlatform] = useState<{
-    platform: VideoPlatform | 'unknown';
-    confidence: number;
-    isActive: boolean;
-  }>({
+  const [currentPlatform, setCurrentPlatform] = useState<DetectedPlatform>({
     platform: 'unknown',
     confidence: 0,
     isActive: false,
   });
-  const [isDetecting, setIsDetecting] = useState(false);
+  // Detection starts on mount.
+  const [isDetecting, setIsDetecting] = useState(true);
 
   const detectPlatform = useCallback(async () => {
     setIsDetecting(true);
-    
+
     try {
-      const url = window.location.href;
-      const title = document.title;
-      
-      const res = await fetch('/api/video-sessions/detect', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url, title }),
-      });
-      
-      if (res.ok) {
-        const data = await res.json();
-        setCurrentPlatform({
-          platform: data.platform,
-          confidence: data.confidence,
-          isActive: data.isMeetingActive,
-        });
-      }
+      const detected = await requestPlatformDetection();
+      if (detected) setCurrentPlatform(detected);
     } catch (error) {
       console.error('Failed to detect platform:', error);
     } finally {
@@ -353,8 +358,18 @@ export function usePlatformDetection() {
 
   // Detect on mount and URL changes
   useEffect(() => {
-    detectPlatform();
-    
+    const detectOnMount = async () => {
+      try {
+        const detected = await requestPlatformDetection();
+        if (detected) setCurrentPlatform(detected);
+      } catch (error) {
+        console.error('Failed to detect platform:', error);
+      } finally {
+        setIsDetecting(false);
+      }
+    };
+    void detectOnMount();
+
     // Listen for URL changes (for SPAs)
     const observer = new MutationObserver(() => {
       detectPlatform();

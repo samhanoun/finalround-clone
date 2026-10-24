@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 
 type Tab = 'overview' | 'users' | 'subscriptions' | 'fraud' | 'tickets';
 
@@ -68,49 +68,69 @@ export default function AdminDashboard() {
   const [searchQuery, setSearchQuery] = useState('');
   const [page] = useState(1);
 
-  const fetchData = useCallback(async () => {
+  // Data is refetched when the tab, page or search changes, or when an admin
+  // action bumps reloadKey. Loading starts as soon as any of them changes.
+  const [reloadKey, setReloadKey] = useState(0);
+  const fetchKey = `${activeTab}|${page}|${searchQuery}|${reloadKey}`;
+  const [loadingKey, setLoadingKey] = useState(fetchKey);
+  if (loadingKey !== fetchKey) {
+    setLoadingKey(fetchKey);
     setLoading(true);
-    try {
-      if (activeTab === 'overview') {
-        const res = await fetch('/api/admin/analytics?period=30d');
-        const data = await res.json();
-        if (data.totals) {
-          setStats({
-            totalUsers: data.totals.totalUsers || 0,
-            activeUsers: data.totals.activeUsers || 0,
-            totalRevenue: data.totals.totalRevenue || 0,
-            activeSubscriptions: data.totals.activeSubscriptions || 0,
-            openTickets: data.totals.ticketsOpened || 0,
-            openFraudFlags: data.totals.fraudFlags || 0
-          });
-        }
-      } else if (activeTab === 'users') {
-        const res = await fetch(`/api/admin/users?page=${page}&limit=20&search=${searchQuery}`);
-        const data = await res.json();
-        setUsers(data.users || []);
-      } else if (activeTab === 'subscriptions') {
-        const res = await fetch(`/api/admin/subscriptions?page=${page}&limit=20`);
-        const data = await res.json();
-        setSubscriptions(data.subscriptions || []);
-      } else if (activeTab === 'fraud') {
-        const res = await fetch(`/api/admin/fraud?page=${page}&limit=20&resolved=false`);
-        const data = await res.json();
-        setFraudFlags(data.flags || []);
-      } else if (activeTab === 'tickets') {
-        const res = await fetch(`/api/admin/tickets?page=${page}&limit=20&status=open`);
-        const data = await res.json();
-        setTickets(data.tickets || []);
-      }
-    } catch (error) {
-      console.error('Error fetching data:', error);
-    } finally {
-      setLoading(false);
-    }
-  }, [activeTab, page, searchQuery]);
+  }
 
   useEffect(() => {
+    // A response for an outdated request (e.g. an earlier search) is dropped.
+    let cancelled = false;
+
+    const fetchData = async () => {
+      try {
+        if (activeTab === 'overview') {
+          const res = await fetch('/api/admin/analytics?period=30d');
+          const data = await res.json();
+          if (cancelled) return;
+          if (data.totals) {
+            setStats({
+              totalUsers: data.totals.totalUsers || 0,
+              activeUsers: data.totals.activeUsers || 0,
+              totalRevenue: data.totals.totalRevenue || 0,
+              activeSubscriptions: data.totals.activeSubscriptions || 0,
+              openTickets: data.totals.ticketsOpened || 0,
+              openFraudFlags: data.totals.fraudFlags || 0
+            });
+          }
+        } else if (activeTab === 'users') {
+          const res = await fetch(`/api/admin/users?page=${page}&limit=20&search=${searchQuery}`);
+          const data = await res.json();
+          if (cancelled) return;
+          setUsers(data.users || []);
+        } else if (activeTab === 'subscriptions') {
+          const res = await fetch(`/api/admin/subscriptions?page=${page}&limit=20`);
+          const data = await res.json();
+          if (cancelled) return;
+          setSubscriptions(data.subscriptions || []);
+        } else if (activeTab === 'fraud') {
+          const res = await fetch(`/api/admin/fraud?page=${page}&limit=20&resolved=false`);
+          const data = await res.json();
+          if (cancelled) return;
+          setFraudFlags(data.flags || []);
+        } else if (activeTab === 'tickets') {
+          const res = await fetch(`/api/admin/tickets?page=${page}&limit=20&status=open`);
+          const data = await res.json();
+          if (cancelled) return;
+          setTickets(data.tickets || []);
+        }
+      } catch (error) {
+        console.error('Error fetching data:', error);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
     fetchData();
-  }, [fetchData]);
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, page, searchQuery, reloadKey]);
 
   const handleAction = async (endpoint: string, action: string, data?: Record<string, unknown>) => {
     try {
@@ -120,7 +140,7 @@ export default function AdminDashboard() {
         body: JSON.stringify({ action, ...data })
       });
       if (res.ok) {
-        fetchData();
+        setReloadKey((key) => key + 1);
       }
     } catch (error) {
       console.error('Action error:', error);

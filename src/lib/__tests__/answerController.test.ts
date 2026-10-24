@@ -1,0 +1,191 @@
+import { AnswerController, type AnswerState } from '@/lib/copilot/answerController';
+import type { GatedQuestion } from '@/lib/copilot/questionGate';
+
+function question(text: string, trigger: GatedQuestion['trigger'] = 'gate'): GatedQuestion {
+  return { text, category: 'other', trigger, via: trigger === 'manual' ? 'manual' : 'heuristic', score: 1, decidedAt: 0 };
+}
+
+/** A sender whose calls stay pending until the test settles them. */
+function controllableSender() {
+  const calls: Array<{ question: GatedQuestion; signal: AbortSignal; resolve: () => void; reject: (e: Error) => void }> = [];
+  const send = jest.fn(
+    (q: GatedQuestion, signal: AbortSignal) =>
+      new Promise<void>((resolve, reject) => {
+        calls.push({ question: q, signal, resolve, reject });
+        signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
+      }),
+  );
+  return { send, calls };
+}
+
+function track(controller: AnswerController) {
+  const states: AnswerState[] = [];
+  controller.subscribe((state) => states.push(state));
+  return states;
+}
+
+describe('AnswerController', () => {
+  it('passes a screen frame to the sender but keeps it out of the shown state', async () => {
+    const { send, calls } = controllableSender();
+    const controller = new AnswerController(send);
+    const states = track(controller);
+
+    const done = controller.request({ ...question('What’s on the shared screen', 'manual'), via: 'screen', screen: { jpegBase64: 'AAAA' } });
+    expect(calls[0].question).toMatchObject({ via: 'screen', screen: { jpegBase64: 'AAAA' } });
+    expect(states[0].question).toMatchObject({ via: 'screen', text: 'What’s on the shared screen' });
+    expect(states[0].question).not.toHaveProperty('screen');
+
+    calls[0].resolve();
+    await done;
+  });
+
+  it('answers a question and reports the result', async () => {
+    const { send, calls } = controllableSender();
+    const controller = new AnswerController(send);
+    const states = track(controller);
+
+    const done = controller.request(question('Why this role?'));
+    expect(controller.getState()).toMatchObject({ status: 'answering', question: { text: 'Why this role?' } });
+    calls[0].resolve();
+    await done;
+
+    expect(states.map((s) => s.status)).toEqual(['answering', 'answered']);
+  });
+
+  it('aborts the answer in flight when a newer question arrives', async () => {
+    const { send, calls } = controllableSender();
+    const controller = new AnswerController(send);
+
+    const first = controller.request(question('Tell me about a time'));
+    const second = controller.request(question('Tell me about a time you failed.'));
+    expect(calls[0].signal.aborted).toBe(true);
+    expect(calls[1].signal.aborted).toBe(false);
+
+    calls[1].resolve();
+    await Promise.all([first, second]);
+    expect(controller.getState()).toMatchObject({
+      status: 'answered',
+      question: { text: 'Tell me about a time you failed.' },
+      superseded: 1,
+      error: null,
+    });
+  });
+
+  it('ignores a late result from a replaced request', async () => {
+    const calls: Array<() => void> = [];
+    const controller = new AnswerController(
+      () => new Promise<void>((resolve) => calls.push(resolve)), // ignores abort, like a slow server
+    );
+    const first = controller.request(question('First?'));
+    const second = controller.request(question('Second?'));
+    calls[1]();
+    await second;
+    calls[0]();
+    await first;
+
+    expect(controller.getState()).toMatchObject({ status: 'answered', question: { text: 'Second?' } });
+  });
+
+  it('shows the error for the latest question only', async () => {
+    const { send, calls } = controllableSender();
+    const controller = new AnswerController(send);
+    const done = controller.request(question('Why?'));
+    calls[0].reject(new Error('Answers are not set up on the server.'));
+    await done;
+
+    expect(controller.getState()).toMatchObject({ status: 'error', error: 'Answers are not set up on the server.' });
+  });
+
+  it('stops the answer in flight but keeps the question on screen', async () => {
+    const { send, calls } = controllableSender();
+    const controller = new AnswerController(send);
+    const done = controller.request(question('How would you scale it?', 'manual'));
+    controller.cancel();
+    await done;
+
+    expect(calls[0].signal.aborted).toBe(true);
+    expect(controller.getState()).toMatchObject({ status: 'idle', question: { text: 'How would you scale it?' }, error: null });
+  });
+
+  it('accumulates streamed text and ignores late pieces from a replaced request', async () => {
+    const senders: Array<(text: string) => void> = [];
+    const finishers: Array<() => void> = [];
+    const controller = new AnswerController(
+      (_q, _signal, onText) =>
+        new Promise<{ ttftMs: number }>((resolve) => {
+          senders.push(onText);
+          finishers.push(() => resolve({ ttftMs: 410 }));
+        }),
+    );
+    const first = controller.request(question('Tell me about a time'));
+    senders[0]('I once ');
+    const second = controller.request(question('Tell me about a time you failed.'));
+    senders[0]('stale words');
+    senders[1]('I shipped a bug, ');
+    senders[1]('then fixed the process.');
+    finishers[1]();
+    await second;
+    finishers[0]();
+    await first;
+
+    expect(controller.getState()).toMatchObject({
+      status: 'answered',
+      text: 'I shipped a bug, then fixed the process.',
+      ttftMs: 410,
+    });
+  });
+});
+
+describe('AnswerController turn timings', () => {
+  function clock(start = 1_000) {
+    let t = start;
+    return { now: () => t, advance: (ms: number) => (t += ms) };
+  }
+
+  it('reports an answered turn with its first-token and done times', async () => {
+    const time = clock();
+    const turns: unknown[] = [];
+    const controller = new AnswerController(
+      async (_q, _signal, onText) => {
+        time.advance(600);
+        onText('I ');
+        time.advance(900);
+        onText('shipped it.');
+        return { ttftMs: 450 };
+      },
+      { now: time.now },
+    );
+    controller.onTurn((turn) => turns.push(turn));
+    await controller.request({ ...question('Why?'), speechEndedAt: 500, finalAt: 800, decidedAt: 1_000 });
+
+    expect(turns).toEqual([
+      expect.objectContaining({
+        outcome: 'answered',
+        speechEndedAt: 500,
+        finalAt: 800,
+        gateAt: 1_000,
+        firstTokenAt: 1_600,
+        doneAt: 2_500,
+        serverTtftMs: 450,
+      }),
+    ]);
+  });
+
+  it('reports replaced, stopped and failed turns too', async () => {
+    const { send, calls } = controllableSender();
+    const controller = new AnswerController(send);
+    const outcomes: string[] = [];
+    controller.onTurn((turn) => outcomes.push(turn.outcome));
+
+    const first = controller.request(question('First?'));
+    const second = controller.request(question('Second?')); // replaces the first
+    await first;
+    controller.cancel(); // stops the second
+    await second;
+    const third = controller.request(question('Third?'));
+    calls[2].reject(new Error('boom'));
+    await third;
+
+    expect(outcomes).toEqual(['superseded', 'stopped', 'error']);
+  });
+});
