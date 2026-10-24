@@ -17,6 +17,10 @@ const eslintConfig = defineConfig([
     // End-to-end build output (playwright.live.config.ts):
     ".next-e2e/**",
     "e2e/.artifacts/**",
+    // Desktop app build output and its own dependencies:
+    "desktop/dist/**",
+    "desktop/release/**",
+    "desktop/node_modules/**",
   ]),
 ]);
 

@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import type { CaptureLevels } from '@/lib/audio/capture';
+import { isDesktopApp } from '@/lib/desktop';
 import { hasSignal, levelToPercent } from '@/lib/audio/levels';
 import styles from './AudioSourcesPanel.module.css';
 import type { LiveSttStatus } from '@/lib/stt/deepgramLive';
@@ -25,6 +26,26 @@ const STT_LABEL: Record<LiveSttStatus, string> = {
   closed: 'Transcription off',
   error: 'Transcription stopped',
 };
+
+/** What Start listening will ask for: a share picker in the browser, nothing in the desktop app. */
+function ShareHelp() {
+  // The server never renders the desktop text, so it reads the bridge after hydration.
+  const desktop = useSyncExternalStore(noSubscription, isDesktopApp, () => false);
+  return desktop ? (
+    <p className={`small ${styles.help}`}>
+      The desktop app listens to everything your PC plays, so meeting apps like Zoom and Teams work too, and it reads your
+      main screen for Solve screen. Wear headphones so your own speakers don&apos;t feed back into the microphone.
+    </p>
+  ) : (
+    <p className={`small ${styles.help}`}>
+      Chrome will ask what to share: pick the tab with your interview (Google Meet, Zoom or Teams in the browser) and
+      tick <strong>Share tab audio</strong>. On Windows you can share the entire screen with <strong>Share system
+      audio</strong> to cover desktop meeting apps. Then allow the microphone.
+    </p>
+  );
+}
+
+const noSubscription = () => () => undefined;
 
 export function AudioSourcesPanel({
   capture,
@@ -63,13 +84,7 @@ export function AudioSourcesPanel({
         </button>
       </div>
 
-      {!live ? (
-        <p className={`small ${styles.help}`}>
-          Chrome will ask what to share: pick the tab with your interview (Google Meet, Zoom or Teams in the browser) and
-          tick <strong>Share tab audio</strong>. On Windows you can share the entire screen with <strong>Share system
-          audio</strong> to cover desktop meeting apps. Then allow the microphone.
-        </p>
-      ) : null}
+      {!live ? <ShareHelp /> : null}
 
       {error ? (
         <div className="error" role="status" aria-live="polite">

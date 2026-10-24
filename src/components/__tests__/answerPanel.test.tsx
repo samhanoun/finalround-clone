@@ -190,6 +190,24 @@ describe('AnswerPanel', () => {
     expect(screen.getByLabelText('Suggested answer')).toHaveTextContent('I shipped a bug.');
   });
 
+  it('toggles the floating window on the desktop app shortcut (Ctrl+Shift+H)', async () => {
+    const { pipWindow, requestWindow } = installFakePip();
+    render(<AnswerPanel answers={answers()} onAnswerNow={jest.fn()} disabled={false} connection={LIVE} tail={[]} />);
+    const toggle = () => window.dispatchEvent(new CustomEvent('apex-desktop:command', { detail: 'toggle-answers' }));
+
+    await act(async () => {
+      toggle();
+    });
+    expect(requestWindow).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('button', { name: 'Bring back here' })).toBeInTheDocument();
+
+    await act(async () => {
+      toggle();
+    });
+    expect(pipWindow.close).toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Pop out' })).toBeInTheDocument();
+  });
+
   it('notices when the user closes the floating window', async () => {
     const { pipWindow } = installFakePip();
     render(<AnswerPanel answers={answers()} onAnswerNow={jest.fn()} disabled={false} connection={LIVE} tail={[]} />);
