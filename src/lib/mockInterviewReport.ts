@@ -109,14 +109,24 @@ export function fallbackMockInterviewReport(mode: string): MockInterviewReport {
   return report;
 }
 
-export function normalizeMockInterviewReport(input: unknown, mode: string): MockInterviewReport {
+/**
+ * `pad` (default true) tops each list up to three items with stock lines, as the
+ * copilot summary expects. Reports shown as the model's own words pass false.
+ */
+export function normalizeMockInterviewReport(
+  input: unknown,
+  mode: string,
+  { pad = true }: { pad?: boolean } = {},
+): MockInterviewReport {
   const base = fallbackMockInterviewReport(mode);
   const maybe = (typeof input === 'object' && input ? input : {}) as Record<string, unknown>;
   const maybeRubric = (typeof maybe.rubric === 'object' && maybe.rubric ? maybe.rubric : {}) as Record<string, unknown>;
 
-  const strengths = ensureMinimumItems(normalizeStringList(maybe.strengths), base.strengths, 3);
-  const weaknesses = ensureMinimumItems(normalizeStringList(maybe.weaknesses), base.weaknesses, 3);
-  const nextSteps = applyPriorityOrder(ensureMinimumItems(normalizeStringList(maybe.next_steps), base.next_steps, 3));
+  const list = (value: unknown, fallback: string[]) =>
+    pad ? ensureMinimumItems(normalizeStringList(value), fallback, 3) : normalizeStringList(value);
+  const strengths = list(maybe.strengths, base.strengths);
+  const weaknesses = list(maybe.weaknesses, base.weaknesses);
+  const nextSteps = applyPriorityOrder(list(maybe.next_steps, base.next_steps));
 
   const normalized = {
     version: 'v1' as const,

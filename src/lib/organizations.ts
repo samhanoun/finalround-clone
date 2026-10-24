@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 
@@ -102,20 +102,23 @@ export async function getServerOrganizationClient() {
 }
 
 // Organization CRUD
+/**
+ * Creates a team and makes `ownerId` its owner. Pass the service-role client:
+ * users can't insert organizations, and nobody can add the first owner before
+ * one exists. The plan always starts free; it changes through billing only.
+ */
 export async function createOrganization(
-  supabase: ReturnType<typeof createServerClient>,
-  data: { name: string; slug: string; plan?: OrganizationPlan }
+  supabase: SupabaseClient,
+  ownerId: string,
+  data: { name: string; slug: string }
 ) {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error('Not authenticated');
-
   // Create organization
   const { data: organization, error } = await supabase
     .from('organizations')
     .insert({
       name: data.name,
       slug: data.slug,
-      plan: data.plan || 'free',
+      plan: 'free',
     })
     .select()
     .single();
@@ -127,7 +130,7 @@ export async function createOrganization(
     .from('organization_members')
     .insert({
       organization_id: organization.id,
-      user_id: user.id,
+      user_id: ownerId,
       role: 'owner',
       status: 'active',
       joined_at: new Date().toISOString(),

@@ -66,8 +66,7 @@ export async function POST(request: Request) {
       .eq('user_id', user.id);
 
     if (existingShares && existingShares.length === 1) {
-      // First share - award badge
-      // Badges are awarded by the server only (migration 0029).
+      // First share - award badge (badges are written by the server only)
       await createAdminClient().from('badges').insert({
         user_id: user.id,
         badge_type: 'referral_signup',

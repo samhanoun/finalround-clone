@@ -1,24 +1,31 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { createClient } from '@supabase/supabase-js';
+import { useCallback, useEffect, useId, useState } from 'react';
+import { createClient } from '@/lib/supabase/browser';
 import type { Organization, OrganizationMember, OrganizationInvitation, OrganizationRole } from '@/lib/organizations';
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+import styles from './TeamsClient.module.css';
 
 interface TeamsClientProps {
   initialOrganization: Organization | null;
   role: OrganizationRole | null;
 }
 
-type TabType = 'members' | 'invitations' | 'analytics' | 'settings' | 'sso';
+type TabType = 'members' | 'invitations' | 'settings' | 'sso';
+
+const TABS: Array<{ id: TabType; label: string }> = [
+  { id: 'members', label: 'Members' },
+  { id: 'invitations', label: 'Invitations' },
+  { id: 'settings', label: 'Settings' },
+  { id: 'sso', label: 'Single sign-on' },
+];
+
+const PLAN_LABEL: Record<string, string> = { free: 'Free', team: 'Team', enterprise: 'Enterprise' };
+const ROLE_LABEL: Record<string, string> = { owner: 'Owner', admin: 'Admin', member: 'Member', viewer: 'Viewer' };
 
 export default function TeamsClient({ initialOrganization, role }: TeamsClientProps) {
   const [activeTab, setActiveTab] = useState<TabType>('members');
   const [organization, setOrganization] = useState<Organization | null>(initialOrganization);
+  const [myRole, setMyRole] = useState<OrganizationRole | null>(role);
   const [members, setMembers] = useState<OrganizationMember[]>([]);
   const [invitations, setInvitations] = useState<OrganizationInvitation[]>([]);
   const [stats, setStats] = useState({
@@ -29,298 +36,259 @@ export default function TeamsClient({ initialOrganization, role }: TeamsClientPr
     interviewsThisMonth: 0,
   });
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
 
-  useEffect(() => {
-    if (organization) {
-      loadData();
-    } else {
-      loadOrganizations();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [organization]);
-
-  async function loadOrganizations() {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const { data: memberships } = await supabase
-        .from('organization_members')
-        .select('organization_id, role, organizations(*)')
-        .eq('user_id', user.id)
-        .eq('status', 'active');
-
-      if (memberships && memberships.length > 0) {
-        const org = memberships[0].organizations as unknown as Organization;
-        setOrganization(org);
-      }
-    } catch (error) {
-      console.error('Error loading organizations:', error);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function loadData() {
-    if (!organization) return;
-    setLoading(true);
-
+  // The first load shows "Loading…" (loading starts true); reloads after an action refresh in place.
+  const loadData = useCallback(async (org: Organization) => {
     try {
       const [membersRes, statsRes] = await Promise.all([
-        fetch(`/api/teams/${organization.id}/members`),
-        fetch(`/api/teams/${organization.id}/analytics`),
+        fetch(`/api/teams/${org.id}/members`),
+        fetch(`/api/teams/${org.id}/analytics`),
       ]);
-
-      const membersData = await membersRes.json();
-      const statsData = await statsRes.json();
-
+      const membersData = await membersRes.json().catch(() => ({}));
+      const statsData = await statsRes.json().catch(() => ({}));
       if (membersData.members) setMembers(membersData.members);
       if (statsData.stats) setStats(statsData.stats);
-    } catch (error) {
-      console.error('Error loading data:', error);
+    } catch {
+      setError("The team didn't load. Reload the page to try again.");
     } finally {
       setLoading(false);
     }
-  }
+  }, []);
 
-  async function loadInvitations() {
-    if (!organization) return;
+  const loadInvitations = useCallback(async (org: Organization) => {
     try {
-      const res = await fetch(`/api/teams/${organization.id}/invitations`);
-      const data = await res.json();
+      const res = await fetch(`/api/teams/${org.id}/invitations`);
+      const data = await res.json().catch(() => ({}));
       if (data.invitations) setInvitations(data.invitations);
-    } catch (error) {
-      console.error('Error loading invitations:', error);
+    } catch {
+      setError("Invitations didn't load. Try again.");
+    }
+  }, []);
+
+  useEffect(() => {
+    if (organization) {
+      void (async () => {
+        await loadData(organization);
+      })();
+      return;
+    }
+    // No team passed from the server: look for one the user belongs to.
+    let cancelled = false;
+    (async () => {
+      try {
+        const supabase = createClient();
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+        if (!user) return;
+        const { data: memberships } = await supabase
+          .from('organization_members')
+          .select('organization_id, role, organizations(*)')
+          .eq('user_id', user.id)
+          .eq('status', 'active');
+        if (!cancelled && memberships && memberships.length > 0) {
+          setOrganization(memberships[0].organizations as unknown as Organization);
+          setMyRole(memberships[0].role as OrganizationRole);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [organization, loadData]);
+
+  async function call(url: string, init: RequestInit, failure: string) {
+    setError(null);
+    try {
+      const res = await fetch(url, init);
+      if (!res.ok) throw new Error();
+      return res;
+    } catch {
+      setError(failure);
+      return null;
     }
   }
 
-  async function handleInvite(email: string, role: string) {
+  async function handleInvite(email: string, inviteRole: string) {
     if (!organization) return;
-    try {
-      const res = await fetch(`/api/teams/${organization.id}/invitations`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, role }),
-      });
-
-      if (res.ok) {
-        setShowInviteModal(false);
-        loadInvitations();
-        loadData();
-      }
-    } catch (error) {
-      console.error('Error inviting:', error);
-    }
+    const res = await call(
+      `/api/teams/${organization.id}/invitations`,
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, role: inviteRole }) },
+      "The invitation wasn't sent. Check the address and try again.",
+    );
+    if (!res) return;
+    setShowInviteModal(false);
+    void loadInvitations(organization);
+    void loadData(organization);
   }
 
   async function handleCancelInvitation(invitationId: string) {
     if (!organization) return;
-    try {
-      const res = await fetch(
-        `/api/teams/${organization.id}/invitations?invitation_id=${invitationId}`,
-        { method: 'DELETE' }
-      );
-      if (res.ok) {
-        loadInvitations();
-        loadData();
-      }
-    } catch (error) {
-      console.error('Error cancelling invitation:', error);
-    }
+    const res = await call(
+      `/api/teams/${organization.id}/invitations?invitation_id=${invitationId}`,
+      { method: 'DELETE' },
+      "The invitation wasn't cancelled. Try again.",
+    );
+    if (!res) return;
+    void loadInvitations(organization);
+    void loadData(organization);
   }
 
   async function handleRemoveMember(memberId: string) {
     if (!organization) return;
-    try {
-      const res = await fetch(`/api/teams/${organization.id}/members`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ member_id: memberId, action: 'remove' }),
-      });
-      if (res.ok) loadData();
-    } catch (error) {
-      console.error('Error removing member:', error);
-    }
+    const res = await call(
+      `/api/teams/${organization.id}/members`,
+      { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ member_id: memberId, action: 'remove' }) },
+      "That member wasn't removed. Try again.",
+    );
+    if (res) void loadData(organization);
   }
 
   async function handleUpdateRole(memberId: string, newRole: string) {
     if (!organization) return;
-    try {
-      const res = await fetch(`/api/teams/${organization.id}/members`, {
+    const res = await call(
+      `/api/teams/${organization.id}/members`,
+      {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ member_id: memberId, action: 'update_role', role: newRole }),
-      });
-      if (res.ok) loadData();
-    } catch (error) {
-      console.error('Error updating role:', error);
-    }
+      },
+      "The role wasn't changed. Try again.",
+    );
+    if (res) void loadData(organization);
   }
 
   async function handleCreateTeam(name: string, slug: string) {
-    try {
-      const res = await fetch('/api/teams', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, slug }),
-      });
+    const res = await call(
+      '/api/teams',
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, slug }) },
+      "The team wasn't created. That address may be taken; try another.",
+    );
+    if (!res) return;
+    const data = await res.json();
+    setOrganization(data.organization);
+    setMyRole('owner');
+    setShowCreateModal(false);
+  }
 
-      if (res.ok) {
-        const data = await res.json();
-        setOrganization(data.organization);
-        setShowCreateModal(false);
-      }
-    } catch (error) {
-      console.error('Error creating team:', error);
-    }
+  async function handleRename(name: string) {
+    if (!organization) return false;
+    const res = await call(
+      `/api/teams/${organization.id}`,
+      { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) },
+      "The name wasn't saved. Try again.",
+    );
+    if (!res) return false;
+    const data = await res.json();
+    if (data.organization) setOrganization(data.organization);
+    return true;
   }
 
   if (loading && !organization) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-      </div>
-    );
+    return <p className="help">Loading your team…</p>;
   }
 
   if (!organization) {
     return (
-      <div className="min-h-screen bg-gray-50 py-12 px-4">
-        <div className="max-w-2xl mx-auto text-center">
-          <h1 className="text-3xl font-bold text-gray-900 mb-4">Welcome to Teams</h1>
-          <p className="text-gray-600 mb-8">
-            Create a team to collaborate with your colleagues and track your team&apos;s progress.
-          </p>
-          <button
-            onClick={() => setShowCreateModal(true)}
-            className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            Create Your First Team
-          </button>
-        </div>
-
-        {showCreateModal && (
-          <CreateTeamModal
-            onClose={() => setShowCreateModal(false)}
-            onCreate={handleCreateTeam}
-          />
-        )}
-      </div>
+      <>
+        <section className={`card ${styles.empty}`}>
+          <div className="cardInner stack">
+            <h2 className="cardTitle">Practise together</h2>
+            <p className="cardDesc">
+              Create a team to invite colleagues or classmates, see who is practising, and manage access in one place.
+            </p>
+            {error ? <p className={styles.error} role="alert">{error}</p> : null}
+            <div>
+              <button type="button" className="button buttonPrimary" onClick={() => setShowCreateModal(true)}>
+                Create a team
+              </button>
+            </div>
+          </div>
+        </section>
+        {showCreateModal ? <CreateTeamModal onClose={() => setShowCreateModal(false)} onCreate={handleCreateTeam} /> : null}
+      </>
     );
   }
 
-  const canManage = role === 'owner' || role === 'admin';
+  const canManage = myRole === 'owner' || myRole === 'admin';
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-7xl mx-auto py-8 px-4">
-        {/* Header */}
-        <div className="mb-8">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900">{organization.name}</h1>
-              <p className="text-gray-500 mt-1">
-                {organization.plan === 'enterprise' ? 'Enterprise' : organization.plan === 'team' ? 'Team' : 'Free'} Plan
-                {role && <span> • Your role: {role}</span>}
-              </p>
-            </div>
-            <div className="flex gap-2">
-              {canManage && (
-                <button
-                  onClick={() => { setActiveTab('invitations'); loadInvitations(); }}
-                  className="px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-                >
-                  Invitations ({stats.pendingInvitations})
-                </button>
-              )}
-            </div>
+    <div className={styles.page}>
+      <header className={styles.header}>
+        <div>
+          <h2 className={styles.teamName}>{organization.name}</h2>
+          <div className={styles.badges}>
+            <span className="badge">{PLAN_LABEL[organization.plan] ?? organization.plan} plan</span>
+            {myRole ? <span className="badge badgeIce">You are {ROLE_LABEL[myRole]?.toLowerCase() ?? myRole}</span> : null}
           </div>
         </div>
+        {canManage ? (
+          <button type="button" className="button buttonPrimary" onClick={() => setShowInviteModal(true)}>
+            Invite someone
+          </button>
+        ) : null}
+      </header>
 
-        {/* Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-          <StatCard label="Total Members" value={stats.totalMembers} />
-          <StatCard label="Active Members" value={stats.activeMembers} />
-          <StatCard label="Total Interviews" value={stats.totalInterviews} />
-          <StatCard label="This Month" value={stats.interviewsThisMonth} />
-        </div>
+      <dl className={styles.stats}>
+        <Stat label="Members" value={stats.totalMembers} />
+        <Stat label="Active" value={stats.activeMembers} />
+        <Stat label="Interviews" value={stats.totalInterviews} />
+        <Stat label="This month" value={stats.interviewsThisMonth} />
+      </dl>
 
-        {/* Tabs */}
-        <div className="border-b border-gray-200 mb-6">
-          <nav className="-mb-px flex gap-8">
-            {(['members', 'invitations', 'analytics', 'settings', 'sso'] as TabType[]).map((tab) => (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
-                  activeTab === tab
-                    ? 'border-blue-600 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                {tab.charAt(0).toUpperCase() + tab.slice(1)}
-              </button>
-            ))}
-          </nav>
-        </div>
+      <nav className={styles.tabs} aria-label="Team sections">
+        {TABS.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            className={styles.tab}
+            aria-current={activeTab === tab.id ? 'page' : undefined}
+            onClick={() => {
+              setActiveTab(tab.id);
+              if (tab.id === 'invitations') void loadInvitations(organization);
+            }}
+          >
+            {tab.label}
+            {tab.id === 'invitations' && stats.pendingInvitations ? <span className={styles.count}>{stats.pendingInvitations}</span> : null}
+          </button>
+        ))}
+      </nav>
 
-        {/* Tab Content */}
-        {loading ? (
-          <div className="flex justify-center py-12">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-          </div>
-        ) : (
-          <>
-            {activeTab === 'members' && (
-              <MembersTab
-                members={members}
-                canManage={canManage}
-                onRemove={handleRemoveMember}
-                onUpdateRole={handleUpdateRole}
-                onInvite={() => setShowInviteModal(true)}
-              />
-            )}
-            {activeTab === 'invitations' && (
-              <InvitationsTab
-                invitations={invitations}
-                canManage={canManage}
-                onCancel={handleCancelInvitation}
-                onInvite={() => setShowInviteModal(true)}
-              />
-            )}
-            {activeTab === 'analytics' && (
-              <AnalyticsTab stats={stats} />
-            )}
-            {activeTab === 'settings' && (
-              <SettingsTab organization={organization} role={role} />
-            )}
-            {activeTab === 'sso' && (
-              <SSOTab organization={organization} role={role} />
-            )}
-          </>
-        )}
-      </div>
+      {error ? <p className={styles.error} role="alert">{error}</p> : null}
 
-      {showInviteModal && (
-        <InviteModal
-          onClose={() => setShowInviteModal(false)}
-          onInvite={handleInvite}
-        />
+      {loading ? (
+        <p className="help">Loading…</p>
+      ) : activeTab === 'members' ? (
+        <MembersTab members={members} canManage={canManage} onRemove={handleRemoveMember} onUpdateRole={handleUpdateRole} />
+      ) : activeTab === 'invitations' ? (
+        <InvitationsTab invitations={invitations} canManage={canManage} onCancel={handleCancelInvitation} onInvite={() => setShowInviteModal(true)} />
+      ) : activeTab === 'settings' ? (
+        <SettingsTab organization={organization} canEdit={myRole === 'owner'} onRename={handleRename} />
+      ) : (
+        <SSOTab organization={organization} canEdit={myRole === 'owner'} />
       )}
+
+      {showInviteModal ? <InviteModal onClose={() => setShowInviteModal(false)} onInvite={handleInvite} /> : null}
     </div>
   );
 }
 
-// Sub-components
-function StatCard({ label, value }: { label: string; value: number }) {
+function Stat({ label, value }: { label: string; value: number }) {
   return (
-    <div className="bg-white rounded-lg shadow p-6">
-      <p className="text-sm text-gray-500">{label}</p>
-      <p className="text-2xl font-bold text-gray-900 mt-1">{value}</p>
+    <div className={styles.stat}>
+      <dt>{label}</dt>
+      <dd>{value}</dd>
     </div>
   );
+}
+
+function initials(member: OrganizationMember) {
+  return (member.user_full_name?.[0] || member.user_email?.[0] || '?').toUpperCase();
 }
 
 function MembersTab({
@@ -328,109 +296,74 @@ function MembersTab({
   canManage,
   onRemove,
   onUpdateRole,
-  onInvite,
 }: {
   members: OrganizationMember[];
   canManage: boolean;
   onRemove: (id: string) => void;
   onUpdateRole: (id: string, role: string) => void;
-  onInvite: () => void;
 }) {
+  if (members.length === 0) {
+    return <p className={`card ${styles.note}`}>No members yet. Invite someone to get started.</p>;
+  }
   return (
-    <div>
-      <div className="flex justify-end mb-4">
-        {canManage && (
-          <button
-            onClick={onInvite}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            Invite Member
-          </button>
-        )}
-      </div>
-      <div className="bg-white rounded-lg shadow overflow-hidden">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Member
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Role
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Status
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Joined
-              </th>
-              {canManage && <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Actions
-              </th>}
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {members.map((member) => (
-              <tr key={member.id}>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="flex items-center">
-                    <div className="h-10 w-10 rounded-full bg-gray-300 flex items-center justify-center">
-                      <span className="text-gray-600 font-medium">
-                        {member.user_full_name?.[0] || member.user_email?.[0] || '?'}
-                      </span>
-                    </div>
-                    <div className="ml-4">
-                      <div className="text-sm font-medium text-gray-900">
-                        {member.user_full_name || 'Unknown'}
-                      </div>
-                      <div className="text-sm text-gray-500">{member.user_email}</div>
-                    </div>
-                  </div>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  {canManage && member.role !== 'owner' ? (
-                    <select
-                      value={member.role}
-                      onChange={(e) => onUpdateRole(member.id, e.target.value)}
-                      className="text-sm border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                    >
-                      <option value="admin">Admin</option>
-                      <option value="member">Member</option>
-                      <option value="viewer">Viewer</option>
-                    </select>
-                  ) : (
-                    <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
-                      {member.role}
-                    </span>
-                  )}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                    member.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
-                  }`}>
-                    {member.status}
+    <div className={`card ${styles.tableCard}`}>
+      <table className={styles.table}>
+        <thead>
+          <tr>
+            <th scope="col">Member</th>
+            <th scope="col">Role</th>
+            <th scope="col">Status</th>
+            <th scope="col">Joined</th>
+            {canManage ? <th scope="col" aria-label="Actions" /> : null}
+          </tr>
+        </thead>
+        <tbody>
+          {members.map((member) => (
+            <tr key={member.id}>
+              <td>
+                <div className={styles.person}>
+                  <span className={styles.avatar} aria-hidden="true">
+                    {initials(member)}
                   </span>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {member.joined_at ? new Date(member.joined_at).toLocaleDateString() : '-'}
-                </td>
-                {canManage && (
-                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                    {member.role !== 'owner' && (
-                      <button
-                        onClick={() => onRemove(member.id)}
-                        className="text-red-600 hover:text-red-900"
-                      >
-                        Remove
-                      </button>
-                    )}
-                  </td>
+                  <span>
+                    <span className={styles.personName}>{member.user_full_name || member.user_email || 'Unknown'}</span>
+                    {member.user_full_name ? <span className={styles.personEmail}>{member.user_email}</span> : null}
+                  </span>
+                </div>
+              </td>
+              <td>
+                {canManage && member.role !== 'owner' ? (
+                  <select
+                    className={`select ${styles.roleSelect}`}
+                    value={member.role}
+                    aria-label={`Role for ${member.user_email ?? 'member'}`}
+                    onChange={(e) => onUpdateRole(member.id, e.target.value)}
+                  >
+                    <option value="admin">Admin</option>
+                    <option value="member">Member</option>
+                    <option value="viewer">Viewer</option>
+                  </select>
+                ) : (
+                  <span className="badge">{ROLE_LABEL[member.role] ?? member.role}</span>
                 )}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+              </td>
+              <td>
+                <span className={`badge ${member.status === 'active' ? 'badgeLive' : ''}`}>{member.status}</span>
+              </td>
+              <td className={styles.muted}>{member.joined_at ? new Date(member.joined_at).toLocaleDateString() : '—'}</td>
+              {canManage ? (
+                <td className={styles.actionsCell}>
+                  {member.role !== 'owner' ? (
+                    <button type="button" className="button buttonGhost" onClick={() => onRemove(member.id)}>
+                      Remove
+                    </button>
+                  ) : null}
+                </td>
+              ) : null}
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -446,213 +379,186 @@ function InvitationsTab({
   onCancel: (id: string) => void;
   onInvite: () => void;
 }) {
-  return (
-    <div>
-      <div className="flex justify-end mb-4">
-        {canManage && (
-          <button
-            onClick={onInvite}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            Send Invitation
+  if (invitations.length === 0) {
+    return (
+      <div className={`card ${styles.note}`}>
+        <p>No invitations waiting.</p>
+        {canManage ? (
+          <button type="button" className="button" onClick={onInvite}>
+            Invite someone
           </button>
+        ) : null}
+      </div>
+    );
+  }
+  return (
+    <div className={`card ${styles.tableCard}`}>
+      <table className={styles.table}>
+        <thead>
+          <tr>
+            <th scope="col">Email</th>
+            <th scope="col">Role</th>
+            <th scope="col">Status</th>
+            <th scope="col">Expires</th>
+            {canManage ? <th scope="col" aria-label="Actions" /> : null}
+          </tr>
+        </thead>
+        <tbody>
+          {invitations.map((inv) => (
+            <tr key={inv.id}>
+              <td>{inv.email}</td>
+              <td>{ROLE_LABEL[inv.role] ?? inv.role}</td>
+              <td>
+                <span className="badge">{inv.status}</span>
+              </td>
+              <td className={styles.muted}>{new Date(inv.expires_at).toLocaleDateString()}</td>
+              {canManage ? (
+                <td className={styles.actionsCell}>
+                  <button type="button" className="button buttonGhost" onClick={() => onCancel(inv.id)}>
+                    Cancel
+                  </button>
+                </td>
+              ) : null}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function SettingsTab({
+  organization,
+  canEdit,
+  onRename,
+}: {
+  organization: Organization;
+  canEdit: boolean;
+  onRename: (name: string) => Promise<boolean>;
+}) {
+  const [name, setName] = useState(organization.name);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const nameId = useId();
+
+  async function save(event: React.FormEvent) {
+    event.preventDefault();
+    setSaving(true);
+    setSaved(false);
+    const ok = await onRename(name.trim());
+    setSaving(false);
+    setSaved(ok);
+  }
+
+  return (
+    <form className="card" onSubmit={save}>
+      <div className="cardInner stack">
+        <h3 className="cardTitle">Team details</h3>
+        <label className="label" htmlFor={nameId}>
+          Team name
+          <input
+            id={nameId}
+            className="input"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            disabled={!canEdit}
+            maxLength={100}
+          />
+        </label>
+        <div className={styles.readOnly}>
+          <span>Team address</span>
+          <code>{organization.slug}</code>
+        </div>
+        <div className={styles.readOnly}>
+          <span>Plan</span>
+          <span>{PLAN_LABEL[organization.plan] ?? organization.plan}</span>
+        </div>
+        {canEdit ? (
+          <div className={styles.formActions}>
+            {saved ? <span className={styles.saved}>Saved</span> : null}
+            <button type="submit" className="button buttonPrimary" disabled={saving || !name.trim() || name.trim() === organization.name}>
+              {saving ? 'Saving…' : 'Save name'}
+            </button>
+          </div>
+        ) : (
+          <p className="help">Only the team owner can change these.</p>
         )}
       </div>
-      {invitations.length === 0 ? (
-        <div className="bg-white rounded-lg shadow p-12 text-center">
-          <p className="text-gray-500">No pending invitations</p>
-        </div>
-      ) : (
-        <div className="bg-white rounded-lg shadow overflow-hidden">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Email
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Role
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Status
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Expires
-                </th>
-                {canManage && <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Actions
-                </th>}
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {invitations.map((inv) => (
-                <tr key={inv.id}>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {inv.email}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {inv.role}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">
-                      {inv.status}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {new Date(inv.expires_at).toLocaleDateString()}
-                  </td>
-                  {canManage && (
-                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                      <button
-                        onClick={() => onCancel(inv.id)}
-                        className="text-red-600 hover:text-red-900"
-                      >
-                        Cancel
-                      </button>
-                    </td>
-                  )}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
+    </form>
   );
 }
 
-function AnalyticsTab({ stats }: { stats: Record<string, number> }) {
-  return (
-    <div className="bg-white rounded-lg shadow p-6">
-      <h2 className="text-lg font-semibold mb-4">Team Analytics</h2>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-        <div>
-          <p className="text-sm text-gray-500">Total Members</p>
-          <p className="text-3xl font-bold text-gray-900">{stats.totalMembers}</p>
-        </div>
-        <div>
-          <p className="text-sm text-gray-500">Active Members</p>
-          <p className="text-3xl font-bold text-green-600">{stats.activeMembers}</p>
-        </div>
-        <div>
-          <p className="text-sm text-gray-500">Total Interviews</p>
-          <p className="text-3xl font-bold text-blue-600">{stats.totalInterviews}</p>
-        </div>
-        <div>
-          <p className="text-sm text-gray-500">This Month</p>
-          <p className="text-3xl font-bold text-purple-600">{stats.interviewsThisMonth}</p>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function SettingsTab({ organization, role }: { organization: Organization; role: string | null }) {
-  const canEdit = role === 'owner';
-
-  return (
-    <div className="bg-white rounded-lg shadow p-6">
-      <h2 className="text-lg font-semibold mb-4">Team Settings</h2>
-      <div className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700">Team Name</label>
-          <input
-            type="text"
-            defaultValue={organization.name}
-            disabled={!canEdit}
-            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 disabled:bg-gray-100"
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700">Team Slug</label>
-          <input
-            type="text"
-            defaultValue={organization.slug}
-            disabled={!canEdit}
-            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 disabled:bg-gray-100"
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700">Plan</label>
-          <select
-            defaultValue={organization.plan}
-            disabled={!canEdit}
-            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 disabled:bg-gray-100"
-          >
-            <option value="free">Free</option>
-            <option value="team">Team</option>
-            <option value="enterprise">Enterprise</option>
-          </select>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function SSOTab({ organization, role }: { organization: Organization; role: string | null }) {
-  const canEdit = role === 'owner';
+function SSOTab({ organization, canEdit }: { organization: Organization; canEdit: boolean }) {
   const [ssoEnabled, setSsoEnabled] = useState(organization.sso_enabled);
+  const [busy, setBusy] = useState(false);
+  const entityId = typeof window !== 'undefined' ? `${window.location.origin}/saml/metadata/${organization.id}` : '';
+
+  async function toggle() {
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/teams/${organization.id}/sso`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: ssoEnabled ? 'disable' : 'enable', provider: 'saml' }),
+      });
+      if (res.ok) setSsoEnabled(!ssoEnabled);
+    } finally {
+      setBusy(false);
+    }
+  }
 
   return (
-    <div className="bg-white rounded-lg shadow p-6">
-      <h2 className="text-lg font-semibold mb-4">Single Sign-On (SSO)</h2>
-      
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
+    <div className="card">
+      <div className="cardInner stack">
+        <div className={styles.ssoRow}>
           <div>
-            <p className="font-medium">SAML Authentication</p>
-            <p className="text-sm text-gray-500">
-              Allow team members to sign in with SAML
-            </p>
+            <h3 className="cardTitle">SAML sign-in</h3>
+            <p className="help">Let members sign in through your company’s identity provider.</p>
           </div>
           {canEdit ? (
             <button
-              onClick={async () => {
-                const res = await fetch(`/api/teams/${organization.id}/sso`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ action: ssoEnabled ? 'disable' : 'enable', provider: 'saml' }),
-                });
-                if (res.ok) setSsoEnabled(!ssoEnabled);
-              }}
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                ssoEnabled ? 'bg-blue-600' : 'bg-gray-200'
-              }`}
+              type="button"
+              role="switch"
+              aria-checked={ssoEnabled}
+              aria-label="SAML sign-in"
+              className={styles.switch}
+              onClick={toggle}
+              disabled={busy}
             >
-              <span
-                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                  ssoEnabled ? 'translate-x-6' : 'translate-x-1'
-                }`}
-              />
+              <span />
             </button>
           ) : (
-            <span className={`px-2 py-1 rounded text-sm ${ssoEnabled ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
-              {ssoEnabled ? 'Enabled' : 'Disabled'}
-            </span>
+            <span className={`badge ${ssoEnabled ? 'badgeLive' : ''}`}>{ssoEnabled ? 'On' : 'Off'}</span>
           )}
         </div>
-
-        {ssoEnabled && (
-          <div className="border-t pt-4">
-            <p className="font-medium mb-2">SAML Configuration</p>
-            <p className="text-sm text-gray-500 mb-4">
-              Configure your Identity Provider (IdP) to enable SAML authentication.
-            </p>
-            <div className="bg-gray-50 rounded p-4 text-sm font-mono">
-              <p className="mb-2">Service Provider (SP) Metadata:</p>
-              <code className="text-xs">
-                Entity ID: {typeof window !== 'undefined' ? window.location.origin : ''}/saml/metadata/{organization.id}
-              </code>
-            </div>
+        {ssoEnabled ? (
+          <div className={styles.readOnly}>
+            <span>Service provider entity ID</span>
+            <code>{entityId}</code>
           </div>
-        )}
+        ) : null}
+        <p className="help">Sign-in with Google, Microsoft or Okta (OIDC) isn’t available yet.</p>
+      </div>
+    </div>
+  );
+}
 
-        <div className="border-t pt-4">
-          <p className="font-medium">OIDC / OAuth 2.0</p>
-          <p className="text-sm text-gray-500">
-            Coming soon - Connect with OAuth providers like Google, Microsoft, Okta
-          </p>
-        </div>
+function Modal(props: { title: string; onClose: () => void; children: React.ReactNode }) {
+  const titleId = useId();
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') props.onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [props]);
+  return (
+    <div className={styles.backdrop} onClick={props.onClose}>
+      <div className={styles.modal} role="dialog" aria-modal="true" aria-labelledby={titleId} onClick={(e) => e.stopPropagation()}>
+        <h3 id={titleId} className="cardTitle">
+          {props.title}
+        </h3>
+        {props.children}
       </div>
     </div>
   );
@@ -660,106 +566,107 @@ function SSOTab({ organization, role }: { organization: Organization; role: stri
 
 function InviteModal({ onClose, onInvite }: { onClose: () => void; onInvite: (email: string, role: string) => void }) {
   const [email, setEmail] = useState('');
-  const [role, setRole] = useState('member');
-
+  const [inviteRole, setInviteRole] = useState('member');
+  const ids = { email: useId(), role: useId() };
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg p-6 w-full max-w-md">
-        <h3 className="text-lg font-semibold mb-4">Invite Team Member</h3>
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Email</label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-              placeholder="colleague@company.com"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Role</label>
-            <select
-              value={role}
-              onChange={(e) => setRole(e.target.value)}
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-            >
-              <option value="member">Member</option>
-              <option value="admin">Admin</option>
-              <option value="viewer">Viewer</option>
-            </select>
-          </div>
-        </div>
-        <div className="mt-6 flex justify-end gap-3">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
-          >
+    <Modal title="Invite someone" onClose={onClose}>
+      <form
+        className="stack"
+        onSubmit={(e) => {
+          e.preventDefault();
+          onInvite(email.trim(), inviteRole);
+        }}
+      >
+        <label className="label" htmlFor={ids.email}>
+          Email
+          <input
+            id={ids.email}
+            className="input"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="colleague@company.com"
+            required
+            autoFocus
+          />
+        </label>
+        <label className="label" htmlFor={ids.role}>
+          Role
+          <select id={ids.role} className="select" value={inviteRole} onChange={(e) => setInviteRole(e.target.value)}>
+            <option value="member">Member</option>
+            <option value="admin">Admin (can manage members)</option>
+            <option value="viewer">Viewer (read-only)</option>
+          </select>
+        </label>
+        <div className={styles.formActions}>
+          <button type="button" className="button" onClick={onClose}>
             Cancel
           </button>
-          <button
-            onClick={() => onInvite(email, role)}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-          >
-            Send Invite
+          <button type="submit" className="button buttonPrimary" disabled={!email.trim()}>
+            Send invitation
           </button>
         </div>
-      </div>
-    </div>
+      </form>
+    </Modal>
   );
 }
 
 function CreateTeamModal({ onClose, onCreate }: { onClose: () => void; onCreate: (name: string, slug: string) => void }) {
   const [name, setName] = useState('');
   const [slug, setSlug] = useState('');
-
-  const handleSlugChange = (value: string) => {
-    setSlug(value.toLowerCase().replace(/[^a-z0-9-]/g, '-'));
-  };
+  const [slugEdited, setSlugEdited] = useState(false);
+  const ids = { name: useId(), slug: useId() };
+  const toSlug = (value: string) => value.toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 48);
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg p-6 w-full max-w-md">
-        <h3 className="text-lg font-semibold mb-4">Create New Team</h3>
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Team Name</label>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-              placeholder="My Company"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Team URL Slug</label>
-            <input
-              type="text"
-              value={slug}
-              onChange={(e) => handleSlugChange(e.target.value)}
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-              placeholder="my-company"
-            />
-            <p className="text-xs text-gray-500 mt-1">This will be your team&apos;s URL: /teams/{slug}</p>
-          </div>
-        </div>
-        <div className="mt-6 flex justify-end gap-3">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
-          >
+    <Modal title="Create a team" onClose={onClose}>
+      <form
+        className="stack"
+        onSubmit={(e) => {
+          e.preventDefault();
+          onCreate(name.trim(), slug);
+        }}
+      >
+        <label className="label" htmlFor={ids.name}>
+          Team name
+          <input
+            id={ids.name}
+            className="input"
+            value={name}
+            onChange={(e) => {
+              setName(e.target.value);
+              if (!slugEdited) setSlug(toSlug(e.target.value));
+            }}
+            placeholder="e.g. Acme engineering"
+            required
+            autoFocus
+            maxLength={100}
+          />
+        </label>
+        <label className="label" htmlFor={ids.slug}>
+          Team address
+          <input
+            id={ids.slug}
+            className="input"
+            value={slug}
+            onChange={(e) => {
+              setSlugEdited(true);
+              setSlug(toSlug(e.target.value));
+            }}
+            placeholder="acme-engineering"
+            required
+          />
+          <span className="help">Lowercase letters, numbers and dashes.</span>
+        </label>
+        <div className={styles.formActions}>
+          <button type="button" className="button" onClick={onClose}>
             Cancel
           </button>
-          <button
-            onClick={() => onCreate(name, slug)}
-            disabled={!name || !slug}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
-          >
-            Create Team
+          <button type="submit" className="button buttonPrimary" disabled={!name.trim() || !slug}>
+            Create team
           </button>
         </div>
-      </div>
-    </div>
+      </form>
+    </Modal>
   );
 }

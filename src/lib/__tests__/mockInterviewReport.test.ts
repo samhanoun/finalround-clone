@@ -20,6 +20,18 @@ describe('mockInterviewReport normalization', () => {
     expect(normalized.next_steps[2]).toMatch(/^P3:/);
   });
 
+  it('keeps only the given items when padding is off', () => {
+    const normalized = normalizeMockInterviewReport(
+      { overall_score: 70, strengths: ['Clear communication'], weaknesses: [], next_steps: ['Practise trade-offs'] },
+      'general',
+      { pad: false },
+    );
+
+    expect(normalized.strengths).toEqual(['Clear communication']);
+    expect(normalized.weaknesses).toEqual([]);
+    expect(normalized.next_steps).toEqual(['P1: Practise trade-offs']);
+  });
+
   it('falls back to rubric recommendations when partial rubric is provided', () => {
     const normalized = normalizeMockInterviewReport(
       {

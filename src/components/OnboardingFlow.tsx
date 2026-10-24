@@ -24,43 +24,31 @@ interface ProfileData {
   industry: string;
 }
 
+// The plans as billed (see the plans table and /api/billing/checkout).
 const PLANS: Plan[] = [
   {
     id: 'free',
     name: 'Free',
     price: '$0',
     features: [
-      '5 mock interviews/month',
-      'Basic resume analysis',
-      'Job tracking (up to 10)',
-      'Community support',
+      '10 minutes of live copilot a month',
+      'Sessions up to 10 minutes',
+      'Practice interviews with AI feedback',
+      'Résumé check against a job',
+      'Job tracking',
     ],
   },
   {
     id: 'pro',
     name: 'Pro',
-    price: '$19/mo',
+    price: '$29 or €29 a month',
     popular: true,
     features: [
-      'Unlimited mock interviews',
-      'Advanced resume optimization',
-      'Unlimited job tracking',
-      'Live copilot access',
-      'Priority support',
-      'Custom interview playbooks',
-    ],
-  },
-  {
-    id: 'team',
-    name: 'Team',
-    price: '$49/mo',
-    features: [
-      'Everything in Pro',
-      'Team analytics',
-      'Admin dashboard',
-      'API access',
-      'Dedicated success manager',
-      'Custom integrations',
+      '400 minutes of live copilot a month',
+      'Sessions up to 30 minutes, 45 minutes a day',
+      '80 minutes of Smart mode a month',
+      '10 in-depth résumé reviews a month',
+      'Everything in Free',
     ],
   },
 ];
@@ -166,6 +154,22 @@ export default function OnboardingFlow() {
       await supabase.from('profiles').update({
         onboarding_completed: true,
       }).eq('id', user.id);
+
+      // Pro was chosen: go straight to checkout. If billing isn't available, Settings has the upgrade button.
+      if (plan === 'pro') {
+        const res = await fetch('/api/billing/checkout', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ currency: 'usd' }),
+        }).catch(() => null);
+        const json = res?.ok ? await res.json().catch(() => null) : null;
+        if (json?.url) {
+          window.location.assign(json.url);
+          return;
+        }
+        router.push('/settings');
+        return;
+      }
 
       router.push('/dashboard');
     } catch (error) {
@@ -323,7 +327,7 @@ function PlanStep({
         <button className="back-button" onClick={onBack}>Back</button>
         <h1>Choose a plan</h1>
         <p className="onboarding-description">
-          Start free and upgrade whenever you need more minutes.
+          Start free and upgrade whenever you need more minutes. Pro opens checkout when you finish.
         </p>
 
         <div className="plans-grid">

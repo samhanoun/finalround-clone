@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerOrganizationClient, createOrganization, getUserOrganizations } from '@/lib/organizations';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { requireEnv } from '@/lib/env';
 
 // GET /api/teams - List user's organizations
@@ -25,7 +26,7 @@ export async function POST(request: NextRequest) {
   try {
     const supabase = await getServerOrganizationClient();
     const body = await request.json();
-    const { name, slug, plan } = body;
+    const { name, slug } = body;
 
     if (!name || !slug) {
       return NextResponse.json({ error: 'Name and slug are required' }, { status: 400 });
@@ -42,7 +43,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Slug already taken' }, { status: 409 });
     }
 
-    const organization = await createOrganization(supabase, { name, slug, plan });
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+    const organization = await createOrganization(createAdminClient(), user.id, { name, slug });
     return NextResponse.json({ organization }, { status: 201 });
   } catch (error) {
     console.error('Error creating organization:', error);

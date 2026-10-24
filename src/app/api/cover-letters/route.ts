@@ -4,13 +4,16 @@ import { createClient } from '@/lib/supabase/server';
 import { jsonError } from '@/lib/api';
 import { rateLimit } from '@/lib/rateLimit';
 import { generateCoverLetter, saveCoverLetter, getUserCoverLetters } from '@/lib/coverLetter';
+import { LLMUnavailableError } from '@/lib/llmRouter';
 
 // Validation schema for generating a cover letter
 const GenerateSchema = z.object({
   jobTitle: z.string().min(1, 'Job title is required'),
   companyName: z.string().min(1, 'Company name is required'),
   jobDescription: z.string().min(50, 'Job description must be at least 50 characters'),
-  resumeContent: z.string().min(50, 'Resume content must be at least 50 characters'),
+  // The résumé as text, or one of the user's parsed résumés (read here).
+  resumeContent: z.string().min(50, 'Resume content must be at least 50 characters').optional(),
+  resumeDocumentId: z.string().uuid().optional(),
   tone: z.enum(['professional', 'friendly', 'formal', 'casual', 'confident']).default('professional'),
   userName: z.string().optional(),
   additionalContext: z.string().optional(),
@@ -61,13 +64,26 @@ export async function POST(req: NextRequest) {
 
   const input = parse.data;
 
+  let resumeContent = input.resumeContent;
+  if (!resumeContent && input.resumeDocumentId) {
+    const { data: doc } = await supabase
+      .from('resume_documents')
+      .select('id, user_id, parsed_text')
+      .eq('id', input.resumeDocumentId)
+      .maybeSingle<{ id: string; user_id: string; parsed_text: string | null }>();
+    if (!doc || doc.user_id !== userData.user.id) return jsonError(404, 'resume_not_found');
+    if (!doc.parsed_text?.trim()) return jsonError(422, 'resume_not_parsed');
+    resumeContent = doc.parsed_text;
+  }
+  if (!resumeContent) return jsonError(400, 'resume_required');
+
   try {
     // Generate the cover letter
     const result = await generateCoverLetter({
       jobTitle: input.jobTitle,
       companyName: input.companyName,
       jobDescription: input.jobDescription,
-      resumeContent: input.resumeContent,
+      resumeContent,
       tone: input.tone,
       userName: input.userName,
       additionalContext: input.additionalContext,
@@ -88,6 +104,7 @@ export async function POST(req: NextRequest) {
           alignmentScore: result.alignmentScore,
           jobTitle: input.jobTitle,
           companyName: input.companyName,
+          ...(input.resumeDocumentId ? { resume_document_id: input.resumeDocumentId } : {}),
         },
       });
     }
@@ -101,6 +118,7 @@ export async function POST(req: NextRequest) {
       },
     }, { status: 201 });
   } catch (error) {
+    if (error instanceof LLMUnavailableError) return jsonError(503, 'llm_unavailable');
     console.error('Cover letter generation failed:', error);
     return jsonError(500, 'generation_failed', { 
       message: error instanceof Error ? error.message : 'Failed to generate cover letter' 

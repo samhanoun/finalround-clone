@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { AppShell } from '@/components/AppShell';
 import { RequireAuth } from '@/components/RequireAuth';
 import { SettingsClient } from '@/components/SettingsClient';
@@ -36,7 +37,14 @@ export default async function SettingsPage() {
   const videoSettings = await getVideoConferencingSettings(supabase, userData.user.id);
 
   return (
-    <AppShell title={t('title')}>
+    <AppShell
+      title={t('title')}
+      actions={
+        <Link className="button" href="/teams">
+          Teams
+        </Link>
+      }
+    >
       <RequireAuth>
         <div className="stack">
           <UsageWidget />

@@ -11,20 +11,32 @@ import { SignOutButton } from './SignOutButton';
 import { NotificationBell } from './NotificationBell';
 import styles from './AppShell.module.css';
 
-const NAV: Array<{ href: string; label: string; Icon: ComponentType<{ size?: number }> }> = [
+const NAV: Array<{ href: string; label: string; Icon: ComponentType<{ size?: number }>; also?: string[] }> = [
   { href: '/dashboard', label: 'Home', Icon: HomeIcon },
   { href: '/copilot/live', label: 'Live', Icon: LiveIcon },
   { href: '/interview', label: 'Practice', Icon: PracticeIcon },
-  { href: '/resume', label: 'Résumé', Icon: ResumeIcon },
+  { href: '/resume', label: 'Résumé', Icon: ResumeIcon, also: ['/cover-letters'] },
   { href: '/jobs', label: 'Jobs', Icon: JobsIcon },
   { href: '/settings', label: 'Settings', Icon: SettingsIcon },
 ];
 
-/** `/en/copilot/live` and `/copilot/live` both match the Live item. */
-function isActive(pathname: string | null, href: string): boolean {
+/** Credits the referral link this account signed up with; the server ignores repeats. */
+function claimReferralOnce(userId: string) {
+  const key = `apex:referral-claimed:${userId}`;
+  try {
+    if (localStorage.getItem(key)) return;
+    localStorage.setItem(key, '1');
+  } catch {
+    // No storage (private mode): the server still only counts the first claim.
+  }
+  void fetch('/api/referrals/claim', { method: 'POST' }).catch(() => undefined);
+}
+
+/** `/en/copilot/live` and `/copilot/live` both match the Live item; `also` lists sub-pages kept elsewhere. */
+function isActive(pathname: string | null, href: string, also: string[] = []): boolean {
   if (!pathname) return false;
   const path = pathname.replace(/^\/[a-z]{2}(?=\/|$)/, '') || '/';
-  return path === href || path.startsWith(`${href}/`);
+  return [href, ...also].some((base) => path === base || path.startsWith(`${base}/`));
 }
 
 export function AppShell(props: { title?: string; actions?: React.ReactNode; children: React.ReactNode }) {
@@ -33,7 +45,10 @@ export function AppShell(props: { title?: string; actions?: React.ReactNode; chi
 
   useEffect(() => {
     const supabase = createClient();
-    supabase.auth.getUser().then(({ data }) => setUser(data.user));
+    supabase.auth.getUser().then(({ data }) => {
+      setUser(data.user);
+      if (data.user?.user_metadata?.referral_code) claimReferralOnce(data.user.id);
+    });
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -52,12 +67,12 @@ export function AppShell(props: { title?: string; actions?: React.ReactNode; chi
         </Link>
 
         <nav aria-label="Primary navigation" className={styles.nav}>
-          {NAV.map(({ href, label, Icon }) => (
+          {NAV.map(({ href, label, Icon, also }) => (
             <Link
               key={href}
               href={href}
               className={styles.navItem}
-              aria-current={isActive(pathname, href) ? 'page' : undefined}
+              aria-current={isActive(pathname, href, also) ? 'page' : undefined}
             >
               <Icon size={22} />
               <span>{label}</span>

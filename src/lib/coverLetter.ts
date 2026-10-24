@@ -7,8 +7,7 @@
  * - Tone customization
  */
 
-import OpenAI from 'openai';
-import { requireEnv } from './env';
+import { completeChat, extractJsonObject, practiceModel } from './practice/practice';
 import { createAdminClient } from './supabase/admin';
 
 export type CoverLetterTone = 'professional' | 'friendly' | 'formal' | 'casual' | 'confident';
@@ -26,99 +25,69 @@ export interface CoverLetterInput {
 export interface CoverLetterOutput {
   content: string;
   matchedKeywords: string[];
-  alignmentScore: number;
+  /** 0–100, or null when the model gave none. */
+  alignmentScore: number | null;
 }
 
+/** Marks the task for the e2e fake model. */
+export const TASK_COVER_LETTER = 'TASK: cover_letter';
+
 /**
- * Generate a cover letter based on job description and resume content
+ * Writes a cover letter from the job and the résumé, with the job keywords the
+ * résumé covers and a 0–100 fit score (null when the model gives none).
  */
 export async function generateCoverLetter(input: CoverLetterInput): Promise<CoverLetterOutput> {
-  const client = new OpenAI({ apiKey: requireEnv('OPENAI_API_KEY') });
-  
-  const toneGuidance = getToneGuidance(input.tone);
-  
-  const systemPrompt = `You are an expert career coach and cover letter writer. Your task is to write compelling, personalized cover letters that:
-1. Align the candidate's experience with the job requirements
-2. Use an appropriate tone: ${toneGuidance}
-3. Highlight specific achievements and skills from the resume
-4. Demonstrate genuine interest in the company and role
-5. Follow standard cover letter structure (introduction, body, conclusion)
+  const system = [
+    TASK_COVER_LETTER,
+    'You write cover letters for job applicants. The letter must:',
+    `- use this tone: ${getToneGuidance(input.tone)}`,
+    '- connect specific achievements from the résumé to what the job asks for;',
+    '- be three or four short paragraphs: why this role, two pieces of evidence, a confident close;',
+    '- avoid clichés ("I am writing to apply", "team player", "passionate") and anything not supported by the résumé.',
+    'Never invent employers, titles, numbers or skills.',
+    'Reply with JSON only, in this shape:',
+    '{"letter":"...","matched_keywords":["..."],"alignment_score":0}',
+    'matched_keywords: job requirements the résumé clearly shows. alignment_score: 0–100, how well the résumé fits the job.',
+  ].join('\n');
 
-Guidelines:
-- Keep the cover letter to 3-4 paragraphs
-- Use concrete examples from the resume
-- Avoid generic phrases
-- Focus on value the candidate can bring to the company
-- Address the hiring manager directly when possible
+  const user = [
+    `Position: ${input.jobTitle}`,
+    `Company: ${input.companyName}`,
+    input.userName ? `Candidate name: ${input.userName}` : '',
+    '',
+    'Job description:',
+    input.jobDescription,
+    '',
+    'Résumé:',
+    input.resumeContent,
+    input.additionalContext ? `\nAlso mention: ${input.additionalContext}` : '',
+  ].join('\n');
 
-Also extract and return:
-- List of keywords from the job description that match the resume (matchedKeywords)
-- A score from 0-100 indicating how well the resume aligns with the job description (alignmentScore)`;
-
-  const userPrompt = `Please write a cover letter with the following details:
-
-**Job Information:**
-- Position: ${input.jobTitle}
-- Company: ${input.companyName}
-- Job Description:
-${input.jobDescription}
-
-**Candidate Resume:**
-${input.resumeContent}
-
-${input.userName ? `**Candidate Name:** ${input.userName}` : ''}
-${input.additionalContext ? `\n**Additional Context:** ${input.additionalContext}` : ''}
-
-**Tone:** ${input.tone}
-
-Please provide the cover letter followed by:
-- matchedKeywords: [list of matching keywords]
-- alignmentScore: [number 0-100]`;
-
-  try {
-    const completion = await client.chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt },
-      ],
-      temperature: 0.7,
-    });
-
-    const response = completion.choices[0]?.message?.content ?? '';
-    
-    // Parse the response to extract cover letter and metadata
-    const parsed = parseCoverLetterResponse(response);
-    
-    return parsed;
-  } catch (error) {
-    console.error('Cover letter generation failed:', error);
-    throw new Error('Failed to generate cover letter');
-  }
+  const reply = await completeChat({
+    model: practiceModel(),
+    system: [system],
+    messages: [{ role: 'user', content: user }],
+    temperature: 0.6,
+    maxTokens: 1_400,
+    timeoutMs: 60_000,
+  });
+  return parseCoverLetterReply(reply);
 }
 
-/**
- * Parse LLM response to extract cover letter content and metadata
- */
-function parseCoverLetterResponse(response: string): CoverLetterOutput {
-  // Extract matched keywords
-  const keywordsMatch = response.match(/matchedKeywords:\s*\[(.*?)\]/i);
-  const keywords = keywordsMatch 
-    ? keywordsMatch[1].split(',').map(k => k.trim().replace(/["']/g, '')).filter(Boolean)
-    : [];
-  
-  // Extract alignment score
-  const scoreMatch = response.match(/alignmentScore:\s*(\d+)/i);
-  const alignmentScore = scoreMatch ? parseInt(scoreMatch[1], 10) : 50;
-  
-  // Extract cover letter content (everything before matchedKeywords or at the end)
-  const content = response.replace(/matchedKeywords:.*$/gim, '').replace(/alignmentScore:.*$/gim, '').trim();
-  
-  return {
-    content,
-    matchedKeywords: keywords,
-    alignmentScore: Math.min(100, Math.max(0, alignmentScore)),
-  };
+/** Reads the model's JSON; a plain-text reply is taken as the letter itself. */
+export function parseCoverLetterReply(reply: string): CoverLetterOutput {
+  const raw = extractJsonObject(reply) as { letter?: unknown; matched_keywords?: unknown; alignment_score?: unknown } | null;
+  if (raw && typeof raw.letter === 'string' && raw.letter.trim()) {
+    const score = Number(raw.alignment_score);
+    return {
+      content: raw.letter.trim(),
+      matchedKeywords: Array.isArray(raw.matched_keywords)
+        ? raw.matched_keywords.filter((k): k is string => typeof k === 'string' && k.trim() !== '').map((k) => k.trim()).slice(0, 20)
+        : [],
+      alignmentScore: Number.isFinite(score) ? Math.max(0, Math.min(100, Math.round(score))) : null,
+    };
+  }
+  return { content: reply.trim(), matchedKeywords: [], alignmentScore: null };
 }
 
 /**
