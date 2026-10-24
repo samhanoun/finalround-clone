@@ -1,12 +1,13 @@
 'use client';
 
-import Link from 'next/link';
 import { AppShell } from '@/components/AppShell';
+import { AnalyticsNav } from '@/components/analytics/AnalyticsNav';
 import { CustomDashboard } from '@/components/analytics/CustomDashboard';
 import { FunnelVisualization } from '@/components/analytics/FunnelVisualization';
 import { CohortAnalysis } from '@/components/analytics/CohortAnalysis';
 import { ExportButton } from '@/components/analytics/ExportButton';
 import { ScheduledReports } from '@/components/analytics/ScheduledReports';
+import { AnalyticsReconciliation } from '@/components/AnalyticsReconciliation';
 
 export default function AnalyticsPage() {
   return (
@@ -16,40 +17,22 @@ export default function AnalyticsPage() {
           Track your interview preparation progress and conversion metrics.
         </p>
 
-        <div className="analytics-nav">
-          <Link href="/analytics" className="nav-link active">
-            📊 Overview
-          </Link>
-          <Link href="/analytics/funnel" className="nav-link">
-            🔻 Funnel
-          </Link>
-          <Link href="/analytics/cohort" className="nav-link">
-            📈 Cohort
-          </Link>
-          <Link href="/analytics/reports" className="nav-link">
-            📧 Reports
-          </Link>
-        </div>
+        <AnalyticsNav />
 
         <CustomDashboard />
 
-        <div className="row" style={{ gap: '20px', flexWrap: 'wrap' }}>
-          <div style={{ flex: 2, minWidth: '300px' }}>
-            <div id="funnel-export">
-              <FunnelVisualization />
-            </div>
-          </div>
-          <div style={{ flex: 1, minWidth: '250px' }}>
-            <CohortAnalysis />
-          </div>
+        <div id="funnel-export">
+          <FunnelVisualization />
         </div>
+
+        <CohortAnalysis />
 
         <ScheduledReports />
 
-        <div className="export-section">
-          <h2 className="cardTitle">Export Data</h2>
+        <div className="export-section card">
+          <h2 className="cardTitle">Export data</h2>
           <p className="small help">
-            Download your analytics data in CSV format for further analysis.
+            Download your analytics as CSV.
           </p>
           <div className="export-buttons">
             <ExportButton 
@@ -59,48 +42,28 @@ export default function AnalyticsPage() {
             />
           </div>
         </div>
+
+        <details className="data-checks card">
+          <summary className="cardTitle">Data checks</summary>
+          <AnalyticsReconciliation />
+        </details>
       </div>
 
       <style jsx>{`
-        .analytics-nav {
-          display: flex;
-          gap: 8px;
-          padding: 12px 0;
-          border-bottom: 1px solid var(--color-border, #e5e7eb);
-          margin-bottom: 20px;
-          overflow-x: auto;
-        }
-        
-        .nav-link {
-          padding: 8px 16px;
-          border-radius: 6px;
-          text-decoration: none;
-          color: #6b7280;
-          font-size: 0.875rem;
-          font-weight: 500;
-          white-space: nowrap;
-          transition: all 0.2s;
-        }
-        
-        .nav-link:hover {
-          background: #f3f4f6;
-          color: #1f2937;
-        }
-        
-        .nav-link.active {
-          background: #e0e7ff;
-          color: #3730a3;
-        }
-        
         .export-section {
-          background: white;
-          border: 1px solid var(--color-border, #e5e7eb);
-          border-radius: 8px;
-          padding: 20px;
+          padding: 20px 24px;
         }
-        
+
         .export-buttons {
           margin-top: 12px;
+        }
+
+        .data-checks {
+          padding: 18px 24px;
+        }
+
+        .data-checks > summary {
+          cursor: pointer;
         }
       `}</style>
     </AppShell>

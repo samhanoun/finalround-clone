@@ -87,9 +87,9 @@ export function UsageWidget() {
     <div className="card">
       <div className="cardInner stack">
         <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-          <h2 className="cardTitle">Usage & Limits</h2>
+          <h2 className="cardTitle">Usage this month</h2>
           <span className={`badge ${data.isPro ? 'badgePro' : 'badgeFree'}`}>
-            {data.plan} Plan
+            {data.plan} plan
           </span>
         </div>
 
@@ -97,33 +97,33 @@ export function UsageWidget() {
           <ProgressBar
             used={data.usage.copilot_minutes_monthly}
             limit={data.limits.copilot_minutes_monthly}
-            label="Copilot (monthly)"
+            label="Live copilot, this month"
           />
           <ProgressBar
             used={data.usage.copilot_session_minutes}
             limit={data.limits.copilot_session_minutes}
-            label="Copilot (per session)"
+            label="Per session"
           />
           <ProgressBar
             used={data.usage.copilot_daily_minutes}
             limit={data.limits.copilot_daily_minutes}
-            label="Copilot (daily)"
+            label="Live copilot, today"
           />
           <ProgressBar
             used={data.usage.smart_mode_minutes_monthly}
             limit={data.limits.smart_mode_minutes_monthly}
-            label="Smart Mode (monthly)"
+            label="Smart mode, this month"
           />
           <ProgressBar
             used={data.usage.resume_deep_reviews_monthly}
             limit={data.limits.resume_deep_reviews_monthly}
-            label="Resume Reviews (monthly)"
+            label="Résumé reviews, this month"
           />
         </div>
 
         {!data.isPro && (
           <p className="small help">
-            Upgrade to Pro for higher limits: 400 min/month, 30 min/session, 45 min/day, Smart mode 80 min/month, 10 resume reviews/month.
+            Pro raises the limits to 400 minutes a month, 30-minute sessions, 45 minutes a day, 80 Smart mode minutes and 10 résumé reviews a month.
           </p>
         )}
 

@@ -1,0 +1,97 @@
+.linkRow {
+  display: flex;
+  gap: 8px;
+}
+
+.link {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-code);
+  font-size: 13.5px;
+  color: var(--paper-dim);
+}
+
+.meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--mist);
+  font-size: 14px;
+}
+
+.code {
+  margin-left: 6px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: var(--ink);
+  color: var(--paper);
+  font-family: var(--font-code);
+  letter-spacing: 0.08em;
+}
+
+.share {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.shareLabel {
+  margin-right: 4px;
+  color: var(--mist);
+  font-size: 14px;
+}
+
+.stats {
+  margin: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.stats div {
+  padding-left: 14px;
+  border-left: 2px solid var(--line-strong);
+}
+
+.stats dt {
+  color: var(--mist);
+  font-size: 13.5px;
+}
+
+.stats dd {
+  margin: 0;
+  font-size: 1.75rem;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+}
+
+.history {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.history li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--well);
+}
+
+.when {
+  margin-left: auto;
+}
+
+@media (max-width: 480px) {
+  .linkRow {
+    flex-direction: column;
+  }
+}

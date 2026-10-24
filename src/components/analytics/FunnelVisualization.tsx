@@ -19,7 +19,7 @@ interface FunnelData {
   totalUsers: number;
 }
 
-const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
+const COLORS = ['var(--ice)', 'var(--live)', 'var(--caution)', 'var(--alert)', 'var(--ice-text)', 'var(--ember)'];
 
 export function FunnelVisualization() {
   const [data, setData] = useState<FunnelData | null>(null);
@@ -89,14 +89,14 @@ export function FunnelVisualization() {
         <div className="funnel-chart">
           <ResponsiveContainer width="100%" height={300}>
             <BarChart data={chartData} layout="vertical" margin={{ left: 20 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--line)" />
               <XAxis type="number" tickFormatter={formatNumber} />
               <YAxis dataKey="name" type="category" width={100} />
               <Tooltip 
                 formatter={(value) => [Number(value).toLocaleString(), 'Users']}
-                contentStyle={{ borderRadius: '8px', border: '1px solid #e5e7eb' }}
+                contentStyle={{ borderRadius: '8px', border: '1px solid var(--line)' }}
               />
-              <Bar dataKey="users" fill="#3b82f6" radius={[0, 4, 4, 0]} />
+              <Bar dataKey="users" fill="var(--ice)" radius={[0, 4, 4, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -141,7 +141,7 @@ export function FunnelVisualization() {
           align-items: center;
           justify-content: space-between;
           padding: 12px 16px;
-          background: var(--color-bg-subtle, #f8f9fa);
+          background: var(--color-bg-subtle, var(--well));
           border-radius: 8px;
           position: relative;
         }
@@ -156,8 +156,8 @@ export function FunnelVisualization() {
           width: 24px;
           height: 24px;
           border-radius: 50%;
-          background: #3b82f6;
-          color: white;
+          background: var(--ice);
+          color: var(--midnight);
           display: flex;
           align-items: center;
           justify-content: center;
@@ -185,12 +185,12 @@ export function FunnelVisualization() {
         }
         
         .conversion-rate {
-          color: #10b981;
+          color: var(--live);
           font-weight: 500;
         }
         
         .drop-off {
-          color: #ef4444;
+          color: var(--alert);
         }
         
         .stage-arrow {
@@ -198,13 +198,13 @@ export function FunnelVisualization() {
           bottom: -14px;
           left: 50%;
           transform: translateX(-50%);
-          color: #9ca3af;
+          color: var(--mist);
           font-size: 0.875rem;
         }
         
         .badge {
-          background: #e0e7ff;
-          color: #3730a3;
+          background: var(--ember-soft);
+          color: var(--ember-text);
           padding: 4px 10px;
           border-radius: 12px;
           font-size: 0.75rem;
@@ -212,7 +212,7 @@ export function FunnelVisualization() {
         }
         
         .error {
-          color: #ef4444;
+          color: var(--alert);
         }
       `}</style>
     </div>

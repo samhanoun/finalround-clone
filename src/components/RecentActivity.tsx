@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/server';
+import { ChartIcon, LiveIcon, PracticeIcon, ResumeIcon } from './icons';
 import styles from './RecentActivity.module.css';
 
 interface Activity {
@@ -34,8 +35,8 @@ export async function RecentActivity() {
       activities.push({
         id: session.id,
         type: 'interview',
-        title: session.title || 'Untitled Interview',
-        description: `Interview ${session.status || 'created'}`,
+        title: session.title || 'Untitled practice interview',
+        description: session.status === 'completed' ? 'Practice interview, finished' : 'Practice interview',
         timestamp: session.created_at,
         href: `/interview/${session.id}`,
       });
@@ -55,8 +56,8 @@ export async function RecentActivity() {
       activities.push({
         id: `resume-${resume.id}`,
         type: 'resume',
-        title: resume.filename || 'Resume',
-        description: 'Resume uploaded',
+        title: resume.filename || 'Résumé',
+        description: 'Résumé uploaded',
         timestamp: resume.created_at,
         href: '/resume',
       });
@@ -76,8 +77,8 @@ export async function RecentActivity() {
       activities.push({
         id: `copilot-${session.id}`,
         type: 'copilot',
-        title: session.title || 'Copilot Session',
-        description: `Copilot ${session.status || 'active'}`,
+        title: session.title || 'Live session',
+        description: session.status === 'active' ? 'Live session, running' : 'Live session',
         timestamp: session.created_at,
         href: '/copilot/live',
       });
@@ -90,20 +91,7 @@ export async function RecentActivity() {
   // Take top 8 activities
   const recentActivities = activities.slice(0, 8);
 
-  const getActivityIcon = (type: Activity['type']) => {
-    switch (type) {
-      case 'interview':
-        return '🎯';
-      case 'report':
-        return '📊';
-      case 'resume':
-        return '📄';
-      case 'copilot':
-        return '🤖';
-      default:
-        return '•';
-    }
-  };
+  const ICONS = { interview: PracticeIcon, report: ChartIcon, resume: ResumeIcon, copilot: LiveIcon } as const;
 
   const formatTimeAgo = (timestamp: string) => {
     const now = new Date();
@@ -123,12 +111,17 @@ export async function RecentActivity() {
   return (
     <section id="activity" className="card">
       <div className="cardInner">
-        <h2 className="cardTitle" style={{ marginBottom: 16 }}>Recent Activity</h2>
+        <h2 className="cardTitle" style={{ marginBottom: 16 }}>Recent activity</h2>
         {recentActivities.length > 0 ? (
           <ul className={styles.activityList}>
             {recentActivities.map((activity) => (
               <li key={activity.id} className={styles.activityItem}>
-                <span className={styles.activityIcon}>{getActivityIcon(activity.type)}</span>
+                <span className={styles.activityIcon} data-type={activity.type} aria-hidden="true">
+                  {(() => {
+                    const Icon = ICONS[activity.type];
+                    return <Icon size={18} />;
+                  })()}
+                </span>
                 <div className={styles.activityContent}>
                   {activity.href ? (
                     <Link href={activity.href} className={styles.activityTitle}>
@@ -144,7 +137,7 @@ export async function RecentActivity() {
             ))}
           </ul>
         ) : (
-          <p className="small">No recent activity. Start by creating your first mock interview!</p>
+          <p className="small">Nothing yet. Your live sessions, practice interviews and résumés will show up here.</p>
         )}
       </div>
     </section>

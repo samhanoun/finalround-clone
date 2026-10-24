@@ -12,24 +12,34 @@
   align-items: center;
   gap: 12px;
   padding: 10px 12px;
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--well);
   border-radius: 10px;
-  transition: background 0.2s;
+  transition: background 120ms ease;
 }
 
 .activityItem:hover {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--deck-2);
 }
 
 .activityIcon {
-  font-size: 1.2rem;
-  width: 32px;
-  height: 32px;
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(255, 255, 255, 0.05);
-  border-radius: 8px;
+  background: var(--deck-2);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  color: var(--mist);
+}
+
+.activityIcon[data-type='copilot'] {
+  color: var(--ember);
+}
+
+.activityIcon[data-type='resume'] {
+  color: var(--ice);
 }
 
 .activityContent {

@@ -1,0 +1,181 @@
+.shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr);
+  background: var(--midnight);
+}
+
+.rail {
+  position: sticky;
+  top: var(--titlebar, 0px);
+  height: calc(100vh - var(--titlebar, 0px));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 18px 0 16px;
+  border-right: 1px solid #18233a;
+  background: var(--midnight);
+  z-index: 40;
+}
+
+.brandLink {
+  display: inline-flex;
+  margin-bottom: 18px;
+  border-radius: 12px;
+}
+
+.nav {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.navItem {
+  width: 68px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 0 8px;
+  border-radius: 12px;
+  color: var(--mist);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.2;
+  text-decoration: none;
+  transition: color 120ms ease, background 120ms ease;
+}
+
+.navItem:hover {
+  color: var(--paper);
+  background: var(--deck);
+}
+
+.navItem[aria-current='page'] {
+  color: var(--ember);
+  background: var(--deck-2);
+}
+
+.account {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.avatar {
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--deck-2);
+  border: 1px solid var(--line-strong);
+  color: var(--ember-text);
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.main {
+  min-width: 0;
+  outline: none;
+}
+
+.content {
+  width: min(1240px, 100%);
+  margin: 0 auto;
+  padding: 32px 40px 72px;
+}
+
+.pageHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.pageActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+/* Tablet and phone: the rail becomes a top bar. */
+@media (max-width: 1023px) {
+  .shell {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .rail {
+    position: sticky;
+    top: var(--titlebar, 0px);
+    height: auto;
+    flex-direction: row;
+    gap: 8px;
+    padding: 10px 16px;
+    border-right: 0;
+    border-bottom: 1px solid #18233a;
+  }
+
+  .brandLink {
+    margin-bottom: 0;
+    flex-shrink: 0;
+  }
+
+  .nav {
+    flex-direction: row;
+    gap: 2px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    min-width: 0;
+  }
+
+  .nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .navItem {
+    width: auto;
+    flex-direction: row;
+    gap: 8px;
+    padding: 8px 12px;
+    font-size: 14px;
+    white-space: nowrap;
+  }
+
+  .account {
+    margin-top: 0;
+    margin-left: auto;
+    flex-direction: row;
+    flex-shrink: 0;
+  }
+
+  .content {
+    padding: 24px 20px 56px;
+  }
+}
+
+@media (max-width: 560px) {
+  .avatar {
+    display: none;
+  }
+
+  .navItem span {
+    display: none;
+  }
+
+  .navItem {
+    padding: 10px;
+  }
+
+  .content {
+    padding: 20px 16px 48px;
+  }
+}

@@ -1415,17 +1415,18 @@ export function LiveCopilotClient() {
       {error ? <div className="error" role="status" aria-live="polite">{error}</div> : null}
 
       {isActive ? (
-        <section className="card" aria-label="Live assistance">
-          <div className="cardInner stack" style={{ gap: 14 }}>
-            {sharingStoppedAt !== null && keepOpenAfterStop !== sharingStoppedAt ? (
+        <section className={styles.liveGrid} aria-label="Live assistance">
+          {sharingStoppedAt !== null && keepOpenAfterStop !== sharingStoppedAt ? (
+            <div className={styles.liveNotice}>
               <AutoEndNotice
                 key={sharingStoppedAt}
                 startedAt={sharingStoppedAt}
                 onExpire={() => void stopSession('sharing_stopped')}
                 onKeepOpen={() => setKeepOpenAfterStop(sharingStoppedAt)}
               />
-            ) : null}
-            <AudioSourcesPanel capture={audio} transcription={transcription} disabled={!isActive} />
+            </div>
+          ) : null}
+          <div className={styles.answerCol}>
             <AnswerPanel
               answers={answers}
               onAnswerNow={answerNow}
@@ -1435,285 +1436,59 @@ export function LiveCopilotClient() {
               connection={connection}
               tail={answerTail}
             />
+          </div>
+          <div className={styles.signalCol}>
+            <AudioSourcesPanel capture={audio} transcription={transcription} disabled={!isActive} />
             <LatencyDrawer answers={answers} />
           </div>
         </section>
       ) : null}
 
-      <section className="card" aria-label="Typed lines and tools">
-        <div className="cardInner stack" style={{ gap: 14 }}>
-          <div className={styles.composerCard}>
-            <div className={styles.composerHeader}>
-              <h3 className={styles.sectionTitle}>Transcript composer</h3>
-              <div className={styles.chipRow}>
-                <span className="badge">Audio {audio.status === 'live' ? 'live' : 'off'}</span>
-                <span className="badge">{micSyncing && isActive ? 'Transcribing…' : 'Synced'}</span>
-                {lastMicSyncAt ? <span className="small mono">{new Date(lastMicSyncAt).toLocaleTimeString()}</span> : null}
-              </div>
-            </div>
-            <div className={styles.composerControls}>
-              <select
-                className="select"
-                value={draftSpeaker}
-                onChange={(e) => setDraftSpeaker(e.target.value as 'interviewer' | 'candidate')}
-                disabled={!isActive || submitting}
-                aria-label="Speaker for the typed line"
-              >
-                <option value="interviewer">Interviewer</option>
-                <option value="candidate">Candidate</option>
-              </select>
-              <button
-                className="button"
-                type="button"
-                onClick={submitTranscriptEvent}
-                disabled={!isActive || !draftText.trim() || submitting}
-              >
-                {submitting && isActive ? 'Sending…' : 'Send line'}
-              </button>
-              <button className="button" type="button" onClick={injectFillerLine} disabled={!isActive || submitting}>
-                Add 10-sec filler
-              </button>
-              <button className="button" type="button" onClick={generateSummary} disabled={!session || summaryLoading || submitting}>
-                {summaryLoading ? 'Generating…' : 'Generate summary'}
-              </button>
-            </div>
-            <textarea
-              ref={draftTextareaRef}
-              className="input"
-              value={draftText}
-              onChange={(e) => setDraftText(e.target.value)}
-              placeholder="Paste the latest question or answer here"
-              rows={3}
-              disabled={!isActive || submitting}
-            />
-            <p className="small" style={{ margin: 0 }}>
-              Shortcuts: Ctrl/Cmd+Enter send · Ctrl/Cmd+M start/stop listening · Ctrl/Cmd+K focus composer
-            </p>
-          </div>
-
-          <details className={styles.settingsCard}>
-            <summary className="small" style={{ cursor: 'pointer' }}>
-              <strong>Diagnostics</strong>: overlay controls and SLO compliance
-            </summary>
-            {/* T4: Overlay controls with hotkey hints and performance instrumentation */}
-            <section className={styles.settingsCard} aria-label="Overlay controls">
-              <div className={styles.panelHeader}>
-                <h3 className={styles.sectionTitle} style={{ margin: 0 }}>Overlay controls</h3>
-                <span className="small">Hotkeys: Ctrl+H (hide/show), Ctrl+M (mute), Ctrl+T (timer)</span>
-              </div>
-              <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
-                <button
-                  className="button"
-                  type="button"
-                  onClick={() => {
-                    const start = performance.now();
-                    setOverlayVisible((prev) => {
-                      const latencyMs = Math.round(performance.now() - start);
-                      setInteractionLatency({ action: 'toggleOverlay', latencyMs });
-                      sloClient.recordMetric(SLO_TYPE_OVERLAY_INTERACTION, 'toggleOverlay', latencyMs);
-                      updateSLOCompliance();
-                      
-                      return !prev;
-                    });
-                  }}
-                  aria-pressed={overlayVisible}
-                >
-                  {overlayVisible ? 'Hide Overlay' : 'Show Overlay'}
-                </button>
-                <button
-                  className="button"
-                  type="button"
-                  onClick={() => {
-                    const start = performance.now();
-                    setOverlayMuted((prev) => {
-                      const latencyMs = Math.round(performance.now() - start);
-                      setInteractionLatency({ action: 'toggleMute', latencyMs });
-                      sloClient.recordMetric(SLO_TYPE_OVERLAY_INTERACTION, 'toggleMute', latencyMs);
-                      updateSLOCompliance();
-                      
-                      return !prev;
-                    });
-                  }}
-                  aria-pressed={overlayMuted}
-                >
-                  {overlayMuted ? 'Unmute' : 'Mute'}
-                </button>
-                <button
-                  className="button"
-                  type="button"
-                  onClick={() => {
-                    const start = performance.now();
-                    setOverlayTimerRunning((prev) => {
-                      const latencyMs = Math.round(performance.now() - start);
-                      setInteractionLatency({ action: 'toggleTimer', latencyMs });
-                      sloClient.recordMetric(SLO_TYPE_OVERLAY_INTERACTION, 'toggleTimer', latencyMs);
-                      updateSLOCompliance();
-                      
-                      return !prev;
-                    });
-                  }}
-                  aria-pressed={overlayTimerRunning}
-                >
-                  {overlayTimerRunning ? 'Pause Timer' : 'Start Timer'}
-                </button>
-                <button
-                  className="button"
-                  type="button"
-                  onClick={() => {
-                    const start = performance.now();
-                    setOverlayTimerSeconds(0);
-                    setOverlayTimerRunning(false);
-                    const latencyMs = Math.round(performance.now() - start);
-                    setInteractionLatency({ action: 'resetTimer', latencyMs });
-                    sloClient.recordMetric(SLO_TYPE_OVERLAY_INTERACTION, 'resetTimer', latencyMs);
-                    updateSLOCompliance();
-                    
-                  }}
-                  disabled={overlayTimerSeconds === 0}
-                >
-                  Reset Timer
-                </button>
-                <span className="badge" style={{ fontSize: '1rem', padding: '6px 12px' }}>
-                  {Math.floor(overlayTimerSeconds / 60).toString().padStart(2, '0')}:{(overlayTimerSeconds % 60).toString().padStart(2, '0')}
-                </span>
-                {overlayMuted && <span className="badge badgeDanger">Muted</span>}
-              </div>
-              {/* Performance metrics display for SLO verification */}
-              {interactionLatency.latencyMs !== null && (
-                <p className="small" style={{ margin: '8px 0 0' }}>
-                  Last interaction: <strong>{interactionLatency.action}</strong> — <strong>{interactionLatency.latencyMs}ms</strong>
-                  {interactionLatency.latencyMs <= 100 ? (
-                    <span className="success" style={{ marginLeft: 8 }}>✓ Within SLO (&lt;100ms)</span>
-                  ) : (
-                    <span className="error" style={{ marginLeft: 8 }}>⚠ Exceeds SLO (&lt;100ms)</span>
-                  )}
-                </p>
-              )}
-            </section>
-
-            {/* PRD T4: Real-time SLO compliance status display */}
-            <section className={styles.settingsCard} aria-label="SLO compliance status">
-              <div className={styles.panelHeader}>
-                <h3 className={styles.sectionTitle} style={{ margin: 0 }}>SLO Compliance</h3>
-                <span className="small">Real-time performance</span>
-              </div>
-              <div className={styles.metricGrid}>
-                {sloCompliance.map((compliance) => {
-                  const isOverlay = compliance.type === 'overlay_interaction';
-                  const targetLabel = isOverlay ? 'Overlay Interaction' : 'Transcript → Suggestion';
-                  const targetSlo = isOverlay ? '<100ms' : '<3s';
-                  
-                  return (
-                    <div key={compliance.type} className={styles.metricCard}>
-                      <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span className="small" style={{ fontWeight: 600 }}>{targetLabel}</span>
-                        <span className={`badge ${compliance.currentStatus === 'healthy' ? styles.badgeActive : compliance.currentStatus === 'warning' ? '' : styles.badgeDanger}`}>
-                          {getStatusEmoji(compliance.currentStatus)} {compliance.currentStatus}
-                        </span>
-                      </div>
-                      {compliance.totalSamples > 0 ? (
-                        <>
-                          <div className="row" style={{ gap: 12, marginTop: 4 }}>
-                            <span className="small">p50: <strong>{formatLatency(compliance.p50)}</strong></span>
-                            <span className="small">p95: <strong>{formatLatency(compliance.p95)}</strong></span>
-                          </div>
-                          <div className={styles.progressTrack} style={{ marginTop: 6 }}>
-                            <span
-                              className={`${styles.progressFill} ${compliance.p95 <= (isOverlay ? 100 : 3000) ? styles.progressFillhigh : compliance.p95 <= (isOverlay ? 150 : 4000) ? styles.progressFillmedium : styles.progressFilllow}`}
-                              style={{ width: `${Math.min(100, (compliance.withinTarget / compliance.totalSamples) * 100)}%` }}
-                            />
-                          </div>
-                          <span className="small" style={{ color: 'var(--muted)' }}>
-                            {compliance.withinTarget}/{compliance.totalSamples} within SLO ({targetSlo})
-                          </span>
-                        </>
-                      ) : (
-                        <p className="small" style={{ margin: '4px 0 0', color: 'var(--muted)' }}>
-                          No samples yet. Interact to collect metrics.
-                        </p>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-              {/* Recent metrics mini-display */}
-              {recentSloMetrics.length > 0 && (
-                <div style={{ marginTop: 8 }}>
-                  <span className="small" style={{ display: 'block', marginBottom: 4 }}>Recent:</span>
-                  <div className="row" style={{ gap: 4, flexWrap: 'wrap' }}>
-                    {recentSloMetrics.slice(-5).reverse().map((metric, idx) => (
-                      <span
-                        key={`${metric.timestamp}-${idx}`}
-                        className="badge"
-                        style={{
-                          fontSize: '0.75rem',
-                          padding: '2px 6px',
-                          borderColor: metric.status === 'healthy' ? 'rgba(26, 194, 115, 0.5)' : metric.status === 'warning' ? 'rgba(255, 191, 91, 0.5)' : 'rgba(255, 92, 138, 0.5)',
-                        }}
-                        title={`${metric.action}: ${metric.latencyMs}ms`}
-                      >
-                        {formatLatency(metric.latencyMs)}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </section>
-          </details>
+      <div className={styles.viewBar} aria-label="Copilot view tabs" role="group">
+        <div className={styles.tabRow} role="tablist" aria-label="Copilot views" onKeyDown={handlePanelTabKeyDown}>
+          <button
+            id="copilot-tab-live"
+            className={styles.segment}
+            type="button"
+            role="tab"
+            tabIndex={activePanel === 'live' ? 0 : -1}
+            aria-selected={activePanel === 'live'}
+            aria-controls="copilot-panel-live"
+            onClick={() => selectPanel('live')}
+          >
+            Live feed
+          </button>
+          <button
+            id="copilot-tab-analytics"
+            className={styles.segment}
+            type="button"
+            role="tab"
+            tabIndex={activePanel === 'analytics' ? 0 : -1}
+            aria-selected={activePanel === 'analytics'}
+            aria-controls="copilot-panel-analytics"
+            onClick={() => selectPanel('analytics')}
+          >
+            Analytics
+          </button>
         </div>
-      </section>
-
-      <section className="card" aria-label="Copilot view tabs">
-        <div className="cardInner stack" style={{ gap: 10 }}>
-          <div className={styles.tabRow} role="tablist" aria-label="Copilot views" onKeyDown={handlePanelTabKeyDown}>
-            <button
-              id="copilot-tab-live"
-              className={`button ${styles.tabButton} ${activePanel === 'live' ? 'buttonPrimary' : ''}`}
-              type="button"
-              role="tab"
-              tabIndex={activePanel === 'live' ? 0 : -1}
-              aria-selected={activePanel === 'live'}
-              aria-controls="copilot-panel-live"
-              onClick={() => selectPanel('live')}
-            >
-              Live feed
-            </button>
-            <button
-              id="copilot-tab-analytics"
-              className={`button ${styles.tabButton} ${activePanel === 'analytics' ? 'buttonPrimary' : ''}`}
-              type="button"
-              role="tab"
-              tabIndex={activePanel === 'analytics' ? 0 : -1}
-              aria-selected={activePanel === 'analytics'}
-              aria-controls="copilot-panel-analytics"
-              onClick={() => selectPanel('analytics')}
-            >
-              Analytics
-            </button>
-          </div>
-          <p className="small" style={{ margin: 0 }}>
-            {activePanel === 'live'
-              ? 'Real-time transcript and suggestion stream.'
-              : 'Review prior sessions, key metrics, and generated summaries.'}
-          </p>
-        </div>
-      </section>
+        <p className="small" style={{ margin: 0 }}>
+          {activePanel === 'live'
+            ? 'What was said, and the answers saved this session.'
+            : 'Past sessions, their numbers and their reports.'}
+        </p>
+      </div>
 
       <div key={activePanel} className={styles.panelStage}>
         {activePanel === 'live' ? (
           <div role="tabpanel" id="copilot-panel-live" aria-labelledby="copilot-tab-live" className="stack">
-          <section className="card" aria-label="Live layout controls">
-            <div className="cardInner stack" style={{ gap: 10 }}>
-              <div className={styles.panelHeader}>
-                <h3 className={styles.sectionTitle} style={{ margin: 0 }}>Live feed layout</h3>
-                <div className={styles.tabRow} role="toolbar" aria-label="Live layout options">
-                  <button className={`button ${styles.tabButton} ${liveLayout === 'split' ? 'buttonPrimary' : ''}`} type="button" aria-pressed={liveLayout === 'split'} onClick={() => setLiveLayout('split')}>Split</button>
-                  <button className={`button ${styles.tabButton} ${liveLayout === 'transcript' ? 'buttonPrimary' : ''}`} type="button" aria-pressed={liveLayout === 'transcript'} onClick={() => setLiveLayout('transcript')}>Transcript only</button>
-                  <button className={`button ${styles.tabButton} ${liveLayout === 'suggestions' ? 'buttonPrimary' : ''}`} type="button" aria-pressed={liveLayout === 'suggestions'} onClick={() => setLiveLayout('suggestions')}>Suggestions only</button>
-                </div>
-              </div>
+          <div className={styles.panelHeader} aria-label="Live layout controls" role="group">
+            <h2 className="cardTitle">Transcript and answers</h2>
+            <div className={styles.tabRow} role="toolbar" aria-label="Live layout options">
+              <button className={styles.segment} type="button" aria-pressed={liveLayout === 'split'} onClick={() => setLiveLayout('split')}>Side by side</button>
+              <button className={styles.segment} type="button" aria-pressed={liveLayout === 'transcript'} onClick={() => setLiveLayout('transcript')}>Transcript</button>
+              <button className={styles.segment} type="button" aria-pressed={liveLayout === 'suggestions'} onClick={() => setLiveLayout('suggestions')}>Answers</button>
             </div>
-          </section>
+          </div>
           <div className={liveLayout === 'split' ? 'grid2' : 'stack'} style={{ alignItems: 'start' }}>
             {liveLayout !== 'suggestions' ? <TranscriptFeed rows={transcriptRows} isActive={isActive} /> : null}
             {liveLayout !== 'transcript' ? <SuggestionFeed rows={suggestionRows} isActive={isActive} /> : null}
@@ -2104,6 +1879,229 @@ export function LiveCopilotClient() {
         </div>
         )}
       </div>
+
+      <section className="card" aria-label="Typed lines and tools">
+        <div className="cardInner stack" style={{ gap: 14 }}>
+          <div className={styles.composerCard}>
+            <div className={styles.composerHeader}>
+              <h2 className="cardTitle">Type a line</h2>
+              <div className={styles.chipRow}>
+                <span className="badge">Audio {audio.status === 'live' ? 'live' : 'off'}</span>
+                <span className="badge">{micSyncing && isActive ? 'Transcribing…' : 'Synced'}</span>
+                {lastMicSyncAt ? <span className="small mono">{new Date(lastMicSyncAt).toLocaleTimeString()}</span> : null}
+              </div>
+            </div>
+            <div className={styles.composerControls}>
+              <select
+                className="select"
+                value={draftSpeaker}
+                onChange={(e) => setDraftSpeaker(e.target.value as 'interviewer' | 'candidate')}
+                disabled={!isActive || submitting}
+                aria-label="Speaker for the typed line"
+              >
+                <option value="interviewer">Interviewer</option>
+                <option value="candidate">Candidate</option>
+              </select>
+              <button
+                className="button"
+                type="button"
+                onClick={submitTranscriptEvent}
+                disabled={!isActive || !draftText.trim() || submitting}
+              >
+                {submitting && isActive ? 'Sending…' : 'Send line'}
+              </button>
+              <button className="button" type="button" onClick={injectFillerLine} disabled={!isActive || submitting}>
+                Add 10-sec filler
+              </button>
+              <button className="button" type="button" onClick={generateSummary} disabled={!session || summaryLoading || submitting}>
+                {summaryLoading ? 'Generating…' : 'Generate summary'}
+              </button>
+            </div>
+            <textarea
+              ref={draftTextareaRef}
+              className="input"
+              value={draftText}
+              onChange={(e) => setDraftText(e.target.value)}
+              placeholder="Paste the latest question or answer here"
+              rows={3}
+              disabled={!isActive || submitting}
+            />
+            <p className="small" style={{ margin: 0 }}>
+              Shortcuts: Ctrl/Cmd+Enter send · Ctrl/Cmd+M start/stop listening · Ctrl/Cmd+K focus composer
+            </p>
+          </div>
+
+          <details className={styles.settingsCard}>
+            <summary className="small" style={{ cursor: 'pointer' }}>
+              <strong>Diagnostics</strong>: overlay controls and SLO compliance
+            </summary>
+            {/* T4: Overlay controls with hotkey hints and performance instrumentation */}
+            <section className={styles.settingsCard} aria-label="Overlay controls">
+              <div className={styles.panelHeader}>
+                <h3 className={styles.sectionTitle} style={{ margin: 0 }}>Overlay controls</h3>
+                <span className="small">Hotkeys: Ctrl+H (hide/show), Ctrl+M (mute), Ctrl+T (timer)</span>
+              </div>
+              <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+                <button
+                  className="button"
+                  type="button"
+                  onClick={() => {
+                    const start = performance.now();
+                    setOverlayVisible((prev) => {
+                      const latencyMs = Math.round(performance.now() - start);
+                      setInteractionLatency({ action: 'toggleOverlay', latencyMs });
+                      sloClient.recordMetric(SLO_TYPE_OVERLAY_INTERACTION, 'toggleOverlay', latencyMs);
+                      updateSLOCompliance();
+                      
+                      return !prev;
+                    });
+                  }}
+                  aria-pressed={overlayVisible}
+                >
+                  {overlayVisible ? 'Hide Overlay' : 'Show Overlay'}
+                </button>
+                <button
+                  className="button"
+                  type="button"
+                  onClick={() => {
+                    const start = performance.now();
+                    setOverlayMuted((prev) => {
+                      const latencyMs = Math.round(performance.now() - start);
+                      setInteractionLatency({ action: 'toggleMute', latencyMs });
+                      sloClient.recordMetric(SLO_TYPE_OVERLAY_INTERACTION, 'toggleMute', latencyMs);
+                      updateSLOCompliance();
+                      
+                      return !prev;
+                    });
+                  }}
+                  aria-pressed={overlayMuted}
+                >
+                  {overlayMuted ? 'Unmute' : 'Mute'}
+                </button>
+                <button
+                  className="button"
+                  type="button"
+                  onClick={() => {
+                    const start = performance.now();
+                    setOverlayTimerRunning((prev) => {
+                      const latencyMs = Math.round(performance.now() - start);
+                      setInteractionLatency({ action: 'toggleTimer', latencyMs });
+                      sloClient.recordMetric(SLO_TYPE_OVERLAY_INTERACTION, 'toggleTimer', latencyMs);
+                      updateSLOCompliance();
+                      
+                      return !prev;
+                    });
+                  }}
+                  aria-pressed={overlayTimerRunning}
+                >
+                  {overlayTimerRunning ? 'Pause Timer' : 'Start Timer'}
+                </button>
+                <button
+                  className="button"
+                  type="button"
+                  onClick={() => {
+                    const start = performance.now();
+                    setOverlayTimerSeconds(0);
+                    setOverlayTimerRunning(false);
+                    const latencyMs = Math.round(performance.now() - start);
+                    setInteractionLatency({ action: 'resetTimer', latencyMs });
+                    sloClient.recordMetric(SLO_TYPE_OVERLAY_INTERACTION, 'resetTimer', latencyMs);
+                    updateSLOCompliance();
+                    
+                  }}
+                  disabled={overlayTimerSeconds === 0}
+                >
+                  Reset Timer
+                </button>
+                <span className="badge" style={{ fontSize: '1rem', padding: '6px 12px' }}>
+                  {Math.floor(overlayTimerSeconds / 60).toString().padStart(2, '0')}:{(overlayTimerSeconds % 60).toString().padStart(2, '0')}
+                </span>
+                {overlayMuted && <span className="badge badgeDanger">Muted</span>}
+              </div>
+              {/* Performance metrics display for SLO verification */}
+              {interactionLatency.latencyMs !== null && (
+                <p className="small" style={{ margin: '8px 0 0' }}>
+                  Last interaction: <strong>{interactionLatency.action}</strong> — <strong>{interactionLatency.latencyMs}ms</strong>
+                  {interactionLatency.latencyMs <= 100 ? (
+                    <span className="success" style={{ marginLeft: 8 }}>✓ Within SLO (&lt;100ms)</span>
+                  ) : (
+                    <span className="error" style={{ marginLeft: 8 }}>⚠ Exceeds SLO (&lt;100ms)</span>
+                  )}
+                </p>
+              )}
+            </section>
+
+            {/* PRD T4: Real-time SLO compliance status display */}
+            <section className={styles.settingsCard} aria-label="SLO compliance status">
+              <div className={styles.panelHeader}>
+                <h3 className={styles.sectionTitle} style={{ margin: 0 }}>SLO Compliance</h3>
+                <span className="small">Real-time performance</span>
+              </div>
+              <div className={styles.metricGrid}>
+                {sloCompliance.map((compliance) => {
+                  const isOverlay = compliance.type === 'overlay_interaction';
+                  const targetLabel = isOverlay ? 'Overlay Interaction' : 'Transcript → Suggestion';
+                  const targetSlo = isOverlay ? '<100ms' : '<3s';
+                  
+                  return (
+                    <div key={compliance.type} className={styles.metricCard}>
+                      <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span className="small" style={{ fontWeight: 600 }}>{targetLabel}</span>
+                        <span className={`badge ${compliance.currentStatus === 'healthy' ? styles.badgeActive : compliance.currentStatus === 'warning' ? '' : styles.badgeDanger}`}>
+                          {getStatusEmoji(compliance.currentStatus)} {compliance.currentStatus}
+                        </span>
+                      </div>
+                      {compliance.totalSamples > 0 ? (
+                        <>
+                          <div className="row" style={{ gap: 12, marginTop: 4 }}>
+                            <span className="small">p50: <strong>{formatLatency(compliance.p50)}</strong></span>
+                            <span className="small">p95: <strong>{formatLatency(compliance.p95)}</strong></span>
+                          </div>
+                          <div className={styles.progressTrack} style={{ marginTop: 6 }}>
+                            <span
+                              className={`${styles.progressFill} ${compliance.p95 <= (isOverlay ? 100 : 3000) ? styles.progressFillhigh : compliance.p95 <= (isOverlay ? 150 : 4000) ? styles.progressFillmedium : styles.progressFilllow}`}
+                              style={{ width: `${Math.min(100, (compliance.withinTarget / compliance.totalSamples) * 100)}%` }}
+                            />
+                          </div>
+                          <span className="small" style={{ color: 'var(--muted)' }}>
+                            {compliance.withinTarget}/{compliance.totalSamples} within SLO ({targetSlo})
+                          </span>
+                        </>
+                      ) : (
+                        <p className="small" style={{ margin: '4px 0 0', color: 'var(--muted)' }}>
+                          No samples yet. Interact to collect metrics.
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              {/* Recent metrics mini-display */}
+              {recentSloMetrics.length > 0 && (
+                <div style={{ marginTop: 8 }}>
+                  <span className="small" style={{ display: 'block', marginBottom: 4 }}>Recent:</span>
+                  <div className="row" style={{ gap: 4, flexWrap: 'wrap' }}>
+                    {recentSloMetrics.slice(-5).reverse().map((metric, idx) => (
+                      <span
+                        key={`${metric.timestamp}-${idx}`}
+                        className="badge"
+                        style={{
+                          fontSize: '0.75rem',
+                          padding: '2px 6px',
+                          borderColor: metric.status === 'healthy' ? 'rgba(26, 194, 115, 0.5)' : metric.status === 'warning' ? 'rgba(255, 191, 91, 0.5)' : 'rgba(255, 92, 138, 0.5)',
+                        }}
+                        title={`${metric.action}: ${metric.latencyMs}ms`}
+                      >
+                        {formatLatency(metric.latencyMs)}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </section>
+          </details>
+        </div>
+      </section>
     </div>
   );
 }

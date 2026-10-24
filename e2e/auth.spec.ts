@@ -5,8 +5,8 @@ test.describe('Signup → Onboarding Flow', () => {
     // Navigate to landing page
     await page.goto('/');
 
-    // Click Get Started button
-    await page.click('a:has-text("Get Started")');
+    // The landing page's sign-up call to action
+    await page.locator('a:has-text("Start free")').first().click();
 
     // Should be on auth page
     await expect(page).toHaveURL(/\/auth/);

@@ -5,12 +5,12 @@ import { RequireAuth } from '@/components/RequireAuth';
 import { createClient } from '@/lib/supabase/server';
 import { DashboardClient } from '@/components/DashboardClient';
 import { UsageWidget } from '@/components/UsageWidget';
-import { AnalyticsReconciliation } from '@/components/AnalyticsReconciliation';
 import { DashboardStats } from '@/components/DashboardStats';
 import { RecentActivity } from '@/components/RecentActivity';
 import { QuickActions } from '@/components/QuickActions';
 import { BadgesList } from '@/components/BadgesList';
 import { ReferralPanel } from '@/components/ReferralPanel';
+import styles from './dashboard.module.css';
 
 export default async function DashboardPage() {
   const supabase = await createClient();
@@ -42,78 +42,90 @@ export default async function DashboardPage() {
     .limit(10);
 
   return (
-    <AppShell title="Dashboard">
+    <AppShell
+      title="Home"
+      actions={
+        <Link className="button buttonPrimary" href="/copilot/live">
+          Start a live session
+        </Link>
+      }
+    >
       <RequireAuth>
-        <div className="stack">
-          <p className="help">Welcome{data.user?.email ? `, ${data.user.email}` : ''}.</p>
+        <div className={styles.dash}>
+          <DashboardClient />
 
           <QuickActions />
 
-          <DashboardStats />
+          <div className={styles.columns}>
+            <div className={styles.main}>
+              <DashboardStats />
 
-          <RecentActivity />
+              <section id="sessions" className="card" aria-labelledby="sessions-heading">
+                <div className="cardInner stack">
+                  <div className={styles.cardHeader}>
+                    <h2 className="cardTitle" id="sessions-heading">
+                      Practice interviews
+                    </h2>
+                    <Link className="button buttonGhost" href="/interview">
+                      All practice
+                    </Link>
+                  </div>
+                  <ul className={styles.list}>
+                    {(sessions ?? []).length ? (
+                      (sessions ?? []).map((s) => (
+                        <li key={s.id} className={styles.listRow}>
+                          <Link href={`/interview/${s.id}`} className={styles.rowLink}>
+                            {s.title}
+                          </Link>
+                          <span className={styles.rowMeta}>
+                            <span className="badge">{s.status}</span>
+                            <span>{new Date(s.created_at).toLocaleDateString()}</span>
+                          </span>
+                        </li>
+                      ))
+                    ) : (
+                      <li className={styles.empty}>No practice interviews yet. Start one to get a score and feedback.</li>
+                    )}
+                  </ul>
+                </div>
+              </section>
 
-          <UsageWidget />
+              <section id="resume" className="card" aria-labelledby="resumes-heading">
+                <div className="cardInner stack">
+                  <div className={styles.cardHeader}>
+                    <h2 className="cardTitle" id="resumes-heading">
+                      Your résumés
+                    </h2>
+                    <Link className="button buttonGhost" href="/resume">
+                      Open résumé builder
+                    </Link>
+                  </div>
+                  <ul className={styles.list}>
+                    {(docs ?? []).length ? (
+                      (docs ?? []).map((d) => (
+                        <li key={d.id} className={styles.listRow}>
+                          <span>{d.filename ?? d.id}</span>
+                          <span className={styles.rowMeta}>{new Date(d.created_at).toLocaleDateString()}</span>
+                        </li>
+                      ))
+                    ) : (
+                      <li className={styles.empty}>No résumés yet. Upload one so answers can use your experience.</li>
+                    )}
+                  </ul>
+                </div>
+              </section>
+            </div>
 
-          <AnalyticsReconciliation />
+            <aside className={styles.side}>
+              <UsageWidget />
+              <RecentActivity />
+            </aside>
+          </div>
 
-          {/* Social Features: Badges & Referrals */}
-          <div className="grid2">
+          <div className={styles.social}>
             <BadgesList />
             <ReferralPanel />
           </div>
-
-          <DashboardClient />
-
-          <section id="sessions" className="card">
-            <div className="cardInner stack">
-              <div className="row" style={{ justifyContent: 'space-between' }}>
-                <h2 className="cardTitle">Recent interview sessions</h2>
-                <Link className="button" href="/dashboard">
-                  Refresh
-                </Link>
-              </div>
-
-              <ul className="stack" style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-                {(sessions ?? []).length ? (
-                  (sessions ?? []).map((s) => (
-                    <li key={s.id} className="row" style={{ justifyContent: 'space-between' }}>
-                      <Link href={`/interview/${s.id}`}>{s.title}</Link>
-                      <span className="row" style={{ gap: 10 }}>
-                        <span className="badge">{s.status}</span>
-                        <span className="small mono">{new Date(s.created_at).toLocaleString()}</span>
-                      </span>
-                    </li>
-                  ))
-                ) : (
-                  <li className="small">No sessions yet.</li>
-                )}
-              </ul>
-            </div>
-          </section>
-
-          <section id="resume" className="card">
-            <div className="cardInner stack">
-              <div className="row" style={{ justifyContent: 'space-between' }}>
-                <h2 className="cardTitle">Recent resume uploads</h2>
-                <Link className="button buttonPrimary" href="/resume">
-                  Open Resume Builder
-                </Link>
-              </div>
-              <ul className="stack" style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-                {(docs ?? []).length ? (
-                  (docs ?? []).map((d) => (
-                    <li key={d.id} className="row" style={{ justifyContent: 'space-between' }}>
-                      <span>{d.filename ?? d.id}</span>
-                      <span className="small mono">{new Date(d.created_at).toLocaleString()}</span>
-                    </li>
-                  ))
-                ) : (
-                  <li className="small">No documents yet.</li>
-                )}
-              </ul>
-            </div>
-          </section>
         </div>
       </RequireAuth>
     </AppShell>

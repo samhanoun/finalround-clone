@@ -28,12 +28,12 @@ export function LanguageSwitcher() {
 
   return (
     <div className="languageSwitcher">
-      <label htmlFor="language-select" className="languageLabel">
+      <label htmlFor="language-select" className="srOnly">
         {t('language')}
       </label>
       <select
         id="language-select"
-        className="languageSelect"
+        className="select"
         defaultValue={locale}
         onChange={onSelectChange}
         disabled={isPending}

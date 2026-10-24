@@ -106,11 +106,11 @@ export function AudioSourcesPanel({
 function Captions({ captions }: { captions: LiveCaptions }) {
   return (
     <div className={styles.captions} aria-label="Live captions">
-      <p className={styles.caption}>
+      <p className={styles.caption} data-voice="interviewer">
         <span className={styles.captionSpeaker}>Interviewer</span>
         <span className={captions.interviewer ? undefined : styles.captionIdle}>{captions.interviewer || '…'}</span>
       </p>
-      <p className={styles.caption}>
+      <p className={styles.caption} data-voice="you">
         <span className={styles.captionSpeaker}>You</span>
         <span className={captions.candidate ? undefined : styles.captionIdle}>{captions.candidate || '…'}</span>
       </p>
@@ -132,17 +132,17 @@ function LevelMeters({
   const shown = active ? levels : SILENT;
   return (
     <div className={styles.meters}>
-      <Meter label="You (microphone)" level={shown.candidate} />
-      <Meter label="Interviewer (shared audio)" level={shown.interviewer} />
+      <Meter voice="interviewer" label="Interviewer (shared audio)" level={shown.interviewer} />
+      <Meter voice="you" label="You (microphone)" level={shown.candidate} />
     </div>
   );
 }
 
-function Meter({ label, level }: { label: string; level: number }) {
+function Meter({ voice, label, level }: { voice: 'interviewer' | 'you'; label: string; level: number }) {
   const percent = levelToPercent(level);
   const signal = hasSignal(level);
   return (
-    <div className={styles.meter}>
+    <div className={styles.meter} data-voice={voice}>
       <div className={styles.meterLabel}>
         <span>{label}</span>
         <span className={signal ? styles.signalOn : styles.signalOff}>{signal ? 'Hearing audio' : 'Quiet'}</span>

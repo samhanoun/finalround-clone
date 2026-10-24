@@ -1,4 +1,21 @@
-import { splitCodeFences } from '@/lib/copilot/answerText';
+import { splitBullets, splitCodeFences } from '@/lib/copilot/answerText';
+
+describe('splitBullets', () => {
+  it('groups consecutive bullet lines and keeps other lines apart', () => {
+    expect(splitBullets('I led the migration.\n- Situation: slow checkout\n* Action: staged cut-over\n• Result: 40% faster\nHappy to go deeper.')).toEqual([
+      { kind: 'line', text: 'I led the migration.' },
+      { kind: 'points', items: ['Situation: slow checkout', 'Action: staged cut-over', 'Result: 40% faster'] },
+      { kind: 'line', text: 'Happy to go deeper.' },
+    ]);
+  });
+
+  it('drops blank lines and keeps a dash that is not a bullet', () => {
+    expect(splitBullets('\nO(n) - linear\n\n-not a bullet')).toEqual([
+      { kind: 'line', text: 'O(n) - linear' },
+      { kind: 'line', text: '-not a bullet' },
+    ]);
+  });
+});
 
 describe('splitCodeFences', () => {
   it('returns plain answers as one text segment', () => {

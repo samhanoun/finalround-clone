@@ -1,4 +1,3 @@
-import Link from 'next/link';
 import { AppShell } from '@/components/AppShell';
 import { RequireAuth } from '@/components/RequireAuth';
 import { ResumeClient } from '@/components/ResumeClient';
@@ -10,7 +9,7 @@ export default async function ResumePage() {
 
   if (!userData.user) {
     return (
-      <AppShell title="Resume Builder">
+      <AppShell title="Résumé">
         <RequireAuth>
           <div />
         </RequireAuth>
@@ -31,12 +30,9 @@ export default async function ResumePage() {
     .limit(30);
 
   return (
-    <AppShell title="Resume Builder">
+    <AppShell title="Résumé">
       <RequireAuth>
         <div className="stack">
-          <p className="help">
-            <Link href="/dashboard">← Back to dashboard</Link>
-          </p>
           <ResumeClient
             initialDocs={(docs ?? []) as unknown as Parameters<typeof ResumeClient>[0]['initialDocs']}
             initialGenerations={(generations ?? []) as unknown as Parameters<typeof ResumeClient>[0]['initialGenerations']}

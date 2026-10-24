@@ -1,10 +1,10 @@
 .panel {
   display: grid;
-  gap: 12px;
-  padding: 14px 16px;
-  border: 1px solid var(--border);
+  gap: 16px;
+  padding: 20px;
+  border: 1px solid var(--line);
   border-radius: var(--radius);
-  background: var(--panel);
+  background: var(--deck);
 }
 
 .header {
@@ -16,7 +16,8 @@
 
 .title {
   margin: 0;
-  font-size: 1rem;
+  font-size: 16px;
+  font-weight: 600;
 }
 
 .badges {
@@ -28,74 +29,96 @@
 
 .meters {
   display: grid;
-  gap: 10px;
+  gap: 14px;
 }
 
+/* One trace per voice: the interviewer in Ice, you in Ember. */
 .meter {
+  --voice: var(--ice);
   display: grid;
-  gap: 6px;
+  gap: 8px;
+}
+
+.meter[data-voice='you'] {
+  --voice: var(--ember);
 }
 
 .meterLabel {
   display: flex;
   justify-content: space-between;
   gap: 12px;
-  font-size: 0.85rem;
-  color: var(--text-secondary);
+  font-size: 13.5px;
+  color: var(--voice);
 }
 
 .signalOn {
-  color: var(--success);
+  color: var(--paper);
 }
 
 .signalOff {
-  color: var(--muted);
+  color: var(--mist);
 }
 
 .track {
-  height: 8px;
+  position: relative;
+  height: 6px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--well);
+  box-shadow: inset 0 0 0 1px var(--line);
   overflow: hidden;
 }
 
 .fill {
   height: 100%;
   border-radius: inherit;
-  background: linear-gradient(90deg, var(--success), var(--brand-light));
+  background: var(--voice);
+  box-shadow: 0 0 12px var(--voice);
   transition: width 60ms linear;
 }
 
 .captions {
   display: grid;
-  gap: 6px;
-  padding: 10px 12px;
-  border-radius: var(--radius);
-  background: rgba(255, 255, 255, 0.04);
+  gap: 8px;
+  padding: 14px;
+  border-radius: 12px;
+  background: var(--well);
+  border: 1px solid var(--line);
 }
 
 .caption {
   display: grid;
-  grid-template-columns: 6.5rem 1fr;
+  grid-template-columns: 5.5rem 1fr;
   gap: 8px;
   margin: 0;
-  font-size: 0.9rem;
-  line-height: 1.4;
+  font-size: 14.5px;
+  line-height: 1.5;
+  color: var(--paper-dim);
 }
 
 .captionSpeaker {
-  color: var(--text-secondary);
   font-weight: 600;
 }
 
+.caption[data-voice='interviewer'] .captionSpeaker {
+  color: var(--ice);
+}
+
+.caption[data-voice='you'] .captionSpeaker {
+  color: var(--ember);
+}
+
 .captionIdle {
-  color: var(--muted);
+  color: var(--mist);
 }
 
 .actions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.actions :global(.button) {
+  flex: 1 1 auto;
 }
 
 .help {

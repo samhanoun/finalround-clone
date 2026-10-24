@@ -1,118 +1,98 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { usePathname } from 'next/navigation';
+import { useEffect, useState, type ComponentType } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { createClient } from '@/lib/supabase/browser';
+import { ApexMark } from './ApexMark';
+import { HomeIcon, JobsIcon, LiveIcon, PracticeIcon, ResumeIcon, SettingsIcon } from './icons';
 import { SignOutButton } from './SignOutButton';
 import { NotificationBell } from './NotificationBell';
+import styles from './AppShell.module.css';
 
-export function AppShell(props: { title?: string; children: React.ReactNode }) {
+const NAV: Array<{ href: string; label: string; Icon: ComponentType<{ size?: number }> }> = [
+  { href: '/dashboard', label: 'Home', Icon: HomeIcon },
+  { href: '/copilot/live', label: 'Live', Icon: LiveIcon },
+  { href: '/interview', label: 'Practice', Icon: PracticeIcon },
+  { href: '/resume', label: 'Résumé', Icon: ResumeIcon },
+  { href: '/jobs', label: 'Jobs', Icon: JobsIcon },
+  { href: '/settings', label: 'Settings', Icon: SettingsIcon },
+];
+
+/** `/en/copilot/live` and `/copilot/live` both match the Live item. */
+function isActive(pathname: string | null, href: string): boolean {
+  if (!pathname) return false;
+  const path = pathname.replace(/^\/[a-z]{2}(?=\/|$)/, '') || '/';
+  return path === href || path.startsWith(`${href}/`);
+}
+
+export function AppShell(props: { title?: string; actions?: React.ReactNode; children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
+  const pathname = usePathname();
 
   useEffect(() => {
     const supabase = createClient();
     supabase.auth.getUser().then(({ data }) => setUser(data.user));
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
     });
     return () => subscription.unsubscribe();
   }, []);
 
+  const initial = user?.email?.trim().charAt(0).toUpperCase() ?? '';
+
   return (
-    <div>
-      <header
-        role="banner"
-        style={{
-          position: 'sticky',
-          top: 0,
-          zIndex: 50,
-          backdropFilter: 'blur(10px)',
-          background: 'rgba(11, 15, 25, 0.55)',
-          borderBottom: '1px solid var(--border)',
-        }}
-      >
-        <div
-          className="container"
-          style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0' }}
-        >
-          <div className="row" style={{ gap: 12 }}>
-            <Link 
-              href="/" 
-              style={{ fontWeight: 750, letterSpacing: 0.2 }} 
-              aria-label="FinalRound Home"
+    <div className={styles.shell}>
+      <aside className={styles.rail}>
+        <Link href="/dashboard" className={styles.brandLink} aria-label="Apex Round home">
+          <ApexMark size={38} />
+        </Link>
+
+        <nav aria-label="Primary navigation" className={styles.nav}>
+          {NAV.map(({ href, label, Icon }) => (
+            <Link
+              key={href}
+              href={href}
+              className={styles.navItem}
+              aria-current={isActive(pathname, href) ? 'page' : undefined}
             >
-              FinalRound
+              <Icon size={22} />
+              <span>{label}</span>
             </Link>
-            <span className="badge" aria-hidden="true">
-              MVP
-            </span>
-          </div>
+          ))}
+        </nav>
 
-          <nav 
-            role="navigation" 
-            aria-label="Primary navigation" 
-            className="row" 
-            style={{ gap: 12 }}
-          >
-            <Link href="/dashboard">Dashboard</Link>
-            <Link href="/jobs">Jobs</Link>
-            <Link href="/copilot/live">Live Copilot</Link>
-            <Link href="/resume">Resume</Link>
-            <Link href="/settings">Settings</Link>
-          </nav>
-
-          <div className="row" style={{ justifyContent: 'flex-end', gap: 8 }}>
-            {user ? (
-              <>
-                <NotificationBell />
-                <span 
-                  className="small" 
-                  style={{ maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis' }}
-                  aria-label={`Logged in as ${user.email}`}
-                >
-                  {user.email}
-                </span>
-                <SignOutButton />
-              </>
-            ) : (
-              <Link 
-                className="button buttonPrimary" 
-                href="/auth"
-                aria-label="Sign in to your account"
-              >
-                Login
-              </Link>
-            )}
-          </div>
+        <div className={styles.account}>
+          {user ? (
+            <>
+              <NotificationBell placement="side" />
+              <span className={styles.avatar} title={user.email ?? undefined} aria-label={`Signed in as ${user.email}`}>
+                {initial}
+              </span>
+              <SignOutButton compact />
+            </>
+          ) : (
+            <Link className="button buttonPrimary" href="/auth" aria-label="Sign in to your account">
+              Sign in
+            </Link>
+          )}
         </div>
-      </header>
+      </aside>
 
-      <main 
-        id="main-content" 
-        className="container" 
-        role="main"
-        style={{ padding: '28px 0 64px' }}
-        tabIndex={-1}
-      >
-        {props.title ? (
-          <div className="stack" style={{ marginBottom: 16 }}>
-            <h1 style={{ fontSize: '1.8rem', margin: 0 }}>{props.title}</h1>
-          </div>
-        ) : null}
-
-        {props.children}
+      <main id="main-content" className={styles.main} role="main" tabIndex={-1}>
+        <div className={styles.content}>
+          {props.title || props.actions ? (
+            <header className={styles.pageHeader}>
+              {props.title ? <h1 className="pageTitle">{props.title}</h1> : <span />}
+              {props.actions ? <div className={styles.pageActions}>{props.actions}</div> : null}
+            </header>
+          ) : null}
+          {props.children}
+        </div>
       </main>
-
-      <footer 
-        role="contentinfo" 
-        className="container" 
-        style={{ padding: '18px 0 28px', borderTop: '1px solid var(--border)' }}
-      >
-        <p className="small">
-          Built with Next.js + Supabase. Keep it simple, keep it secure.
-        </p>
-      </footer>
     </div>
   );
 }
