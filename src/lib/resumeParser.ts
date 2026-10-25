@@ -2,8 +2,6 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { PDFParse } from 'pdf-parse';
 import mammoth from 'mammoth';
 
-const admin = createAdminClient();
-
 /**
  * Parse a resume document (PDF or DOCX) and extract text content
  */
@@ -11,6 +9,9 @@ export async function parseResumeDocument(
   storageBucket: string,
   storagePath: string
 ): Promise<{ text: string; data: Record<string, unknown> }> {
+  // Created per call (not at import) so `next build` doesn't require the service role key.
+  const admin = createAdminClient();
+
   // Download the file from storage
   const { data: fileData, error: downloadError } =
     await admin.storage.from(storageBucket).download(storagePath);

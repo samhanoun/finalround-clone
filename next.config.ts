@@ -3,7 +3,14 @@ import type { NextConfig } from "next";
 
 const withNextIntl = createNextIntlPlugin('./src/i18n/request.ts');
 
+// The e2e test mode stands in for the shared screen with Chromium's fake
+// camera (see DualAudioCapture). Never in a production build.
+const e2eFakeCamera = process.env.NODE_ENV !== 'production' && process.env.NEXT_PUBLIC_E2E_FAKE_AUDIO === '1';
+
 const nextConfig: NextConfig = {
+  // End-to-end runs build into their own folder so they can run beside `npm run dev`.
+  distDir: process.env.NEXT_DIST_DIR || '.next',
+
   // Enable compression (enabled by default in Next.js, but explicit is clearer)
   compress: true,
   
@@ -53,7 +60,8 @@ const nextConfig: NextConfig = {
           },
           {
             key: 'Permissions-Policy',
-            value: 'camera=(), microphone=(), geolocation=()',
+            // The live copilot captures the mic and the meeting tab's audio (getDisplayMedia).
+            value: `camera=${e2eFakeCamera ? '(self)' : '()'}, microphone=(self), display-capture=(self), geolocation=()`,
           },
           {
             key: 'Cache-Control',
@@ -63,16 +71,8 @@ const nextConfig: NextConfig = {
           },
         ],
       },
-      {
-        // Static assets can be cached aggressively
-        source: '/_next/static/:path*',
-        headers: [
-          {
-            key: 'Cache-Control',
-            value: 'public, max-age=31536000, immutable',
-          },
-        ],
-      },
+      // /_next/static is left to Next.js: it already serves hashed production
+      // assets as immutable, and forcing that in dev pins stale chunks.
       {
         // Images can be cached for a long time
         source: '/:path*.(:glob).(:ext)',

@@ -1,26 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createAdminClient } from '@/lib/supabase/admin';
+import { MANAGE_ROLES, requireAdmin } from '@/lib/adminAuth';
 import { getAuditLogSummary } from '@/lib/audit';
 
 export async function GET(request: NextRequest) {
   try {
-    const supabase = createAdminClient();
-    
-    // Check if user is admin
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const { data: adminUser } = await supabase
-      .from('admin_users')
-      .select('role')
-      .eq('user_id', user.id)
-      .single();
-
-    if (!adminUser) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
+    const auth = await requireAdmin(MANAGE_ROLES);
+    if (!auth.ok) return auth.response;
 
     const { searchParams } = new URL(request.url);
     const organizationId = searchParams.get('organization_id') || undefined;

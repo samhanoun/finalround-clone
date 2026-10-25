@@ -5,6 +5,7 @@ import { llmProvider, requireEnv } from '@/lib/env';
 import { createClient } from '@/lib/supabase/server';
 import { rateLimit } from '@/lib/rateLimit';
 import { sanitizeCopilotText } from '@/lib/copilotSecurity';
+import { isLatencyPayload } from '@/lib/copilot/latency';
 import {
   fallbackMockInterviewReport,
   normalizeMockInterviewReport,
@@ -35,6 +36,7 @@ function internalError(requestId: string) {
 
 function compactSession(events: EventRow[]) {
   return events
+    .filter((row) => !isLatencyPayload(row.payload)) // timing rows are not conversation
     .map((row) => {
       const rawText = typeof row.payload.text === 'string' ? row.payload.text : '';
       const cleaned = sanitizeCopilotText(rawText);

@@ -61,8 +61,10 @@ jobs:
       - name: Install
         run: npm ci
 
-      - name: Dependency audit (npm)
-        run: npm audit --audit-level=high
+      # Production dependencies only: dev tooling (Jest, ESLint) never ships, and
+      # some of its advisories have no fix short of a major downgrade.
+      - name: Dependency audit (npm, production)
+        run: npm audit --omit=dev --audit-level=high
 
       - name: Secret scan (gitleaks)
         uses: gitleaks/gitleaks-action@v2

@@ -1,0 +1,17 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": ".server",
+    "rootDir": ".",
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "target": "ES2022",
+    "lib": ["esnext"],
+    "allowJs": false,
+    "incremental": false,
+    "sourceMap": true,
+    "plugins": []
+  },
+  "include": ["server.ts"]
+}

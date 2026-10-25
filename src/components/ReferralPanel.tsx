@@ -34,28 +34,28 @@ export function ReferralPanel() {
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchReferralData = useCallback(async () => {
-    try {
-      const response = await fetch('/api/referrals');
-      const data = await response.json();
-      
-      if (data.error) {
-        setError(data.error);
-      } else {
-        setReferralCode(data.referral_code);
-        setReferrals(data.referrals || []);
-      }
-    } catch (err) {
-      console.error('Failed to fetch referral data:', err);
-      setError('Failed to load referral data');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
   useEffect(() => {
+    const fetchReferralData = async () => {
+      try {
+        const response = await fetch('/api/referrals');
+        const data = await response.json();
+
+        if (data.error) {
+          setError(data.error);
+        } else {
+          setReferralCode(data.referral_code);
+          setReferrals(data.referrals || []);
+        }
+      } catch (err) {
+        console.error('Failed to fetch referral data:', err);
+        setError('Failed to load referral data');
+      } finally {
+        setLoading(false);
+      }
+    };
+
     fetchReferralData();
-  }, [fetchReferralData]);
+  }, []);
 
   const copyReferralLink = useCallback(() => {
     if (!referralCode) return;

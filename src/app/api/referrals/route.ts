@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { NextResponse } from 'next/server';
 import crypto from 'crypto';
 
@@ -33,7 +34,8 @@ export async function GET() {
   if (!referralCodeData) {
     const newCode = generateReferralCode();
     
-    const { data: newReferralCode, error: insertError } = await supabase
+    // Users can only read referral codes (migration 0029): the server creates them.
+    const { data: newReferralCode, error: insertError } = await createAdminClient()
       .from('referral_codes')
       .insert({
         user_id: user.id,

@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { MANAGE_ROLES, requireAdmin } from '@/lib/adminAuth';
 
 export async function GET(request: NextRequest) {
   try {
+    const auth = await requireAdmin(MANAGE_ROLES);
+    if (!auth.ok) return auth.response;
+
     const supabase = createAdminClient();
     const { searchParams } = new URL(request.url);
     const period = searchParams.get('period') || '30d'; // 7d, 30d, 90d

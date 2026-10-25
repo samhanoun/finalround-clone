@@ -1,8 +1,34 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { MANAGE_ROLES, requireAdmin } from '@/lib/adminAuth';
+
+// Profile columns an admin may edit. id, email (owned by Supabase Auth) and
+// organization_id (tenant boundary) are deliberately excluded.
+const EDITABLE_PROFILE_FIELDS = [
+  'full_name',
+  'avatar_url',
+  'target_roles',
+  'years_experience',
+  'industry',
+  'language',
+  'timezone',
+  'email_notifications',
+  'onboarding_completed',
+] as const;
+
+function pickEditableProfileFields(data: unknown): Record<string, unknown> {
+  if (typeof data !== 'object' || data === null) return {};
+  const source = data as Record<string, unknown>;
+  return Object.fromEntries(
+    EDITABLE_PROFILE_FIELDS.filter((field) => field in source).map((field) => [field, source[field]]),
+  );
+}
 
 export async function GET(request: NextRequest) {
   try {
+    const auth = await requireAdmin();
+    if (!auth.ok) return auth.response;
+
     const supabase = createAdminClient();
     const { searchParams } = new URL(request.url);
     const page = parseInt(searchParams.get('page') || '1');
@@ -75,6 +101,9 @@ export async function GET(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   try {
+    const auth = await requireAdmin(MANAGE_ROLES);
+    if (!auth.ok) return auth.response;
+
     const supabase = createAdminClient();
     const body = await request.json();
     const { user_id, action, data } = body;
@@ -83,13 +112,15 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
-    // Admin check skipped - using service role for admin operations
-
     switch (action) {
       case 'update_profile': {
+        const updates = pickEditableProfileFields(data);
+        if (Object.keys(updates).length === 0) {
+          return NextResponse.json({ error: 'No editable profile fields' }, { status: 400 });
+        }
         const { error } = await supabase
           .from('profiles')
-          .update(data)
+          .update(updates)
           .eq('id', user_id);
 
         if (error) throw error;
@@ -128,6 +159,9 @@ export async function PATCH(request: NextRequest) {
       }
 
       case 'set_admin': {
+        if (auth.role !== 'super_admin') {
+          return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+        }
         const { error } = await supabase
           .from('admin_users')
           .upsert({

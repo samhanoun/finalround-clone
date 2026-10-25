@@ -85,16 +85,7 @@ supabase db push
 
 1. Go to [Supabase Dashboard](https://supabase.com/dashboard)
 2. Open **SQL Editor**
-3. Run migrations in order from `supabase/migrations/`:
-   - `0001_init.sql`
-   - `0002_mvp_spec.sql`
-   - `0003_pro_plan_quotas.sql`
-   - `0004_stripe_billing.sql`
-   - `0005_subscription_sync.sql`
-   - `0006_storage_resumes_policies.sql`
-   - `0007_copilot_foundation.sql`
-   - `0008_free_plan_limits.sql`
-   - `0008_interview_questions_reports.sql`
+3. Run every file in `supabase/migrations/` in filename order (`0001_init.sql` through `0022_integrations.sql`). Each version number is unique, so `supabase db push` applies the same order.
 
 ### 4. Run Development Server
 
@@ -103,6 +94,8 @@ npm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000)
+
+`npm run dev` starts a custom Node server (`server.ts`) that runs Next.js and the live speech-to-text relay on one port. Use `npm run dev:next` for plain Next.js without live transcription.
 
 ---
 
@@ -122,7 +115,7 @@ apex-round/
 │   │   └── (page routes)
 │   └── lib/                    # Shared utilities
 │       ├── supabase/          # Supabase clients
-│       ├── sttProviders/      # Speech-to-text
+│       ├── stt/               # Live speech-to-text
 │       └── ...
 ├── supabase/
 │   └── migrations/            # Database migrations
@@ -254,17 +247,17 @@ npm test -- rateLimit.test.ts
 
 ## 🚢 Deployment
 
-### Vercel (Recommended)
+### Node host (required for live transcription)
 
-1. Push code to GitHub
-2. Import project in Vercel
-3. Configure environment variables
-4. Deploy
+Live transcription streams audio through a WebSocket relay in the custom server (`server.ts`), so deploy to a host that runs a long-lived Node process (Render, Fly.io, Railway, a VPS or Docker). Vercel doesn't run custom servers.
 
 ```bash
-# Or deploy via CLI
-vercel deploy --prod
+npm ci
+npm run build   # Next.js build + compiles server.ts into .server/
+npm start       # serves on $PORT (default 3000)
 ```
+
+Also set `DEEPGRAM_API_KEY` (ideally a member-role key in a dedicated Deepgram project with a spending cap).
 
 ### Environment Variables for Production
 
