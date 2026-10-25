@@ -1,5 +1,7 @@
 'use client';
 
+import styles from './SessionBar.module.css';
+
 const MODE_LABEL: Record<string, string> = {
   general: 'General interview',
   coding: 'Coding interview',
@@ -21,27 +23,24 @@ export function SessionBar({
 }) {
   const mode = typeof session.metadata?.mode === 'string' ? session.metadata.mode : 'general';
   const hasContext = Boolean(session.metadata?.context_pack);
+  const startedAt = new Date(session.started_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 
   return (
-    <section className="card" aria-label="Live session">
-      <div className="cardInner row" style={{ justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-        <div className="stack" style={{ gap: 6 }}>
-          <h2 className="cardTitle" style={{ margin: 0 }}>
-            {session.title?.trim() || 'Live session'}
-          </h2>
-          <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
-            <span className="badge">{MODE_LABEL[mode] ?? mode}</span>
-            <span className="badge">Running since {new Date(session.started_at).toLocaleTimeString()}</span>
-            <span className="badge" aria-live="polite">
-              Events: {streamState}
-            </span>
-            <span className="badge">{hasContext ? 'Using your interview context' : 'No interview context'}</span>
-          </div>
+    <section className={styles.bar} aria-label="Live session">
+      <div className={styles.titleBlock}>
+        <h2 className={styles.title}>{session.title?.trim() || 'Live session'}</h2>
+        <div className={styles.chips}>
+          <span className="badge badgeLive">Live since {startedAt}</span>
+          <span className="badge">{MODE_LABEL[mode] ?? mode}</span>
+          <span className="badge">{hasContext ? 'Using your résumé and the job' : 'No résumé or job added'}</span>
+          <span className="badge" aria-live="polite">
+            Events: {streamState}
+          </span>
         </div>
-        <button className="button buttonDanger" type="button" onClick={() => onStop()} disabled={stopping}>
-          {stopping ? 'Stopping…' : 'Stop session'}
-        </button>
       </div>
+      <button className="button buttonDanger" type="button" onClick={() => onStop()} disabled={stopping}>
+        {stopping ? 'Stopping…' : 'Stop session'}
+      </button>
     </section>
   );
 }

@@ -1,0 +1,91 @@
+.dash {
+  display: grid;
+  gap: 20px;
+}
+
+.columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+@media (min-width: 1100px) {
+  .columns {
+    grid-template-columns: minmax(0, 1.7fr) minmax(320px, 1fr);
+  }
+}
+
+.main,
+.side {
+  display: grid;
+  gap: 20px;
+  min-width: 0;
+}
+
+.social {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+@media (min-width: 900px) {
+  .social {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.cardHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+}
+
+.listRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+}
+
+.listRow:first-child {
+  border-top: 0;
+  padding-top: 4px;
+}
+
+.rowLink {
+  color: var(--paper);
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.rowLink:hover {
+  color: var(--ember-text);
+}
+
+.rowMeta {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--mist);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.empty {
+  color: var(--mist);
+  font-size: 14.5px;
+}

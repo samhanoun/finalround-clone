@@ -1,6 +1,6 @@
 {
   "common": {
-    "appName": "FinalRound",
+    "appName": "Apex Round",
     "loading": "Carregando...",
     "save": "Salvar",
     "cancel": "Cancelar",
@@ -24,7 +24,7 @@
     "copilot": "Copiloto"
   },
   "dashboard": {
-    "welcome": "Bem-vindo ao FinalRound",
+    "welcome": "Bem-vindo ao Apex Round",
     "subtitle": "Seu assistente de entrevista com IA",
     "recentActivity": "Atividade Recente",
     "quickActions": "Ações Rápidas",
@@ -43,7 +43,14 @@
     "securityNote2": "RLS isola dados por usuário; armazenamento é privado.",
     "securityNote3": "As chaves de API do provedor permanecem do lado do servidor (variáveis de ambiente Vercel).",
     "dangerZone": "Zona de Perigo",
-    "deleteAccount": "Excluir Conta"
+    "deleteAccount": "Excluir Conta",
+    "languages": {
+      "en": "English",
+      "es": "Español",
+      "fr": "Français",
+      "de": "Deutsch",
+      "pt": "Português"
+    }
   },
   "languages": {
     "en": "Inglês",

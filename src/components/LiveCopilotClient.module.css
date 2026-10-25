@@ -1,13 +1,47 @@
+/* Live copilot page: the Signal column beside the answer card, the record below. */
+
+.liveGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+@media (min-width: 1100px) {
+  .liveGrid {
+    grid-template-columns: minmax(300px, 360px) minmax(0, 1fr);
+  }
+
+  .liveNotice {
+    grid-column: 1 / -1;
+  }
+
+  /* The answer card comes first in reading order on small screens, but sits on the right here. */
+  .answerCol {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+  }
+
+  .liveNotice + .answerCol {
+    grid-row: 2 / span 2;
+  }
+}
+
+.signalCol,
+.answerCol {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
 .badgeActive {
-  border-color: rgba(26, 194, 115, 0.45);
-  background: rgba(26, 194, 115, 0.14);
-  color: rgba(225, 255, 238, 0.95);
+  background: var(--live-soft);
+  color: var(--live-text);
 }
 
 .badgeDanger {
-  border-color: rgba(255, 92, 138, 0.45);
-  background: rgba(255, 92, 138, 0.14);
-  color: rgba(255, 210, 225, 0.95);
+  background: var(--alert-soft);
+  color: var(--alert-text);
 }
 
 .controlGrid {
@@ -29,17 +63,15 @@
   gap: 8px;
 }
 
+/* Typed lines */
 .composerCard {
   display: grid;
-  gap: 10px;
-  padding: 12px;
-  border-radius: 12px;
-  border: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.03);
+  gap: 12px;
 }
 
 .composerHeader {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
   gap: 8px;
@@ -53,41 +85,97 @@
 
 @media (min-width: 900px) {
   .composerControls {
-    grid-template-columns: minmax(120px, 180px) repeat(3, auto);
+    grid-template-columns: minmax(140px, 180px) repeat(3, auto);
+    justify-content: start;
   }
 }
 
 .sectionTitle {
   margin: 0 0 8px;
-  font-size: 0.95rem;
+  font-size: 16px;
   font-weight: 600;
-  color: var(--text);
+  color: var(--paper);
 }
 
 .panelHeader {
   display: flex;
-  align-items: baseline;
+  flex-wrap: wrap;
+  align-items: center;
   justify-content: space-between;
   gap: 10px;
 }
 
+/* Segmented controls: view tabs and layout toggles */
+.viewBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.tabRow {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 12px;
+  background: var(--well);
+  border: 1px solid var(--line);
+}
+
+.tabButton,
+.segment {
+  min-height: 38px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--mist);
+  font: inherit;
+  font-size: 14.5px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.tabButton:hover,
+.segment:hover {
+  color: var(--paper);
+}
+
+.segment[aria-selected='true'],
+.segment[aria-pressed='true'] {
+  background: var(--deck-2);
+  color: var(--paper);
+}
+
+.panelStage {
+  display: grid;
+  gap: 16px;
+}
+
+/* Feeds */
 .feedList {
   list-style: none;
   margin: 0;
   padding: 0;
-  max-height: 460px;
+  max-height: 520px;
   overflow: auto;
   display: grid;
-  gap: 10px;
+  gap: 2px;
 }
 
 .feedCard {
   display: grid;
-  gap: 8px;
-  border: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.015);
-  border-radius: 12px;
-  padding: 12px;
+  gap: 6px;
+  padding: 12px 4px;
+  border-bottom: 1px solid var(--line);
+}
+
+.feedCard:last-child {
+  border-bottom: 0;
 }
 
 .feedMeta {
@@ -100,16 +188,22 @@
 .feedText {
   margin: 0;
   white-space: pre-wrap;
-  line-height: 1.45;
+  line-height: 1.55;
+}
+
+.feedQuestion {
+  margin: 0;
+  color: var(--ice);
+  font-size: 14.5px;
 }
 
 .emptyState {
   margin: 0;
-  padding: 10px 12px;
-  border: 1px dashed rgba(255, 255, 255, 0.2);
-  border-radius: 10px;
-  color: var(--muted);
-  font-size: 0.92rem;
+  padding: 14px 16px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 12px;
+  color: var(--mist);
+  font-size: 14.5px;
 }
 
 .pointsList {
@@ -119,34 +213,27 @@
   gap: 4px;
 }
 
-.tabRow {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.tabButton {
-  min-width: 128px;
-}
-
-.panelStage {
-  display: grid;
-  gap: 14px;
-}
-
+/* Metrics and reports */
 .metricGrid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
 }
 
 .metricCard {
-  border: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.015);
-  border-radius: 10px;
-  padding: 10px;
+  border: 1px solid var(--line);
+  background: var(--well);
+  border-radius: 12px;
+  padding: 12px 14px;
   display: grid;
   gap: 4px;
+}
+
+.metricCard strong {
+  font-family: var(--font-title);
+  font-weight: 500;
+  font-size: 22px;
+  letter-spacing: -0.02em;
 }
 
 .reportMetricCard {
@@ -155,9 +242,10 @@
 
 .progressTrack {
   width: 100%;
-  height: 8px;
+  height: 6px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.09);
+  background: var(--well);
+  box-shadow: inset 0 0 0 1px var(--line);
   overflow: hidden;
 }
 
@@ -169,64 +257,68 @@
 }
 
 .progressFillhigh {
-  background: linear-gradient(90deg, rgba(26, 194, 115, 0.95), rgba(114, 235, 169, 0.95));
+  background: var(--live);
 }
 
 .progressFillmedium {
-  background: linear-gradient(90deg, rgba(255, 191, 91, 0.95), rgba(255, 143, 59, 0.95));
+  background: var(--ember);
 }
 
 .progressFilllow {
-  background: linear-gradient(90deg, rgba(255, 92, 138, 0.95), rgba(255, 128, 168, 0.95));
+  background: var(--alert);
 }
 
 .scoreBadgehigh {
-  border-color: rgba(26, 194, 115, 0.5);
-  color: rgba(208, 255, 226, 0.94);
+  background: var(--live-soft);
+  color: var(--live-text);
 }
 
 .scoreBadgemedium {
-  border-color: rgba(255, 191, 91, 0.5);
-  color: rgba(255, 223, 166, 0.94);
+  background: var(--ember-soft);
+  color: var(--ember-text);
 }
 
 .scoreBadgelow {
-  border-color: rgba(255, 92, 138, 0.5);
-  color: rgba(255, 210, 225, 0.94);
+  background: var(--alert-soft);
+  color: var(--alert-text);
 }
 
 .settingsCard {
-  border: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.015);
-  border-radius: 12px;
-  padding: 12px;
+  border: 1px solid var(--line);
+  background: var(--well);
+  border-radius: 14px;
+  padding: 14px 16px;
   display: grid;
-  gap: 10px;
+  gap: 12px;
+}
+
+.settingsCard .settingsCard {
+  background: transparent;
 }
 
 .settingsGrid {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 10px;
+  gap: 12px;
 }
 
 .actionCard {
-  border: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.015);
-  border-radius: 10px;
-  padding: 10px;
+  border: 1px solid var(--line);
+  background: var(--deck);
+  border-radius: 12px;
+  padding: 14px;
   display: grid;
-  gap: 8px;
+  gap: 10px;
 }
 
 .dangerCard {
-  border-color: rgba(255, 92, 138, 0.45);
-  background: rgba(255, 92, 138, 0.08);
+  border-color: rgba(255, 107, 107, 0.4);
+  background: rgba(255, 107, 107, 0.06);
 }
 
 .historyScaffold {
   display: grid;
-  gap: 14px;
+  gap: 16px;
 }
 
 @media (min-width: 960px) {
@@ -235,14 +327,14 @@
   }
 
   .historyScaffold {
-    grid-template-columns: minmax(220px, 320px) 1fr;
+    grid-template-columns: minmax(240px, 340px) 1fr;
     align-items: start;
   }
 }
 
 .historyList {
   display: grid;
-  gap: 8px;
+  gap: 10px;
 }
 
 .filtersGrid {
@@ -261,30 +353,31 @@
   margin: 0;
   padding: 0;
   display: grid;
-  gap: 8px;
+  gap: 6px;
 }
 
 .sessionItemButton {
   width: 100%;
   text-align: left;
-  border: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.015);
-  border-radius: 10px;
-  padding: 10px;
+  border: 1px solid transparent;
+  background: transparent;
+  border-radius: 12px;
+  padding: 12px;
   display: grid;
-  gap: 8px;
+  gap: 6px;
   cursor: pointer;
   color: inherit;
+  font: inherit;
 }
 
 .sessionItemButton:hover {
-  border-color: rgba(255, 255, 255, 0.18);
-  background: rgba(255, 255, 255, 0.035);
+  background: var(--deck-2);
 }
 
 .sessionItemButtonActive {
-  border-color: rgba(77, 142, 255, 0.6);
-  background: rgba(77, 142, 255, 0.12);
+  border-color: var(--line-glow);
+  background: var(--deck-2);
+  box-shadow: inset 3px 0 0 var(--ember);
 }
 
 .sessionItemTopRow {
@@ -301,11 +394,14 @@
 .chipRow {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 6px;
 }
 
 .historyDetail {
   min-height: 280px;
+  display: grid;
+  gap: 14px;
 }
 
 .detailHeaderActions {
@@ -317,10 +413,10 @@
 }
 
 .summaryCard {
-  border: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.015);
-  border-radius: 12px;
-  padding: 12px;
+  border: 1px solid var(--line);
+  background: var(--well);
+  border-radius: 14px;
+  padding: 14px 16px;
   display: grid;
   gap: 10px;
 }
@@ -328,7 +424,7 @@
 .summaryColumns {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 10px;
+  gap: 12px;
 }
 
 @media (min-width: 760px) {
@@ -339,15 +435,15 @@
 
 .subSectionTitle {
   margin: 0 0 6px;
-  font-size: 0.9rem;
+  font-size: 15px;
   font-weight: 600;
-  color: var(--text);
+  color: var(--paper);
 }
 
 .rubricGrid {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 8px;
+  gap: 10px;
 }
 
 @media (min-width: 980px) {
@@ -357,17 +453,18 @@
 }
 
 .rubricCard {
-  border: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.015);
-  border-radius: 10px;
-  padding: 10px;
+  border: 1px solid var(--line);
+  background: var(--deck);
+  border-radius: 12px;
+  padding: 12px;
   display: grid;
   gap: 8px;
 }
 
 .sessionItemButton:focus-visible,
-.tabButton:focus-visible {
-  outline: 2px solid rgba(124, 92, 255, 0.85);
+.tabButton:focus-visible,
+.segment:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring);
   outline-offset: 2px;
 }
 
@@ -383,24 +480,13 @@
   border: 0;
 }
 
-@media (max-width: 640px) {
-  .metricGrid {
-    grid-template-columns: 1fr;
-  }
-
-  .detailHeaderActions {
-    justify-content: flex-start;
-  }
-}
-
-/* Tablet and mobile responsive */
 @media (max-width: 900px) {
+  .metricGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .composerControls {
     grid-template-columns: 1fr;
-  }
-  
-  .composerCard {
-    padding: 10px;
   }
 }
 
@@ -409,27 +495,17 @@
     grid-template-columns: 1fr;
     gap: 12px;
   }
-  
+
   .feedList {
-    max-height: 300px;
+    max-height: 340px;
   }
-  
+
   .tabRow {
+    max-width: 100%;
     overflow-x: auto;
-    padding-bottom: 8px;
+    flex-wrap: nowrap;
   }
-  
-  .tabButton {
-    min-width: 100px;
-    font-size: 0.85rem;
-  }
-  
-  .panelHeader {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 8px;
-  }
-  
+
   .historyScaffold {
     grid-template-columns: 1fr;
   }
@@ -439,39 +515,37 @@
   .metricGrid {
     grid-template-columns: 1fr;
   }
-  
-  .metricCard {
-    padding: 8px;
-  }
-  
-  .sessionItemButton {
-    padding: 8px;
-  }
-  
+
   .sessionItemTopRow {
     flex-direction: column;
     align-items: flex-start;
   }
 }
 
-/* Step 6: latency tables (live drawer and history detail) */
+/* Latency tables (live drawer and history detail) */
 .latencyTable {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.85rem;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
 }
 
 .latencyTable caption {
   text-align: left;
-  padding-bottom: 6px;
+  padding-bottom: 8px;
 }
 
 .latencyTable th,
 .latencyTable td {
-  padding: 4px 8px;
-  border-bottom: 1px solid var(--border);
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--line);
   text-align: left;
   white-space: nowrap;
+}
+
+.latencyTable thead th {
+  color: var(--mist);
+  font-weight: 500;
 }
 
 .latencyTable tbody th {
@@ -480,7 +554,7 @@
 
 .latencyOver td:nth-child(2),
 .latencyOver td:nth-child(3) {
-  color: var(--warning);
+  color: var(--caution);
   font-weight: 600;
 }
 

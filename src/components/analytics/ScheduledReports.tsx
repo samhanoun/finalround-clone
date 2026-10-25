@@ -44,16 +44,16 @@ export function ScheduledReports() {
   async function handleCreateReport(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
-    
+
     try {
       const res = await fetch('/api/analytics/reports', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData),
       });
-      
+
       if (!res.ok) throw new Error('Failed to create report');
-      
+
       const data = await res.json();
       setReports([...reports, data.report]);
       setShowForm(false);
@@ -72,8 +72,8 @@ export function ScheduledReports() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id, enabled: !enabled }),
       });
-      
-      setReports(reports.map(r => 
+
+      setReports(reports.map(r =>
         r.id === id ? { ...r, enabled: !enabled } : r
       ));
     } catch (e) {
@@ -83,7 +83,7 @@ export function ScheduledReports() {
 
   async function deleteReport(id: string) {
     if (!confirm('Are you sure you want to delete this report?')) return;
-    
+
     try {
       await fetch(`/api/analytics/reports?id=${id}`, { method: 'DELETE' });
       setReports(reports.filter(r => r.id !== id));
@@ -112,7 +112,7 @@ export function ScheduledReports() {
       <div className="cardInner stack">
         <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
           <h2 className="cardTitle">Scheduled Email Reports</h2>
-          <button 
+          <button
             className="button buttonPrimary"
             onClick={() => setShowForm(!showForm)}
           >
@@ -125,7 +125,7 @@ export function ScheduledReports() {
             <div className="form-row">
               <div className="form-group">
                 <label>Report Type</label>
-                <select 
+                <select
                   value={formData.report_type}
                   onChange={(e) => setFormData({ ...formData, report_type: e.target.value })}
                 >
@@ -137,7 +137,7 @@ export function ScheduledReports() {
               </div>
               <div className="form-group">
                 <label>Frequency</label>
-                <select 
+                <select
                   value={formData.frequency}
                   onChange={(e) => setFormData({ ...formData, frequency: e.target.value })}
                 >
@@ -148,7 +148,7 @@ export function ScheduledReports() {
               </div>
               <div className="form-group">
                 <label>Email</label>
-                <input 
+                <input
                   type="email"
                   value={formData.email}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
@@ -156,8 +156,8 @@ export function ScheduledReports() {
                   required
                 />
               </div>
-              <button 
-                type="submit" 
+              <button
+                type="submit"
                 className="button buttonPrimary"
                 disabled={saving}
               >
@@ -186,19 +186,19 @@ export function ScheduledReports() {
                 </div>
                 <div className="report-actions">
                   <label className="toggle">
-                    <input 
+                    <input
                       type="checkbox"
                       checked={report.enabled}
                       onChange={() => toggleReport(report.id, report.enabled)}
                     />
                     <span className="toggle-slider"></span>
                   </label>
-                  <button 
-                    className="delete-btn"
+                  <button
+                    className="button buttonGhost"
                     onClick={() => deleteReport(report.id)}
-                    title="Delete report"
+                    aria-label={`Delete the report sent to ${report.email}`}
                   >
-                    🗑️
+                    Delete
                   </button>
                 </div>
               </div>
@@ -209,19 +209,19 @@ export function ScheduledReports() {
 
       <style jsx>{`
         .report-form {
-          background: #f9fafb;
+          background: var(--well);
           padding: 16px;
           border-radius: 8px;
           margin-bottom: 16px;
         }
-        
+
         .form-row {
           display: flex;
           gap: 12px;
           align-items: flex-end;
           flex-wrap: wrap;
         }
-        
+
         .form-group {
           display: flex;
           flex-direction: column;
@@ -229,96 +229,96 @@ export function ScheduledReports() {
           flex: 1;
           min-width: 150px;
         }
-        
+
         .form-group label {
           font-size: 0.75rem;
           font-weight: 500;
-          color: #6b7280;
+          color: var(--mist);
         }
-        
+
         .form-group select,
         .form-group input {
           padding: 8px 12px;
-          border: 1px solid #d1d5db;
+          border: 1px solid var(--line-strong);
           border-radius: 6px;
           font-size: 0.875rem;
         }
-        
+
         .reports-list {
           display: flex;
           flex-direction: column;
           gap: 8px;
         }
-        
+
         .report-item {
           display: flex;
           justify-content: space-between;
           align-items: center;
           padding: 12px 16px;
-          background: #f9fafb;
+          background: var(--well);
           border-radius: 8px;
-          border: 1px solid #e5e7eb;
+          border: 1px solid var(--line);
         }
-        
+
         .report-info {
           display: flex;
           flex-direction: column;
           gap: 4px;
         }
-        
+
         .report-type {
           display: flex;
           align-items: center;
           gap: 8px;
         }
-        
+
         .report-badge {
-          background: #e0e7ff;
-          color: #3730a3;
+          background: var(--ember-soft);
+          color: var(--ember-text);
           padding: 2px 8px;
           border-radius: 4px;
           font-size: 0.75rem;
           font-weight: 500;
           text-transform: capitalize;
         }
-        
+
         .report-frequency {
           font-size: 0.75rem;
-          color: #6b7280;
+          color: var(--mist);
           text-transform: capitalize;
         }
-        
+
         .report-email {
           font-size: 0.875rem;
           font-weight: 500;
         }
-        
+
         .report-dates {
           display: flex;
           gap: 16px;
           font-size: 0.7rem;
-          color: #9ca3af;
+          color: var(--mist);
         }
-        
+
         .report-actions {
           display: flex;
           align-items: center;
           gap: 12px;
         }
-        
+
         .toggle {
           position: relative;
           display: inline-block;
           width: 44px;
           height: 24px;
         }
-        
+
         .toggle input {
           opacity: 0;
           width: 0;
           height: 0;
         }
-        
+
         .toggle-slider {
           position: absolute;
           cursor: pointer;
@@ -326,11 +326,11 @@ export function ScheduledReports() {
           left: 0;
           right: 0;
           bottom: 0;
-          background-color: #d1d5db;
+          background-color: var(--line-strong);
           transition: 0.3s;
           border-radius: 24px;
         }
-        
+
         .toggle-slider:before {
           position: absolute;
           content: "";
@@ -338,31 +338,19 @@ export function ScheduledReports() {
           width: 18px;
           left: 3px;
           bottom: 3px;
-          background-color: white;
+          background-color: var(--deck);
           transition: 0.3s;
           border-radius: 50%;
         }
-        
+
         .toggle input:checked + .toggle-slider {
-          background-color: #10b981;
+          background-color: var(--live);
         }
-        
+
         .toggle input:checked + .toggle-slider:before {
           transform: translateX(20px);
         }
-        
-        .delete-btn {
-          background: none;
-          border: none;
-          cursor: pointer;
-          padding: 4px;
-          opacity: 0.6;
-          transition: opacity 0.2s;
-        }
-        
-        .delete-btn:hover {
-          opacity: 1;
-        }
+
       `}</style>
     </div>
   );

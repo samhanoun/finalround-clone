@@ -31,7 +31,7 @@ describe('UsageWidget', () => {
 
     render(<UsageWidget />);
 
-    expect(await screen.findByText(/Usage & Limits/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Usage this month/i)).toBeInTheDocument();
     expect(await screen.findByText(/Free Plan/i)).toBeInTheDocument();
   });
 });

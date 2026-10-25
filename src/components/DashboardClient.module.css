@@ -1,0 +1,65 @@
+.panel {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 28px 32px;
+  border-radius: var(--radius);
+  border: 1px solid var(--line-glow);
+  background: var(--deck);
+  overflow: hidden;
+}
+
+.copy {
+  flex: 1 1 420px;
+  display: grid;
+  gap: 14px;
+  max-width: 560px;
+}
+
+.title {
+  margin: 0;
+  font-family: var(--font-title);
+  font-weight: 500;
+  font-size: clamp(1.4rem, 1.1rem + 0.9vw, 1.75rem);
+  letter-spacing: -0.03em;
+}
+
+.lead {
+  margin: 0;
+  color: #b9c3d9;
+  line-height: 1.55;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.signal {
+  flex: 0 1 360px;
+  width: 360px;
+  max-width: 100%;
+  height: auto;
+}
+
+.signal path {
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+@media (max-width: 760px) {
+  .panel {
+    padding: 22px 20px;
+  }
+
+  .signal {
+    display: none;
+  }
+}

@@ -1,6 +1,7 @@
 'use client';
 
 import styles from '../LiveCopilotClient.module.css';
+import { AnswerBody } from './AnswerView';
 
 export type TranscriptRow = { id: string; text: string; speaker: string; created_at: string };
 
@@ -23,7 +24,7 @@ export function TranscriptFeed({ rows, isActive }: { rows: TranscriptRow[]; isAc
       <div className="cardInner stack" style={{ gap: 12 }}>
         <div className={styles.panelHeader}>
           <h2 className="cardTitle">Transcript</h2>
-          <span className="small">{rows.length} lines</span>
+          <span className="small">{rows.length} {rows.length === 1 ? 'line' : 'lines'}</span>
         </div>
         {rows.length === 0 ? (
           <p className={styles.emptyState}>
@@ -34,7 +35,9 @@ export function TranscriptFeed({ rows, isActive }: { rows: TranscriptRow[]; isAc
           {rows.map((row) => (
             <li key={row.id} className={styles.feedCard}>
               <div className={styles.feedMeta}>
-                <span className="badge">{row.speaker}</span>
+                <span className={`badge ${row.speaker === 'interviewer' ? 'badgeIce' : 'badgePro'}`}>
+                  {row.speaker === 'interviewer' ? 'Interviewer' : 'You'}
+                </span>
                 <span className="small mono">{new Date(row.created_at).toLocaleTimeString()}</span>
               </div>
               <p className={styles.feedText}>{row.text}</p>
@@ -86,15 +89,15 @@ export function SuggestionFeed({ rows, isActive }: { rows: SuggestionRow[]; isAc
           {rows.map((row) => (
             <li key={row.id} className={styles.feedCard}>
               <div className={styles.feedMeta}>
-                <span className="badge">{row.category}</span>
+                <span className="badge">{row.category.charAt(0).toUpperCase() + row.category.slice(1)}</span>
                 <span className="small mono">{new Date(row.created_at).toLocaleTimeString()}</span>
               </div>
               {row.question ? (
-                <p className="small" style={{ margin: 0 }}>
-                  <strong>Q:</strong> {row.question}
-                </p>
+                <p className={styles.feedQuestion}>{row.question}</p>
               ) : null}
-              <p className={styles.feedText}>{row.text}</p>
+              <div className={styles.feedText}>
+                <AnswerBody text={row.text} />
+              </div>
               {row.complexity ? (
                 <p className="small" style={{ margin: 0 }}>
                   <strong>Complexity:</strong> {row.complexity}

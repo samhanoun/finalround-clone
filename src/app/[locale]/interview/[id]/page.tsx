@@ -1,4 +1,3 @@
-import Link from 'next/link';
 import { AppShell } from '@/components/AppShell';
 import { RequireAuth } from '@/components/RequireAuth';
 import { createClient } from '@/lib/supabase/server';
@@ -43,9 +42,6 @@ export default async function InterviewPage(props: { params: Promise<{ id: strin
       <RequireAuth>
         <div className="stack">
           <div className="row" style={{ justifyContent: 'space-between' }}>
-            <p className="help">
-              <Link href="/dashboard">← Back to dashboard</Link>
-            </p>
             <span className="badge">{session?.status ?? 'unknown'}</span>
           </div>
 

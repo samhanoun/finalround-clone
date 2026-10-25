@@ -11,12 +11,12 @@ interface ExportButtonProps {
   disabled?: boolean;
 }
 
-export function ExportButton({ 
-  data, 
-  elementId, 
-  filename, 
+export function ExportButton({
+  data,
+  elementId,
+  filename,
   label = 'Export',
-  disabled = false 
+  disabled = false
 }: ExportButtonProps) {
   const [exporting, setExporting] = useState(false);
 
@@ -25,7 +25,7 @@ export function ExportButton({
       alert('No data to export');
       return;
     }
-    
+
     setExporting(true);
     try {
       exportToCSV(data as Record<string, unknown>[], filename);
@@ -42,7 +42,7 @@ export function ExportButton({
       alert('No element to export');
       return;
     }
-    
+
     setExporting(true);
     try {
       await exportToPDF(elementId, filename, `${filename} Report`);
@@ -56,21 +56,21 @@ export function ExportButton({
 
   return (
     <div className="export-buttons">
-      <button 
+      <button
         className="export-btn csv"
         onClick={handleCSVExport}
         disabled={disabled || exporting}
         title="Export to CSV"
       >
-        📊 CSV
+        CSV
       </button>
-      <button 
+      <button
         className="export-btn pdf"
         onClick={handlePDFExport}
         disabled={disabled || exporting}
         title="Export to PDF"
       >
-        📄 PDF
+        PDF
       </button>
 
       <style jsx>{`
@@ -78,38 +78,34 @@ export function ExportButton({
           display: flex;
           gap: 8px;
         }
-        
+
         .export-btn {
-          padding: 8px 16px;
-          border: 1px solid #e5e7eb;
-          border-radius: 6px;
-          background: white;
+          min-height: 40px;
+          padding: 0 16px;
+          border: 1px solid var(--line-strong);
+          border-radius: 10px;
+          background: var(--deck-2);
+          color: var(--paper);
           cursor: pointer;
-          font-size: 0.875rem;
+          font: inherit;
+          font-size: 14px;
           font-weight: 500;
-          transition: all 0.2s;
+          transition: background 120ms ease, border-color 120ms ease;
           display: flex;
           align-items: center;
           gap: 6px;
         }
-        
+
         .export-btn:hover:not(:disabled) {
-          background: #f9fafb;
-          border-color: #d1d5db;
+          background: var(--well);
+          border-color: var(--line-strong);
         }
-        
+
         .export-btn:disabled {
           opacity: 0.5;
           cursor: not-allowed;
         }
-        
-        .export-btn.csv {
-          color: #10b981;
-        }
-        
-        .export-btn.pdf {
-          color: #ef4444;
-        }
+
       `}</style>
     </div>
   );

@@ -58,13 +58,31 @@ if (!configured) app.exit(1);
 const appUrl = configured as URL;
 let mainWindow: BrowserWindow | null = null;
 
+/** The window's colours, shared with the web app's "Night console" tokens. */
+const MIDNIGHT = '#0b1324';
+const PAPER = '#e8edf7';
+const TITLEBAR_HEIGHT = 36;
+
 function offlinePage(url: URL): string {
   const target = new URL(START_PATH, url).href;
   const html = `<!doctype html><meta charset="utf-8"><title>Apex Round</title>
-<body style="font-family:system-ui;background:#0b0f19;color:#e5e7eb;display:grid;place-content:center;height:100vh;margin:0;text-align:center">
-<h1 style="font-size:20px">Can't reach Apex Round</h1>
-<p>Nothing answered at ${url.origin}.<br>Start the web app (<code>npm run dev</code>) or set the app URL, then retry.</p>
-<p><a style="color:#93c5fd" href="${target}">Retry</a></p></body>`;
+<style>
+body{margin:0;height:100vh;display:grid;grid-template-rows:${TITLEBAR_HEIGHT}px 1fr;background:${MIDNIGHT};color:${PAPER};font:15px/1.6 "Segoe UI",system-ui,sans-serif}
+.bar{display:flex;align-items:center;padding:0 152px 0 18px;border-bottom:1px solid #18233a;color:#93a1bf;font-size:12.5px;font-weight:500;-webkit-app-region:drag}
+main{display:grid;place-content:center;padding:24px}
+.panel{max-width:440px;padding:28px 30px;border-radius:18px;background:#111b30;border:1px solid #243250}
+h1{margin:0 0 8px;font-size:20px;font-weight:600}
+p{margin:0 0 20px;color:#93a1bf}
+code{padding:1px 6px;border-radius:6px;background:#070c18;color:${PAPER};font:13px Consolas,monospace}
+a{display:inline-flex;align-items:center;height:44px;padding:0 18px;border-radius:10px;background:#ffb547;color:${MIDNIGHT};font-weight:600;text-decoration:none}
+a:focus-visible{outline:2px solid #ffb547;outline-offset:3px}
+</style>
+<div class="bar">Apex Round</div>
+<main><div class="panel">
+<h1>Can't reach Apex Round</h1>
+<p>Nothing answered at ${url.origin}. Start the web app (<code>npm run dev</code>) or set the app URL, then retry.</p>
+<a href="${target}">Retry</a>
+</div></main>`;
   return `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
 }
 
@@ -134,8 +152,12 @@ function createMainWindow(): BrowserWindow {
     minHeight: 600,
     show: false,
     title: 'Apex Round',
-    backgroundColor: '#0b0f19',
+    backgroundColor: MIDNIGHT,
     autoHideMenuBar: true,
+    // No OS title bar: the pages draw a drag strip this tall, and Windows
+    // draws its window buttons over the strip's right end.
+    titleBarStyle: 'hidden',
+    titleBarOverlay: { color: MIDNIGHT, symbolColor: PAPER, height: TITLEBAR_HEIGHT },
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       partition: PARTITION,

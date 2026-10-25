@@ -1,4 +1,6 @@
 import Link from 'next/link';
+import type { ComponentType } from 'react';
+import { ChartIcon, JobsIcon, PracticeIcon, ResumeIcon } from './icons';
 import styles from './QuickActions.module.css';
 
 interface QuickAction {
@@ -6,80 +8,55 @@ interface QuickAction {
   title: string;
   description: string;
   href: string;
-  icon: string;
-  variant: 'primary' | 'secondary' | 'accent';
+  Icon: ComponentType<{ size?: number }>;
 }
 
+/** The live copilot has its own panel above; these are the other places to go. */
 const quickActions: QuickAction[] = [
   {
     id: 'mock-interview',
-    title: 'Start Mock Interview',
-    description: 'Practice with AI-powered interview sessions',
-    href: '/interview/new',
-    icon: '🎯',
-    variant: 'primary',
-  },
-  {
-    id: 'copilot',
-    title: 'Launch Copilot',
-    description: 'Get real-time interview assistance',
-    href: '/copilot/live',
-    icon: '🤖',
-    variant: 'secondary',
-  },
-  {
-    id: 'job-tracker',
-    title: 'Job Tracker',
-    description: 'Track applications and manage your job search pipeline',
-    href: '/jobs',
-    icon: '💼',
-    variant: 'accent',
+    title: 'Practice an interview',
+    description: 'Answer questions and get a score',
+    href: '/interview',
+    Icon: PracticeIcon,
   },
   {
     id: 'resume',
-    title: 'Resume Builder',
-    description: 'Upload and optimize your resume for ATS',
+    title: 'Résumé',
+    description: 'Upload it and tune it to a job',
     href: '/resume',
-    icon: '📄',
-    variant: 'accent',
+    Icon: ResumeIcon,
+  },
+  {
+    id: 'job-tracker',
+    title: 'Jobs',
+    description: 'Track where you have applied',
+    href: '/jobs',
+    Icon: JobsIcon,
   },
   {
     id: 'analytics',
     title: 'Analytics',
-    description: 'View conversion funnel and cohort analysis',
+    description: 'Your sessions over time',
     href: '/analytics',
-    icon: '📊',
-    variant: 'secondary',
+    Icon: ChartIcon,
   },
 ];
 
 export function QuickActions() {
   return (
-    <section id="quick-actions" aria-labelledby="quick-actions-heading">
-      <h2 className="cardTitle" id="quick-actions-heading" style={{ marginBottom: 16 }}>
-        Quick Actions
-      </h2>
-      <div 
-        className={styles.quickActionsGrid} 
-        role="navigation" 
-        aria-label="Quick actions navigation"
-      >
-        {quickActions.map((action) => (
-          <Link 
-            key={action.id} 
-            href={action.href} 
-            className={`${styles.quickActionCard} ${styles[action.variant]}`}
-            aria-label={`${action.title}: ${action.description}`}
-          >
-            <div className={styles.quickActionIcon} aria-hidden="true">{action.icon}</div>
-            <div className={styles.quickActionContent}>
-              <h3 className={styles.quickActionTitle}>{action.title}</h3>
-              <p className={styles.quickActionDesc}>{action.description}</p>
-            </div>
-            <span className={styles.quickActionArrow} aria-hidden="true">→</span>
-          </Link>
-        ))}
-      </div>
-    </section>
+    <nav id="quick-actions" className={styles.quickActionsGrid} aria-label="Quick actions">
+      {quickActions.map(({ id, title, description, href, Icon }) => (
+        <Link key={id} href={href} className={styles.quickActionCard}>
+          <span className={styles.quickActionIcon}>
+            <Icon size={20} />
+          </span>
+          <span className={styles.quickActionContent}>
+            <span className={styles.quickActionTitle}>{title}</span>
+            <span className={styles.quickActionDesc}>{description}</span>
+          </span>
+        </Link>
+      ))}
+    </nav>
   );
 }

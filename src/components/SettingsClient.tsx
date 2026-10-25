@@ -52,10 +52,10 @@ export function SettingsClient(props: { initial: Settings | null }) {
   }
 
   return (
-    <div className="card" role="form" aria-label="LLM preferences settings">
+    <div className="card" role="form" aria-label="Answer model settings">
       <div className="cardInner stack">
-        <h2 className="cardTitle" id="settings-title">LLM preferences</h2>
-        <p className="cardDesc">Stored per-user in <span className="mono">llm_settings</span>.</p>
+        <h2 className="cardTitle" id="settings-title">Answer model</h2>
+        <p className="cardDesc">The model that writes your answers, and how freely it writes.</p>
 
         <div className="grid2">
           <label className="label" htmlFor={providerId}>

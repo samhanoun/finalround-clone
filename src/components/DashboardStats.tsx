@@ -43,19 +43,19 @@ export async function DashboardStats() {
   return (
     <section id="stats" className="card">
       <div className="cardInner">
-        <h2 className="cardTitle" style={{ marginBottom: 16 }}>Your Stats</h2>
+        <h2 className="cardTitle" style={{ marginBottom: 16 }}>Your progress</h2>
         <div className={styles.statsGrid}>
           <div className={styles.statItem}>
             <div className={styles.statValue}>{stats.totalInterviews}</div>
-            <div className={styles.statLabel}>Total Interviews</div>
+            <div className={styles.statLabel}>Practice interviews</div>
           </div>
           <div className={styles.statItem}>
             <div className={styles.statValue}>{stats.avgScore !== null ? `${stats.avgScore}%` : '—'}</div>
-            <div className={styles.statLabel}>Avg Score</div>
+            <div className={styles.statLabel}>Average score</div>
           </div>
           <div className={styles.statItem}>
             <div className={styles.statValue}>{stats.applicationsSubmitted}</div>
-            <div className={styles.statLabel}>Applications Submitted</div>
+            <div className={styles.statLabel}>Applications sent</div>
           </div>
         </div>
       </div>

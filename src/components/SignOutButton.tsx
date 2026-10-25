@@ -2,8 +2,10 @@
 
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/browser';
+import { SignOutIcon } from './icons';
 
-export function SignOutButton() {
+/** `compact`: an icon button for the navigation rail. */
+export function SignOutButton({ compact = false }: { compact?: boolean }) {
   const router = useRouter();
 
   async function onClick() {
@@ -14,13 +16,15 @@ export function SignOutButton() {
   }
 
   return (
-    <button 
-      className="button" 
-      type="button" 
+    <button
+      className={compact ? 'button buttonGhost' : 'button'}
+      type="button"
       onClick={onClick}
       aria-label="Sign out of your account"
+      title={compact ? 'Sign out' : undefined}
+      style={compact ? { padding: 0, width: 44 } : undefined}
     >
-      Sign out
+      {compact ? <SignOutIcon size={20} /> : 'Sign out'}
     </button>
   );
 }

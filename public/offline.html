@@ -3,281 +3,165 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Offline - FinalRound</title>
+  <meta name="theme-color" content="#0b1324">
+  <title>Offline · Apex Round</title>
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
   <style>
+    :root {
+      --midnight: #0b1324;
+      --deck: #111b30;
+      --deck-2: #17233d;
+      --line: #243250;
+      --paper: #e8edf7;
+      --mist: #93a1bf;
+      --ember: #ffb547;
+      --live: #45d49b;
+      --alert: #ff6b6b;
+    }
+
     * {
-      margin: 0;
-      padding: 0;
       box-sizing: border-box;
     }
 
-    :root {
-      --bg-primary: #0b0f19;
-      --bg-secondary: #151b2b;
-      --bg-tertiary: #1e2738;
-      --text-primary: #f0f4f8;
-      --text-secondary: #94a3b8;
-      --accent: #3b82f6;
-      --accent-hover: #2563eb;
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 24px 16px;
+      background: var(--midnight);
+      color: var(--paper);
+      font: 16px/1.6 'Segoe UI', system-ui, -apple-system, sans-serif;
     }
 
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
-      background: var(--bg-primary);
-      color: var(--text-primary);
-      min-height: 100vh;
+    .panel {
+      width: min(440px, 100%);
       display: flex;
       flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      padding: 2rem;
-      text-align: center;
-    }
-
-    .container {
-      max-width: 480px;
-    }
-
-    .icon {
-      width: 120px;
-      height: 120px;
-      margin-bottom: 2rem;
-      opacity: 0.8;
+      gap: 18px;
+      padding: 28px 30px;
+      border-radius: 18px;
+      background: var(--deck);
+      border: 1px solid var(--line);
     }
 
     h1 {
-      font-size: 2rem;
-      font-weight: 700;
-      margin-bottom: 1rem;
-      background: linear-gradient(135deg, var(--text-primary) 0%, var(--text-secondary) 100%);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
+      margin: 0;
+      font-size: 22px;
+      font-weight: 600;
+      letter-spacing: -0.01em;
     }
 
     p {
-      color: var(--text-secondary);
-      font-size: 1.125rem;
-      line-height: 1.6;
-      margin-bottom: 2rem;
+      margin: 0;
+      color: var(--mist);
     }
 
-    .card {
-      background: var(--bg-secondary);
-      border-radius: 16px;
-      padding: 1.5rem;
-      margin-bottom: 2rem;
-      border: 1px solid var(--bg-tertiary);
-    }
-
-    .card h2 {
-      font-size: 1rem;
-      font-weight: 600;
-      margin-bottom: 0.75rem;
-      color: var(--text-primary);
-    }
-
-    .card ul {
-      list-style: none;
-      text-align: left;
-    }
-
-    .card li {
-      color: var(--text-secondary);
-      font-size: 0.875rem;
-      padding: 0.5rem 0;
-      padding-left: 1.5rem;
-      position: relative;
-    }
-
-    .card li::before {
-      content: '✓';
-      position: absolute;
-      left: 0;
-      color: var(--accent);
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
     }
 
     .button {
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      padding: 0.875rem 2rem;
-      font-size: 1rem;
+      min-height: 44px;
+      padding: 0 18px;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      background: var(--deck-2);
+      color: var(--paper);
+      font: inherit;
       font-weight: 600;
-      border-radius: 12px;
-      border: none;
-      cursor: pointer;
-      transition: all 0.2s ease;
       text-decoration: none;
-      gap: 0.5rem;
+      cursor: pointer;
     }
 
-    .button-primary {
-      background: var(--accent);
-      color: white;
+    .primary {
+      border-color: var(--ember);
+      background: var(--ember);
+      color: var(--midnight);
     }
 
-    .button-primary:hover {
-      background: var(--accent-hover);
-      transform: translateY(-1px);
-    }
-
-    .button-secondary {
-      background: var(--bg-tertiary);
-      color: var(--text-primary);
-      margin-left: 1rem;
-    }
-
-    .button-secondary:hover {
-      background: #2a3447;
-    }
-
-    .spinner {
-      width: 20px;
-      height: 20px;
-      border: 2px solid rgba(255, 255, 255, 0.3);
-      border-top-color: white;
-      border-radius: 50%;
-      animation: spin 0.8s linear infinite;
-    }
-
-    @keyframes spin {
-      to {
-        transform: rotate(360deg);
-      }
+    .button:focus-visible {
+      outline: 2px solid var(--ember);
+      outline-offset: 3px;
     }
 
     .status {
       display: flex;
       align-items: center;
-      justify-content: center;
-      gap: 0.5rem;
-      color: var(--text-secondary);
-      font-size: 0.875rem;
-      margin-top: 1rem;
+      gap: 8px;
+      font-size: 14px;
+      color: var(--mist);
     }
 
-    .status-dot {
+    .dot {
       width: 8px;
       height: 8px;
       border-radius: 50%;
-      background: #ef4444;
-      animation: pulse 2s infinite;
+      background: var(--alert);
     }
 
-    .status-dot.online {
-      background: #22c55e;
-    }
-
-    @keyframes pulse {
-      0%, 100% {
-        opacity: 1;
-      }
-      50% {
-        opacity: 0.5;
-      }
-    }
-
-    @media (max-width: 480px) {
-      h1 {
-        font-size: 1.5rem;
-      }
-
-      p {
-        font-size: 1rem;
-      }
-
-      .button {
-        width: 100%;
-        margin-left: 0;
-        margin-top: 0.5rem;
-      }
-
-      .buttons {
-        display: flex;
-        flex-direction: column;
-      }
+    .dot.online {
+      background: var(--live);
     }
   </style>
 </head>
 <body>
-  <div class="container">
-    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-      <path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z" />
-      <path d="M12 6v6l4 2" />
-      <path d="M3.27 6.96l1.47 1.47" />
-      <path d="M2 12s3-5 10-5 10 5 10 5-3 5-10 5-10-5-10-5z" />
+  <main class="panel">
+    <svg width="44" height="44" viewBox="0 0 44 44" aria-hidden="true">
+      <rect x="1" y="1" width="42" height="42" rx="12" fill="#111B30" stroke="#2C3B5E"/>
+      <path d="M11 30 L22 12 L33 30" fill="none" stroke="#E8EDF7" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round"/>
+      <path d="M14.5 27 h4.5 l2 -4.2 l3 7.2 l2 -3 h4" fill="none" stroke="#FFB547" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/>
     </svg>
 
-    <h1>You're Offline</h1>
-    <p>Don't worry! Your interview progress is saved locally. Connect to the internet to continue where you left off.</p>
+    <h1>You're offline</h1>
+    <p>Apex Round needs a connection to hear the interviewer and write answers. Reconnect, then try again.</p>
 
-    <div class="card">
-      <h2>While you wait</h2>
-      <ul>
-        <li>Review your saved interview notes</li>
-        <li>Check your resume content</li>
-        <li>Practice common interview questions</li>
-        <li>Your data will sync automatically</li>
-      </ul>
+    <div class="actions">
+      <button class="button primary" id="retry" type="button">Try again</button>
+      <a class="button" href="/">Go to the home page</a>
     </div>
 
-    <div class="buttons">
-      <button class="button button-primary" onclick="retryConnection()">
-        <span id="retry-text">Try Again</span>
-        <div id="retry-spinner" class="spinner" style="display: none;"></div>
-      </button>
-      <a href="/" class="button button-secondary">Go to Homepage</a>
-    </div>
-
-    <div class="status">
-      <div class="status-dot" id="status-dot"></div>
-      <span id="status-text">Checking connection...</span>
-    </div>
-  </div>
+    <p class="status" role="status">
+      <span class="dot" id="status-dot"></span>
+      <span id="status-text">Checking your connection…</span>
+    </p>
+  </main>
 
   <script>
     const statusDot = document.getElementById('status-dot');
     const statusText = document.getElementById('status-text');
-    const retryText = document.getElementById('retry-text');
-    const retrySpinner = document.getElementById('retry-spinner');
+    const retry = document.getElementById('retry');
 
     function updateOnlineStatus() {
       if (navigator.onLine) {
         statusDot.classList.add('online');
-        statusText.textContent = 'Back online! Redirecting...';
-        
-        // Refresh the page to retry
-        setTimeout(() => {
-          window.location.reload();
-        }, 1500);
+        statusText.textContent = 'Back online. Reloading…';
+        setTimeout(() => window.location.reload(), 1500);
       } else {
         statusDot.classList.remove('online');
-        statusText.textContent = 'No internet connection';
+        statusText.textContent = 'No internet connection.';
       }
     }
 
-    function retryConnection() {
-      retryText.textContent = 'Retrying...';
-      retrySpinner.style.display = 'block';
-      
-      // Force a network request to check connection
+    retry.addEventListener('click', () => {
+      retry.textContent = 'Trying…';
+      retry.disabled = true;
       fetch('/api/health', { method: 'HEAD', cache: 'no-store' })
-        .then(() => {
-          window.location.reload();
-        })
+        .then(() => window.location.reload())
         .catch(() => {
-          retryText.textContent = 'Try Again';
-          retrySpinner.style.display = 'none';
-          statusText.textContent = 'Still offline. Please check your connection.';
+          retry.textContent = 'Try again';
+          retry.disabled = false;
+          statusText.textContent = 'Still offline. Check your connection.';
         });
-    }
+    });
 
-    // Listen for online/offline events
     window.addEventListener('online', updateOnlineStatus);
     window.addEventListener('offline', updateOnlineStatus);
-
-    // Check initial status
     updateOnlineStatus();
   </script>
 </body>

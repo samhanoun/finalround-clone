@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { 
+import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   LineChart, Line, PieChart, Pie, Cell, AreaChart, Area, Legend
 } from 'recharts';
@@ -51,9 +51,9 @@ const PIE_DATA = [
   { name: 'Enterprise', value: 10 },
 ];
 
-const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444'];
+const COLORS = ['var(--ice)', 'var(--live)', 'var(--caution)', 'var(--alert)'];
 
-export function CustomDashboard({ 
+export function CustomDashboard({
   metrics = DEFAULT_METRICS,
   timeSeriesData = TIME_SERIES_DATA,
   title = 'Analytics Overview'
@@ -89,19 +89,19 @@ export function CustomDashboard({
         <h2 className="cardTitle">{title}</h2>
         <div className="dashboard-controls">
           <div className="range-selector">
-            <button 
+            <button
               className={selectedRange === 'week' ? 'active' : ''}
               onClick={() => setSelectedRange('week')}
             >
               Week
             </button>
-            <button 
+            <button
               className={selectedRange === 'month' ? 'active' : ''}
               onClick={() => setSelectedRange('month')}
             >
               Month
             </button>
-            <button 
+            <button
               className={selectedRange === 'quarter' ? 'active' : ''}
               onClick={() => setSelectedRange('quarter')}
             >
@@ -132,19 +132,19 @@ export function CustomDashboard({
           <div className="chart-header">
             <h3>Growth Trends</h3>
             <div className="chart-type-selector">
-              <button 
+              <button
                 className={selectedChart === 'line' ? 'active' : ''}
                 onClick={() => setSelectedChart('line')}
               >
                 Line
               </button>
-              <button 
+              <button
                 className={selectedChart === 'bar' ? 'active' : ''}
                 onClick={() => setSelectedChart('bar')}
               >
                 Bar
               </button>
-              <button 
+              <button
                 className={selectedChart === 'area' ? 'active' : ''}
                 onClick={() => setSelectedChart('area')}
               >
@@ -155,35 +155,35 @@ export function CustomDashboard({
           <ResponsiveContainer width="100%" height={300}>
             {selectedChart === 'line' ? (
               <LineChart data={timeSeriesData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--line)" />
                 <XAxis dataKey="date" tick={{ fontSize: 12 }} />
                 <YAxis yAxisId="left" tick={{ fontSize: 12 }} />
                 <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 12 }} />
-                <Tooltip contentStyle={{ borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+                <Tooltip contentStyle={{ borderRadius: '8px', border: '1px solid var(--line)' }} />
                 <Legend />
-                <Line yAxisId="left" type="monotone" dataKey="users" stroke="#3b82f6" strokeWidth={2} dot={{ r: 4 }} name="Users" />
-                <Line yAxisId="left" type="monotone" dataKey="sessions" stroke="#10b981" strokeWidth={2} dot={{ r: 4 }} name="Sessions" />
-                <Line yAxisId="right" type="monotone" dataKey="revenue" stroke="#f59e0b" strokeWidth={2} dot={{ r: 4 }} name="Revenue" />
+                <Line yAxisId="left" type="monotone" dataKey="users" stroke="var(--ice)" strokeWidth={2} dot={{ r: 4 }} name="Users" />
+                <Line yAxisId="left" type="monotone" dataKey="sessions" stroke="var(--live)" strokeWidth={2} dot={{ r: 4 }} name="Sessions" />
+                <Line yAxisId="right" type="monotone" dataKey="revenue" stroke="var(--caution)" strokeWidth={2} dot={{ r: 4 }} name="Revenue" />
               </LineChart>
             ) : selectedChart === 'bar' ? (
               <BarChart data={timeSeriesData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--line)" />
                 <XAxis dataKey="date" tick={{ fontSize: 12 }} />
                 <YAxis tick={{ fontSize: 12 }} />
-                <Tooltip contentStyle={{ borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+                <Tooltip contentStyle={{ borderRadius: '8px', border: '1px solid var(--line)' }} />
                 <Legend />
-                <Bar dataKey="users" fill="#3b82f6" name="Users" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="sessions" fill="#10b981" name="Sessions" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="users" fill="var(--ice)" name="Users" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="sessions" fill="var(--live)" name="Sessions" radius={[4, 4, 0, 0]} />
               </BarChart>
             ) : (
               <AreaChart data={timeSeriesData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--line)" />
                 <XAxis dataKey="date" tick={{ fontSize: 12 }} />
                 <YAxis tick={{ fontSize: 12 }} />
-                <Tooltip contentStyle={{ borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+                <Tooltip contentStyle={{ borderRadius: '8px', border: '1px solid var(--line)' }} />
                 <Legend />
-                <Area type="monotone" dataKey="users" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.3} name="Users" />
-                <Area type="monotone" dataKey="sessions" stroke="#10b981" fill="#10b981" fillOpacity={0.3} name="Sessions" />
+                <Area type="monotone" dataKey="users" stroke="var(--ice)" fill="var(--ice)" fillOpacity={0.3} name="Users" />
+                <Area type="monotone" dataKey="sessions" stroke="var(--live)" fill="var(--live)" fillOpacity={0.3} name="Sessions" />
               </AreaChart>
             )}
           </ResponsiveContainer>
@@ -199,15 +199,16 @@ export function CustomDashboard({
                 cy="50%"
                 innerRadius={60}
                 outerRadius={80}
-                paddingAngle={5}
+                paddingAngle={4}
                 dataKey="value"
-                label={({ name, percent }) => `${name} ${((percent || 0) * 100).toFixed(0)}%`}
+                stroke="none"
               >
                 {PIE_DATA.map((entry, index) => (
                   <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                 ))}
               </Pie>
               <Tooltip />
+              <Legend verticalAlign="bottom" iconType="circle" iconSize={8} />
             </PieChart>
           </ResponsiveContainer>
         </div>
@@ -220,20 +221,20 @@ export function CustomDashboard({
           align-items: center;
           margin-bottom: 20px;
         }
-        
+
         .dashboard-controls {
           display: flex;
           gap: 12px;
         }
-        
+
         .range-selector {
           display: flex;
           gap: 4px;
-          background: #f3f4f6;
+          background: var(--well);
           padding: 4px;
           border-radius: 6px;
         }
-        
+
         .range-selector button {
           padding: 6px 12px;
           border: none;
@@ -243,119 +244,119 @@ export function CustomDashboard({
           cursor: pointer;
           transition: all 0.2s;
         }
-        
+
         .range-selector button.active {
-          background: white;
+          background: var(--deck);
           box-shadow: 0 1px 2px rgba(0,0,0,0.1);
         }
-        
+
         .metrics-grid {
           display: grid;
           grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
           gap: 16px;
           margin-bottom: 24px;
         }
-        
+
         .metric-card {
-          background: var(--color-bg-subtle, #f8f9fa);
+          background: var(--color-bg-subtle, var(--well));
           padding: 16px;
           border-radius: 8px;
-          border: 1px solid var(--color-border, #e5e7eb);
+          border: 1px solid var(--color-border, var(--line));
         }
-        
+
         .metric-name {
           font-size: 0.75rem;
-          color: #6b7280;
+          color: var(--mist);
           margin-bottom: 4px;
         }
-        
+
         .metric-value {
           font-size: 1.5rem;
           font-weight: 600;
-          color: #1f2937;
+          color: var(--paper);
           margin-bottom: 4px;
         }
-        
+
         .metric-change {
           display: flex;
           align-items: center;
           gap: 4px;
           font-size: 0.75rem;
         }
-        
+
         .metric-change.positive {
-          color: #10b981;
+          color: var(--live);
         }
-        
+
         .metric-change.negative {
-          color: #ef4444;
+          color: var(--alert);
         }
-        
+
         .metric-change.neutral {
-          color: #6b7280;
+          color: var(--mist);
         }
-        
+
         .change-icon {
           font-weight: 600;
         }
-        
+
         .change-period {
-          color: #9ca3af;
+          color: var(--mist);
           margin-left: 4px;
         }
-        
+
         .charts-section {
           display: grid;
           grid-template-columns: 2fr 1fr;
           gap: 20px;
         }
-        
+
         @media (max-width: 768px) {
           .charts-section {
             grid-template-columns: 1fr;
           }
         }
-        
+
         .chart-container {
-          background: white;
-          border: 1px solid var(--color-border, #e5e7eb);
+          background: var(--deck);
+          border: 1px solid var(--color-border, var(--line));
           border-radius: 8px;
           padding: 16px;
         }
-        
+
         .chart-header {
           display: flex;
           justify-content: space-between;
           align-items: center;
           margin-bottom: 16px;
         }
-        
+
         .chart-header h3 {
           font-size: 1rem;
           font-weight: 600;
           margin: 0;
         }
-        
+
         .chart-type-selector {
           display: flex;
           gap: 4px;
         }
-        
+
         .chart-type-selector button {
           padding: 4px 8px;
-          border: 1px solid #e5e7eb;
-          background: white;
+          border: 1px solid var(--line);
+          background: var(--deck);
           border-radius: 4px;
           font-size: 0.7rem;
           cursor: pointer;
         }
-        
+
         .chart-type-selector button.active {
-          background: #3b82f6;
-          color: white;
-          border-color: #3b82f6;
+          background: var(--ice);
+          color: var(--midnight);
+          border-color: var(--ice);
         }
-        
+
         .side-chart h3 {
           font-size: 1rem;
           font-weight: 600;

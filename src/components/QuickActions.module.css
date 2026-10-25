@@ -1,106 +1,71 @@
 .quickActionsGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
-}
-
-@media (max-width: 480px) {
-  .quickActionsGrid {
-    grid-template-columns: 1fr;
-    gap: 10px;
-  }
 }
 
 .quickActionCard {
   display: flex;
   align-items: center;
   gap: 14px;
-  padding: 16px;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  min-height: 72px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: var(--deck);
+  color: var(--paper);
   text-decoration: none;
-  transition: all 0.2s ease;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+
+.quickActionCard:hover .quickActionTitle {
+  color: var(--ember-text);
 }
 
 .quickActionCard:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
-  text-decoration: none;
-}
-
-.quickActionCard.primary {
-  border-color: rgba(124, 92, 255, 0.4);
-  background: linear-gradient(135deg, rgba(124, 92, 255, 0.15) 0%, rgba(124, 92, 255, 0.05) 100%);
-}
-
-.quickActionCard.primary:hover {
-  border-color: var(--brand);
-}
-
-.quickActionCard.secondary {
-  border-color: rgba(77, 214, 255, 0.4);
-  background: linear-gradient(135deg, rgba(77, 214, 255, 0.15) 0%, rgba(77, 214, 255, 0.05) 100%);
-}
-
-.quickActionCard.secondary:hover {
-  border-color: var(--brand2);
-}
-
-.quickActionCard.accent {
-  border-color: rgba(26, 194, 115, 0.4);
-  background: linear-gradient(135deg, rgba(26, 194, 115, 0.15) 0%, rgba(26, 194, 115, 0.05) 100%);
-}
-
-.quickActionCard.accent:hover {
-  border-color: #1ac26e;
+  border-color: var(--line-glow);
+  background: var(--deck-2);
+  color: var(--paper);
 }
 
 .quickActionIcon {
-  font-size: 1.8rem;
-  width: 48px;
-  height: 48px;
-  display: flex;
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: rgba(255, 255, 255, 0.08);
-  border-radius: 12px;
-  flex-shrink: 0;
+  border-radius: 10px;
+  background: var(--well);
+  border: 1px solid var(--line);
+  color: var(--ember);
 }
 
 .quickActionContent {
-  flex: 1;
+  display: grid;
+  gap: 2px;
   min-width: 0;
 }
 
 .quickActionTitle {
-  font-size: 1rem;
+  font-size: 15px;
   font-weight: 600;
-  margin: 0 0 4px;
-  color: var(--text);
 }
 
 .quickActionDesc {
-  font-size: 0.85rem;
-  color: var(--muted);
-  margin: 0;
-  line-height: 1.4;
+  font-size: 13.5px;
+  color: var(--mist);
+  line-height: 1.35;
 }
 
-.quickActionArrow {
-  font-size: 1.2rem;
-  color: var(--muted);
-  transition: transform 0.2s ease;
-}
-
-.quickActionCard:hover .quickActionArrow {
-  transform: translateX(4px);
-  color: var(--brand);
-}
-
-@media (max-width: 480px) {
+@media (max-width: 1100px) {
   .quickActionsGrid {
-    grid-template-columns: 1fr;
-    gap: 10px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 520px) {
+  .quickActionsGrid {
+    grid-template-columns: minmax(0, 1fr);
   }
 }

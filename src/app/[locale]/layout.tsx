@@ -1,10 +1,11 @@
 import type { Metadata, Viewport } from 'next';
-import { Geist, Geist_Mono } from 'next/font/google';
+import { Geist, Geist_Mono, Unbounded } from 'next/font/google';
 import { NextIntlClientProvider } from 'next-intl';
 import { getMessages } from 'next-intl/server';
 import { notFound } from 'next/navigation';
 import { routing } from '@/i18n/routing';
 import { ClientProviders } from '@/components/ClientProviders';
+import { DesktopFrame } from '@/components/DesktopFrame';
 import '@/app/globals.css';
 
 const geistSans = Geist({
@@ -17,16 +18,20 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+// Display face: page titles, headlines and the brand only.
+const unbounded = Unbounded({
+  variable: "--font-display",
+  subsets: ["latin"],
+});
+
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
-  maximumScale: 1,
-  userScalable: false,
 };
 
 export const metadata: Metadata = {
   title: 'Apex Round',
-  description: 'Your unfair advantage. Interview Copilot + Resume Builder (Next.js + Supabase)',
+  description: 'A live interview copilot: it hears the question and puts a short, structured answer on your screen.',
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
@@ -36,13 +41,11 @@ export const metadata: Metadata = {
   icons: {
     icon: [
       { url: '/favicon.ico', sizes: 'any' },
+      { url: '/icon.svg', type: 'image/svg+xml' },
       { url: '/icon-192.png', sizes: '192x192', type: 'image/png' },
       { url: '/icon-512.png', sizes: '512x512', type: 'image/png' },
     ],
-    apple: [
-      { url: '/icon-192.png', sizes: '192x192', type: 'image/png' },
-      { url: '/icon-512.png', sizes: '512x512', type: 'image/png' },
-    ],
+    apple: [{ url: '/apple-touch-icon.png', sizes: '180x180', type: 'image/png' }],
   },
 };
 
@@ -74,9 +77,9 @@ export default async function RootLayout({
     <html lang={locale} dir={isRTL ? 'rtl' : 'ltr'} suppressHydrationWarning>
       <head>
         <meta name="color-scheme" content="dark" />
-        <meta name="theme-color" content="#0b0f19" />
+        <meta name="theme-color" content="#0b1324" />
       </head>
-      <body className={`${geistSans.variable} ${geistMono.variable}`}>
+      <body className={`${geistSans.variable} ${geistMono.variable} ${unbounded.variable}`}>
         {/* Skip to main content link for keyboard users */}
         <a href="#main-content" className="skipLink">
           Skip to main content
@@ -90,6 +93,8 @@ export default async function RootLayout({
           aria-atomic="true"
         />
         
+        <DesktopFrame />
+
         <NextIntlClientProvider messages={messages}>
           {/* Toasts: DashboardClient, JobsClient, ResumeClient and SettingsClient call useToast. */}
           <ClientProviders>{children}</ClientProviders>

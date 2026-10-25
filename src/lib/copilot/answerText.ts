@@ -11,6 +11,24 @@ export type AnswerSegment =
 const OPENING_FENCE = /^ {0,3}```\s*([\w#+.-]*)\s*$/;
 const CLOSING_FENCE = /^ {0,3}```\s*$/;
 
+export type ProseBlock = { kind: 'line'; text: string } | { kind: 'points'; items: string[] };
+
+/** Prose as lines and bullet groups ("- ", "* " or "• " lines), so points render as a list. */
+export function splitBullets(text: string): ProseBlock[] {
+  const blocks: ProseBlock[] = [];
+  for (const line of text.split('\n')) {
+    const bullet = /^\s*[-*•]\s+(.*\S)\s*$/.exec(line);
+    if (bullet) {
+      const last = blocks[blocks.length - 1];
+      if (last?.kind === 'points') last.items.push(bullet[1]);
+      else blocks.push({ kind: 'points', items: [bullet[1]] });
+    } else if (line.trim()) {
+      blocks.push({ kind: 'line', text: line.trim() });
+    }
+  }
+  return blocks;
+}
+
 export function splitCodeFences(text: string): AnswerSegment[] {
   const segments: AnswerSegment[] = [];
   let prose: string[] = [];

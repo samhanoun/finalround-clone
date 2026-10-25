@@ -7,9 +7,9 @@ const path = require('node:path');
 
 const PORTS = {
   app: Number(process.env.E2E_APP_PORT ?? 3100),
-  supabase: Number(process.env.E2E_FAKE_SUPABASE_PORT ?? 54390),
-  deepgram: Number(process.env.E2E_FAKE_DEEPGRAM_PORT ?? 54391),
-  openai: Number(process.env.E2E_FAKE_OPENAI_PORT ?? 54392),
+  supabase: Number(process.env.E2E_FAKE_SUPABASE_PORT ?? 47390),
+  deepgram: Number(process.env.E2E_FAKE_DEEPGRAM_PORT ?? 47391),
+  openai: Number(process.env.E2E_FAKE_OPENAI_PORT ?? 47392),
 };
 
 const KEYS = {

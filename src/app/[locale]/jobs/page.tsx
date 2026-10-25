@@ -4,7 +4,7 @@ import { JobsClient } from '@/components/JobsClient';
 
 export default function JobsPage() {
   return (
-    <AppShell title="Job Hunter Dashboard">
+    <AppShell title="Jobs">
       <RequireAuth>
         <JobsClient />
       </RequireAuth>

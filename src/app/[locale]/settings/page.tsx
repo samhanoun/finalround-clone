@@ -1,4 +1,3 @@
-import Link from 'next/link';
 import { AppShell } from '@/components/AppShell';
 import { RequireAuth } from '@/components/RequireAuth';
 import { SettingsClient } from '@/components/SettingsClient';
@@ -40,10 +39,6 @@ export default async function SettingsPage() {
     <AppShell title={t('title')}>
       <RequireAuth>
         <div className="stack">
-          <p className="help">
-            <Link href="/dashboard">← {t('common.back', { defaultValue: 'Back to dashboard' })}</Link>
-          </p>
-          
           <UsageWidget />
           
           <ProfileSettings />
@@ -63,17 +58,6 @@ export default async function SettingsPage() {
 
           {/* Video Conferencing Settings */}
           <VideoConferencingSettings initial={videoSettings} />
-
-          <div className="card">
-            <div className="cardInner stack">
-              <h2 className="cardTitle">{t('securityNotes')}</h2>
-              <ul className="stack" style={{ paddingLeft: 18, margin: 0 }}>
-                <li>{t('securityNote1')}</li>
-                <li>{t('securityNote2')}</li>
-                <li>{t('securityNote3')}</li>
-              </ul>
-            </div>
-          </div>
 
           <AccountDeletion />
         </div>
