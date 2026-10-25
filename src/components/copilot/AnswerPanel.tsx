@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AnswerView, MAX_FONT_PX, MIN_FONT_PX, type ConnectionState, type TailLine } from './AnswerView';
 import { useDocumentPip } from './useDocumentPip';
+import { onDesktopCommand } from '@/lib/desktop';
 import type { CopilotAnswers } from './useCopilotAnswers';
 
 const FONT_STORAGE_KEY = 'apex.answerFontPx';
@@ -94,6 +95,19 @@ export function AnswerPanel({
       setPopOutError('The floating window could not open. Click Pop out again.');
     });
   }, [pip]);
+
+  // Desktop app: Ctrl+Shift+H pops the answers out or brings them back. The
+  // shortcut arrives with a user gesture, which opening the window needs.
+  const closePip = pip.close;
+  useEffect(
+    () =>
+      onDesktopCommand((command) => {
+        if (command !== 'toggle-answers') return;
+        if (pipWindow) closePip();
+        else popOut();
+      }),
+    [pipWindow, closePip, popOut],
+  );
 
   const view = (variant: 'inline' | 'window') => (
     <AnswerView
