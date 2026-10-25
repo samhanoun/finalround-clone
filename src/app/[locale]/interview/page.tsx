@@ -5,6 +5,8 @@ import { NewPracticeButton } from '@/components/NewPracticeButton';
 import { createClient } from '@/lib/supabase/server';
 import styles from '../dashboard/dashboard.module.css';
 
+const STATUS_LABEL: Record<string, string> = { draft: 'Not started', in_progress: 'In progress', completed: 'Completed' };
+
 /** Practice interviews: answer questions in a mock session and get feedback. */
 export default async function PracticePage() {
   const supabase = await createClient();
@@ -22,7 +24,7 @@ export default async function PracticePage() {
 
   const { data: sessions } = await supabase
     .from('interview_sessions')
-    .select('id,title,status,created_at')
+    .select('id,title,status,created_at,interview_reports(overall_score,generated_at)')
     .order('created_at', { ascending: false })
     .limit(50);
 
@@ -39,17 +41,24 @@ export default async function PracticePage() {
             </div>
             <ul className={styles.list}>
               {(sessions ?? []).length ? (
-                (sessions ?? []).map((s) => (
-                  <li key={s.id} className={styles.listRow}>
-                    <Link href={`/interview/${s.id}`} className={styles.rowLink}>
-                      {s.title}
-                    </Link>
-                    <span className={styles.rowMeta}>
-                      <span className="badge">{s.status}</span>
-                      <span>{new Date(s.created_at).toLocaleDateString()}</span>
-                    </span>
-                  </li>
-                ))
+                (sessions ?? []).map((s) => {
+                  const reports = (s.interview_reports ?? []) as Array<{ overall_score: number | null; generated_at: string }>;
+                  const latest = [...reports].sort((a, b) => b.generated_at.localeCompare(a.generated_at))[0];
+                  return (
+                    <li key={s.id} className={styles.listRow}>
+                      <Link href={`/interview/${s.id}`} className={styles.rowLink}>
+                        {s.title}
+                      </Link>
+                      <span className={styles.rowMeta}>
+                        {typeof latest?.overall_score === 'number' ? (
+                          <span className="badge badgeLive">{latest.overall_score}/100</span>
+                        ) : null}
+                        <span className="badge">{STATUS_LABEL[s.status] ?? s.status}</span>
+                        <span>{new Date(s.created_at).toLocaleDateString()}</span>
+                      </span>
+                    </li>
+                  );
+                })
               ) : (
                 <li className={styles.empty}>No practice interviews yet. Start one to get a score and feedback.</li>
               )}

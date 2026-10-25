@@ -44,13 +44,13 @@ export async function PATCH(
     }
 
     const body = await request.json();
-    const { name, logo_url, settings, plan } = body;
+    // The plan is billing data: it changes through billing, never from this form.
+    const { name, logo_url, settings } = body;
 
     const updates: Record<string, unknown> = {};
     if (name) updates.name = name;
     if (logo_url !== undefined) updates.logo_url = logo_url;
     if (settings) updates.settings = settings;
-    if (plan) updates.plan = plan;
 
     const { data: organization, error } = await supabase
       .from('organizations')

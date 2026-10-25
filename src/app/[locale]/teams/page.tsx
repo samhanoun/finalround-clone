@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation';
+import { AppShell } from '@/components/AppShell';
 import { getServerOrganizationClient, getUserOrganizationContext } from '@/lib/organizations';
 import TeamsClient from './TeamsClient';
 
@@ -12,5 +13,9 @@ export default async function TeamsPage() {
 
   const { organization, role } = await getUserOrganizationContext(supabase);
 
-  return <TeamsClient initialOrganization={organization} role={role} />;
+  return (
+    <AppShell title="Teams">
+      <TeamsClient initialOrganization={organization} role={role} />
+    </AppShell>
+  );
 }

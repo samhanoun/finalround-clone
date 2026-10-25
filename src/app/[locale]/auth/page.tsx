@@ -27,7 +27,13 @@ function AuthForm() {
       const supabase = createClient();
 
       if (mode === 'signup') {
-        const { error } = await supabase.auth.signUp({ email, password });
+        // A referral link (?ref=CODE) is credited after sign-up (see /api/referrals/claim).
+        const ref = sp.get('ref')?.trim();
+        const { error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: ref ? { data: { referral_code: ref } } : undefined,
+        });
         if (error) throw error;
 
         // After signup, redirect to onboarding

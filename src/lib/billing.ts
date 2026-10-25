@@ -1,6 +1,7 @@
 import type Stripe from 'stripe';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { env } from '@/lib/env';
+import { markReferralConverted } from '@/lib/referrals';
 
 /**
  * Pro subscriptions through Stripe (build plan Step 10). Stripe is the source
@@ -162,4 +163,7 @@ export async function syncSubscription(stripe: Stripe, admin: SupabaseClient, su
         .eq('user_id', userId)
         .eq('plan_id', 'pro');
   if (plan.error) throw new Error(`Could not update the plan: ${plan.error.message}`);
+
+  // The first payment converts the account's referral, if it has one.
+  if (access && sub.status === 'active') await markReferralConverted(admin, userId);
 }
