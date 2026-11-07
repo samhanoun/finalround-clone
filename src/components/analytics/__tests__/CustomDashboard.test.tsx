@@ -89,15 +89,16 @@ describe('CustomDashboard', () => {
     const [rows, filename] = exportToCSV.mock.calls[0];
     expect(filename).toBe('activity-last-7-days');
     expect(rows).toHaveLength(7);
+    // Column names are the on-screen labels, in the user's language.
     expect(rows[0]).toEqual({
-      period_start: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
-      live_sessions: expect.any(Number),
-      live_minutes: expect.any(Number),
-      practice_interviews: expect.any(Number),
+      'Period starting': expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+      'Live sessions': expect.any(Number),
+      'Live minutes': expect.any(Number),
+      'Practice interviews': expect.any(Number),
     });
     const sum = (key: string) => rows.reduce((total: number, row: Record<string, number>) => total + row[key], 0);
-    expect(sum('live_sessions')).toBe(2);
-    expect(sum('live_minutes')).toBe(42);
+    expect(sum('Live sessions')).toBe(2);
+    expect(sum('Live minutes')).toBe(42);
   });
 
   it('labels an account with no activity instead of showing numbers', async () => {

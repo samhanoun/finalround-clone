@@ -25,8 +25,16 @@ export async function parseResumeDocument(
   }
 
   const buffer = await fileData.arrayBuffer();
-  const contentType = fileData.type || 'application/octet-stream';
+  return extractDocumentText(buffer, storagePath, fileData.type || 'application/octet-stream');
+}
 
+/** Text from a PDF, Word or plain-text file (résumés, and materials for goals). */
+export async function extractDocumentText(
+  buffer: ArrayBuffer,
+  filename: string,
+  contentType: string,
+): Promise<{ text: string; data: Record<string, unknown> }> {
+  const storagePath = filename.toLowerCase();
   let text = '';
   let extractedData: Record<string, unknown> = {};
 

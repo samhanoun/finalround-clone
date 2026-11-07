@@ -26,6 +26,9 @@ const nextConfig: NextConfig = {
   
   // Enable experimental features for better performance
   experimental: {
+    // app/global-not-found.tsx: a translated 404 for unknown addresses, without a
+    // [locale]/[...rest] catch-all (which would also match /api/stt/stream).
+    globalNotFound: true,
     // Optimize package loading
     optimizePackageImports: [
       '@supabase/ssr', 

@@ -77,3 +77,24 @@ export async function grabScreenFrame(track: MediaStreamTrack, maxWidth = SCREEN
     frame.release();
   }
 }
+
+/** A 64-bit fingerprint of the shared screen (differenceHash of a 9×8 grayscale thumbnail), for automatic Solve screen. */
+export async function screenSignature(track: MediaStreamTrack): Promise<string> {
+  if (track.readyState !== 'live') throw new Error('Screen sharing has stopped.');
+  const { differenceHash } = await import('./autoScreen');
+  const frame = await drawableFrom(track);
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = 9;
+    canvas.height = 8;
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    if (!context) throw new Error('Could not read the shared screen.');
+    context.drawImage(frame.source, 0, 0, 9, 8);
+    const { data } = context.getImageData(0, 0, 9, 8);
+    const gray: number[] = [];
+    for (let i = 0; i < data.length; i += 4) gray.push(0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
+    return differenceHash(gray);
+  } finally {
+    frame.release();
+  }
+}

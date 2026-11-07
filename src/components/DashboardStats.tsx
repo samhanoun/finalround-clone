@@ -1,3 +1,4 @@
+import { getTranslations } from 'next-intl/server';
 import { createClient } from '@/lib/supabase/server';
 import styles from './DashboardStats.module.css';
 
@@ -8,6 +9,7 @@ interface Stats {
 }
 
 export async function DashboardStats() {
+  const t = await getTranslations('Home');
   const supabase = await createClient();
   const { data: userData } = await supabase.auth.getUser();
   
@@ -15,47 +17,46 @@ export async function DashboardStats() {
     return null;
   }
 
-  // Get total interviews count
-  const { count: totalInterviews } = await supabase
-    .from('interview_sessions')
-    .select('*', { count: 'exact', head: true })
-    .eq('user_id', userData.user.id);
+  const userId = userData.user.id;
+  const [{ count: totalInterviews }, { data: reports }, { count: applicationsSubmitted }] = await Promise.all([
+    supabase.from('interview_sessions').select('*', { count: 'exact', head: true }).eq('user_id', userId),
+    supabase.from('interview_reports').select('overall_score').eq('user_id', userId),
+    // Sent = on the Jobs board and past "Saved" (applied, assessment, interview, offer or rejected).
+    supabase
+      .from('job_applications')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .eq('status', 'active')
+      .neq('stage', 'saved'),
+  ]);
 
-  // Get average score from completed reports
-  const { data: reports } = await supabase
-    .from('interview_reports')
-    .select('overall_score')
-    .eq('user_id', userData.user.id);
+  const scores = (reports ?? [])
+    .map((r: { overall_score: number | null }) => r.overall_score)
+    .filter((score): score is number => typeof score === 'number');
+  const avgScore = scores.length > 0 ? Math.round(scores.reduce((sum, score) => sum + score, 0) / scores.length) : null;
 
-  const avgScore = reports && reports.length > 0
-    ? Math.round(reports.reduce((sum, r) => sum + (r.overall_score || 0), 0) / reports.length)
-    : null;
-
-  // Get applications count (from localStorage for now - can be expanded to DB)
-  // For now, we'll show 0 as placeholder until job applications feature is implemented
-  
   const stats: Stats = {
     totalInterviews: totalInterviews || 0,
     avgScore,
-    applicationsSubmitted: 0, // Placeholder - can be connected to job applications DB
+    applicationsSubmitted: applicationsSubmitted || 0,
   };
 
   return (
     <section id="stats" className="card">
       <div className="cardInner">
-        <h2 className="cardTitle" style={{ marginBottom: 16 }}>Your progress</h2>
+        <h2 className="cardTitle" style={{ marginBottom: 16 }}>{t('progress')}</h2>
         <div className={styles.statsGrid}>
           <div className={styles.statItem}>
             <div className={styles.statValue}>{stats.totalInterviews}</div>
-            <div className={styles.statLabel}>Practice interviews</div>
+            <div className={styles.statLabel}>{t('statInterviews')}</div>
           </div>
           <div className={styles.statItem}>
             <div className={styles.statValue}>{stats.avgScore !== null ? `${stats.avgScore}%` : '—'}</div>
-            <div className={styles.statLabel}>Average score</div>
+            <div className={styles.statLabel}>{t('statScore')}</div>
           </div>
           <div className={styles.statItem}>
             <div className={styles.statValue}>{stats.applicationsSubmitted}</div>
-            <div className={styles.statLabel}>Applications sent</div>
+            <div className={styles.statLabel}>{t('statApplications')}</div>
           </div>
         </div>
       </div>

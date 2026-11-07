@@ -2,7 +2,6 @@ import { createHash } from 'node:crypto';
 import { after, NextRequest } from 'next/server';
 import { z } from 'zod';
 import { jsonError, readJsonLimited } from '@/lib/api';
-import { env } from '@/lib/env';
 import { createClient } from '@/lib/supabase/server';
 import { rateLimit } from '@/lib/rateLimit';
 import { sanitizeCopilotText } from '@/lib/copilotSecurity';
@@ -11,6 +10,7 @@ import { isProviderConfigured, providerForModel } from '@/lib/llmRouter';
 import { loadActiveCopilotSession, sessionMode } from '@/lib/copilot/activeSession';
 import { screenSystemBlocks, screenUserParts, type TranscriptLine } from '@/lib/copilot/answerPrompt';
 import { readContextPack } from '@/lib/copilot/contextPack';
+import { sessionModels } from '@/lib/answerModels';
 import { eventStreamResponse, replayAnswerEvents, streamAnswerEvents } from '@/lib/copilot/answerStream';
 
 /**
@@ -50,10 +50,6 @@ const BodySchema = z.object({
 const MAX_ANSWER_TOKENS = 1200;
 const MODEL_TIMEOUT_MS = 45_000;
 
-/** A vision-capable model; the coding model when one is set. */
-function screenModel(): string {
-  return env.COPILOT_CODING_MODEL ?? env.COPILOT_ANSWER_MODEL ?? 'gpt-4o-mini';
-}
 
 function imageType(bytes: Buffer): 'image/jpeg' | 'image/png' | null {
   if (bytes.length > 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return 'image/jpeg';
@@ -126,7 +122,8 @@ export async function POST(req: NextRequest, { params }: Params) {
     );
   }
 
-  const model = screenModel();
+  // The coding model frozen at session start (Settings → Answer model); it must accept images.
+  const model = sessionModels(session.metadata).coding;
   const provider = providerForModel(model);
   if (!provider || !isProviderConfigured(provider)) return jsonError(503, 'answers_unavailable');
 
@@ -142,6 +139,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       system: screenSystemBlocks({
         contextPack: readContextPack(session.metadata),
         noFullCode: session.metadata?.noFullCodeMode === true,
+        codingLanguage: typeof session.metadata?.codingLanguage === 'string' ? session.metadata.codingLanguage : null,
       }),
       messages: [{ role: 'user', content: screenUserParts({ recentTranscript, image: { mediaType, data: parse.data.image } }) }],
       maxTokens: MAX_ANSWER_TOKENS,

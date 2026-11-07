@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useFormatter, useTranslations } from 'next-intl';
 import type { AdminRole } from '@/lib/adminAuth';
 import styles from './AdminClient.module.css';
 
@@ -50,19 +51,14 @@ interface Ticket {
   email: string;
   full_name: string | null;
   subject: string;
+  description: string;
   category: string;
   priority: string;
   status: string;
   created_at: string;
 }
 
-const TABS: { id: Tab; label: string }[] = [
-  { id: 'overview', label: 'Overview' },
-  { id: 'users', label: 'Users' },
-  { id: 'subscriptions', label: 'Subscriptions' },
-  { id: 'fraud', label: 'Fraud flags' },
-  { id: 'tickets', label: 'Support tickets' },
-];
+const TABS: Tab[] = ['overview', 'users', 'subscriptions', 'fraud', 'tickets'];
 
 const TONE: Record<string, string> = {
   active: 'badgeLive',
@@ -78,13 +74,22 @@ const TONE: Record<string, string> = {
 };
 
 function Badge({ value }: { value: string }) {
-  return <span className={`badge ${TONE[value] ?? ''}`}>{value.replace(/_/g, ' ')}</span>;
+  const t = useTranslations('Admin');
+  return <span className={`badge ${TONE[value] ?? ''}`}>{t.has(`values.${value}`) ? t(`values.${value}`) : value.replace(/_/g, ' ')}</span>;
 }
 
-const formatCurrency = (cents: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(cents / 100);
-const formatDate = (date: string) => new Date(date).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+function useDates() {
+  const format = useFormatter();
+  return {
+    formatDate: (date: string) => format.dateTime(new Date(date), { year: 'numeric', month: 'short', day: 'numeric' }),
+    formatCurrency: (cents: number) => format.number(cents / 100, { style: 'currency', currency: 'USD' }),
+    formatNumber: (n: number) => format.number(n),
+  };
+}
 
 export default function AdminClient({ role }: { role: AdminRole }) {
+  const t = useTranslations('Admin');
+  const { formatDate, formatCurrency, formatNumber } = useDates();
   const canManage = role === 'admin' || role === 'super_admin';
   const [activeTab, setActiveTab] = useState<Tab>('overview');
   const [loading, setLoading] = useState(true);
@@ -94,6 +99,7 @@ export default function AdminClient({ role }: { role: AdminRole }) {
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [fraudFlags, setFraudFlags] = useState<FraudFlag[]>([]);
   const [tickets, setTickets] = useState<Ticket[]>([]);
+  const [openTicket, setOpenTicket] = useState<Ticket | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const page = 1;
   // Data is refetched when the tab or search changes, or when an action bumps reloadKey.
@@ -137,11 +143,14 @@ export default function AdminClient({ role }: { role: AdminRole }) {
           const data = await get(`/api/admin/fraud?page=${page}&limit=20&resolved=false`);
           if (!cancelled) setFraudFlags(data.flags || []);
         } else {
-          const data = await get(`/api/admin/tickets?page=${page}&limit=20&status=open`);
-          if (!cancelled) setTickets(data.tickets || []);
+          // Everything still needing attention: open, in progress or waiting on the user.
+          const data = await get(`/api/admin/tickets?page=${page}&limit=50`);
+          if (!cancelled) {
+            setTickets(((data.tickets || []) as Ticket[]).filter((ticket) => ticket.status !== 'resolved' && ticket.status !== 'closed'));
+          }
         }
       } catch {
-        if (!cancelled) setError("This section didn't load. Reload the page to try again.");
+        if (!cancelled) setError(t('loadFailed'));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -149,7 +158,7 @@ export default function AdminClient({ role }: { role: AdminRole }) {
     return () => {
       cancelled = true;
     };
-  }, [activeTab, searchQuery, reloadKey]);
+  }, [activeTab, searchQuery, reloadKey, t]);
 
   async function act(endpoint: string, action: string, data: Record<string, unknown>, confirmText?: string) {
     if (confirmText && !window.confirm(confirmText)) return;
@@ -162,25 +171,25 @@ export default function AdminClient({ role }: { role: AdminRole }) {
       if (!res.ok) throw new Error();
       setReloadKey((key) => key + 1);
     } catch {
-      setError("That action didn't go through. Try again.");
+      setError(t('actionFailed'));
     }
   }
 
   return (
     <div className={styles.page}>
-      <nav className={styles.tabs} aria-label="Admin sections">
+      <nav className={styles.tabs} aria-label={t('sections')}>
         {TABS.map((tab) => {
-          const count = tab.id === 'tickets' ? stats?.openTickets : tab.id === 'fraud' ? stats?.openFraudFlags : 0;
+          const count = tab === 'tickets' ? stats?.openTickets : tab === 'fraud' ? stats?.openFraudFlags : 0;
           return (
             <button
-              key={tab.id}
+              key={tab}
               type="button"
               className={styles.tab}
-              aria-current={activeTab === tab.id ? 'page' : undefined}
-              onClick={() => setActiveTab(tab.id)}
+              aria-current={activeTab === tab ? 'page' : undefined}
+              onClick={() => setActiveTab(tab)}
             >
-              {tab.label}
-              {count ? <span className={styles.count} data-tone={tab.id === 'fraud' ? 'alert' : 'ice'}>{count}</span> : null}
+              {t(`tabs.${tab}`)}
+              {count ? <span className={styles.count} data-tone={tab === 'fraud' ? 'alert' : 'ice'}>{count}</span> : null}
             </button>
           );
         })}
@@ -196,28 +205,28 @@ export default function AdminClient({ role }: { role: AdminRole }) {
         <input
           className={`input ${styles.search}`}
           type="search"
-          placeholder="Search by email or name"
-          aria-label="Search users"
+          placeholder={t('searchPlaceholder')}
+          aria-label={t('searchLabel')}
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
         />
       ) : null}
 
       {loading ? (
-        <p className="help">Loading…</p>
+        <p className="help">{t('loading')}</p>
       ) : activeTab === 'overview' ? (
         stats ? (
           <dl className={styles.stats}>
-            <Stat label="Users" value={stats.totalUsers.toLocaleString()} />
-            <Stat label="Active in the last 30 days" value={stats.activeUsers.toLocaleString()} />
-            <Stat label="Revenue" value={formatCurrency(stats.totalRevenue)} />
-            <Stat label="Active subscriptions" value={stats.activeSubscriptions.toLocaleString()} />
-            <Stat label="Open support tickets" value={stats.openTickets.toString()} />
-            <Stat label="Open fraud flags" value={stats.openFraudFlags.toString()} />
+            <Stat label={t('stats.users')} value={formatNumber(stats.totalUsers)} />
+            <Stat label={t('stats.active')} value={formatNumber(stats.activeUsers)} />
+            <Stat label={t('stats.revenue')} value={formatCurrency(stats.totalRevenue)} />
+            <Stat label={t('stats.subscriptions')} value={formatNumber(stats.activeSubscriptions)} />
+            <Stat label={t('stats.tickets')} value={formatNumber(stats.openTickets)} />
+            <Stat label={t('stats.fraud')} value={formatNumber(stats.openFraudFlags)} />
           </dl>
         ) : null
       ) : activeTab === 'users' ? (
-        <Table empty="No users match." headers={['User', 'Joined', 'Subscription', ...(canManage ? [''] : [])]}>
+        <Table empty={t('empty.users')} headers={[t('cols.user'), t('cols.joined'), t('cols.subscription'), ...(canManage ? [''] : [])]}>
           {users.map((user) => (
             <tr key={user.id}>
               <td>
@@ -225,22 +234,22 @@ export default function AdminClient({ role }: { role: AdminRole }) {
                 {user.full_name ? <span className={styles.personEmail}>{user.email}</span> : null}
               </td>
               <td className={styles.muted}>{formatDate(user.created_at)}</td>
-              <td>{user.subscription ? <Badge value={user.subscription.status} /> : <span className={styles.muted}>Free</span>}</td>
+              <td>{user.subscription ? <Badge value={user.subscription.status} /> : <span className={styles.muted}>{t('free')}</span>}</td>
               {canManage ? (
                 <td className={styles.actions}>
                   <button
                     type="button"
                     className="button buttonGhost"
-                    onClick={() => act('/api/admin/users', 'set_admin', { user_id: user.id, role: 'admin' }, `Make ${user.email} an admin?`)}
+                    onClick={() => act('/api/admin/users', 'set_admin', { user_id: user.id, role: 'admin' }, t('confirmAdmin', { email: user.email }))}
                   >
-                    Make admin
+                    {t('makeAdmin')}
                   </button>
                   <button
                     type="button"
                     className="button buttonDanger"
-                    onClick={() => act('/api/admin/users', 'suspend_user', { user_id: user.id }, `Suspend ${user.email}? They won't be able to sign in.`)}
+                    onClick={() => act('/api/admin/users', 'suspend_user', { user_id: user.id }, t('confirmSuspend', { email: user.email }))}
                   >
-                    Suspend
+                    {t('suspend')}
                   </button>
                 </td>
               ) : null}
@@ -248,7 +257,7 @@ export default function AdminClient({ role }: { role: AdminRole }) {
           ))}
         </Table>
       ) : activeTab === 'subscriptions' ? (
-        <Table empty="No subscriptions yet." headers={['User', 'Status', 'Price', 'Renews', ...(canManage ? [''] : [])]}>
+        <Table empty={t('empty.subscriptions')} headers={[t('cols.user'), t('cols.status'), t('cols.price'), t('cols.renews'), ...(canManage ? [''] : [])]}>
           {subscriptions.map((sub) => (
             <tr key={sub.id}>
               <td>{sub.email}</td>
@@ -263,13 +272,13 @@ export default function AdminClient({ role }: { role: AdminRole }) {
                     <button
                       type="button"
                       className="button buttonDanger"
-                      onClick={() => act('/api/admin/subscriptions', 'cancel', { subscription_id: sub.id }, `Cancel ${sub.email}'s subscription?`)}
+                      onClick={() => act('/api/admin/subscriptions', 'cancel', { subscription_id: sub.id }, t('confirmCancel', { email: sub.email }))}
                     >
-                      Cancel
+                      {t('cancel')}
                     </button>
                   ) : (
                     <button type="button" className="button" onClick={() => act('/api/admin/subscriptions', 'resume', { subscription_id: sub.id })}>
-                      Resume
+                      {t('resume')}
                     </button>
                   )}
                 </td>
@@ -278,7 +287,10 @@ export default function AdminClient({ role }: { role: AdminRole }) {
           ))}
         </Table>
       ) : activeTab === 'fraud' ? (
-        <Table empty="No open fraud flags." headers={['User', 'Type', 'Severity', 'What happened', 'Date', ...(canManage ? [''] : [])]}>
+        <Table
+          empty={t('empty.fraud')}
+          headers={[t('cols.user'), t('cols.type'), t('cols.severity'), t('cols.what'), t('cols.date'), ...(canManage ? [''] : [])]}
+        >
           {fraudFlags.map((flag) => (
             <tr key={flag.id}>
               <td>{flag.user_email}</td>
@@ -291,10 +303,10 @@ export default function AdminClient({ role }: { role: AdminRole }) {
               {canManage ? (
                 <td className={styles.actions}>
                   <button type="button" className="button" onClick={() => act('/api/admin/fraud', 'resolve', { flag_id: flag.id })}>
-                    Resolve
+                    {t('resolve')}
                   </button>
                   <button type="button" className="button buttonGhost" onClick={() => act('/api/admin/fraud', 'escalate', { flag_id: flag.id })}>
-                    Escalate
+                    {t('escalate')}
                   </button>
                   <button
                     type="button"
@@ -304,11 +316,11 @@ export default function AdminClient({ role }: { role: AdminRole }) {
                         '/api/admin/fraud',
                         'suspend_user',
                         { flag_id: flag.id, description: 'Suspended due to fraud' },
-                        `Suspend ${flag.user_email}? They won't be able to sign in.`,
+                        t('confirmSuspend', { email: flag.user_email }),
                       )
                     }
                   >
-                    Suspend
+                    {t('suspend')}
                   </button>
                 </td>
               ) : null}
@@ -316,7 +328,11 @@ export default function AdminClient({ role }: { role: AdminRole }) {
           ))}
         </Table>
       ) : (
-        <Table empty="No open tickets." headers={['From', 'Subject', 'Category', 'Priority', 'Status', 'Date', '']}>
+        <>
+        <Table
+          empty={t('empty.tickets')}
+          headers={[t('cols.from'), t('cols.subject'), t('cols.category'), t('cols.priority'), t('cols.status'), t('cols.date'), '']}
+        >
           {tickets.map((ticket) => (
             <tr key={ticket.id}>
               <td>
@@ -333,26 +349,119 @@ export default function AdminClient({ role }: { role: AdminRole }) {
               </td>
               <td className={styles.muted}>{formatDate(ticket.created_at)}</td>
               <td className={styles.actions}>
+                <button type="button" className="button buttonPrimary" onClick={() => setOpenTicket(ticket)}>
+                  {t('open')}
+                </button>
                 <button
                   type="button"
                   className="button buttonGhost"
                   onClick={() => act('/api/admin/tickets', 'update_status', { ticket_id: ticket.id, data: { status: 'in_progress' } })}
                 >
-                  Start
+                  {t('start')}
                 </button>
                 <button
                   type="button"
                   className="button"
                   onClick={() => act('/api/admin/tickets', 'update_status', { ticket_id: ticket.id, data: { status: 'resolved' } })}
                 >
-                  Resolve
+                  {t('resolve')}
                 </button>
               </td>
             </tr>
           ))}
         </Table>
+        {openTicket ? <TicketThread ticket={openTicket} onClose={() => setOpenTicket(null)} /> : null}
+        </>
       )}
     </div>
+  );
+}
+
+/** One ticket: what the user wrote, the conversation, and a reply box (the user is emailed). */
+function TicketThread({ ticket, onClose }: { ticket: Ticket; onClose: () => void }) {
+  const t = useTranslations('Admin');
+  const { formatDate } = useDates();
+  const [messages, setMessages] = useState<Array<{ id: string; is_from_admin: boolean; content: string; created_at: string }> | null>(null);
+  const [reply, setReply] = useState('');
+  const [sending, setSending] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const res = await fetch(`/api/admin/tickets?ticket_id=${ticket.id}`).catch(() => null);
+      const data = res?.ok ? await res.json() : { messages: [] };
+      if (!cancelled) setMessages(data.messages ?? []);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [ticket.id]);
+
+  async function send(event: React.FormEvent) {
+    event.preventDefault();
+    if (!reply.trim()) return;
+    setSending(true);
+    setNote(null);
+    const res = await fetch('/api/admin/tickets', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ticket_id: ticket.id, action: 'reply', data: { content: reply } }),
+    }).catch(() => null);
+    setSending(false);
+    if (!res?.ok) {
+      setNote(t('replyFailed'));
+      return;
+    }
+    setMessages((current) => [
+      ...(current ?? []),
+      { id: `local-${Date.now()}`, is_from_admin: true, content: reply.trim(), created_at: new Date().toISOString() },
+    ]);
+    setReply('');
+    setNote(t('replySent'));
+  }
+
+  return (
+    <section className={`card ${styles.thread}`} aria-label={t('ticketLabel', { subject: ticket.subject })}>
+      <div className="cardInner stack">
+        <div className={styles.threadHead}>
+          <h3 className="cardTitle">{ticket.subject}</h3>
+          <button type="button" className="button buttonGhost" onClick={onClose}>
+            {t('close')}
+          </button>
+        </div>
+        <p className={styles.muted}>
+          {ticket.full_name || ticket.email} · {ticket.category} · {formatDate(ticket.created_at)}
+        </p>
+        <p className={styles.threadBody}>{ticket.description}</p>
+        {messages === null ? (
+          <p className="help">{t('loadingThread')}</p>
+        ) : (
+          <ol className={styles.threadList}>
+            {messages.map((message) => (
+              <li key={message.id} data-from={message.is_from_admin ? 'support' : 'user'}>
+                <span className={styles.muted}>
+                  {message.is_from_admin ? t('support') : t('user')} · {formatDate(message.created_at)}
+                </span>
+                <p>{message.content}</p>
+              </li>
+            ))}
+          </ol>
+        )}
+        <form className="stack" onSubmit={send}>
+          <label className="label">
+            {t('reply')}
+            <textarea className="textarea" rows={4} value={reply} onChange={(e) => setReply(e.target.value)} maxLength={5000} />
+          </label>
+          <div className={styles.actions}>
+            {note ? <span className="help">{note}</span> : null}
+            <button type="submit" className="button buttonPrimary" disabled={sending || !reply.trim()}>
+              {sending ? t('sending') : t('sendReply')}
+            </button>
+          </div>
+        </form>
+      </div>
+    </section>
   );
 }
 
@@ -366,6 +475,7 @@ function Stat({ label, value }: { label: string; value: string }) {
 }
 
 function Table(props: { headers: string[]; empty: string; children: React.ReactNode[] }) {
+  const t = useTranslations('Admin');
   if (props.children.length === 0) return <p className={`card ${styles.note}`}>{props.empty}</p>;
   return (
     <div className={`card ${styles.tableCard}`}>
@@ -373,7 +483,7 @@ function Table(props: { headers: string[]; empty: string; children: React.ReactN
         <thead>
           <tr>
             {props.headers.map((header, i) => (
-              <th key={i} scope="col" aria-label={header ? undefined : 'Actions'}>
+              <th key={i} scope="col" aria-label={header ? undefined : t('cols.actions')}>
                 {header}
               </th>
             ))}

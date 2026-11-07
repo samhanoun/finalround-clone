@@ -2,7 +2,9 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/browser';
-import { Link } from '@/i18n/routing';
+import { Link, useRouter } from '@/i18n/routing';
+import { useFormatter, useTranslations } from 'next-intl';
+import { notificationText } from '@/lib/notificationText';
 import { BellIcon, CalendarIcon, JobsIcon, SparkIcon } from './icons';
 
 interface Notification {
@@ -19,6 +21,10 @@ interface Notification {
 /** `placement="side"`: in the navigation rail, the list opens to the right. */
 export function NotificationBell({ placement = 'below' }: { placement?: 'below' | 'side' } = {}) {
   const supabase = createClient();
+  const router = useRouter();
+  const t = useTranslations('NotificationBell');
+  const tn = useTranslations('Notifications');
+  const format = useFormatter();
   const [unreadCount, setUnreadCount] = useState(0);
   const [isOpen, setIsOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -85,6 +91,21 @@ export function NotificationBell({ placement = 'below' }: { placement?: 'below' 
     setUnreadCount(0);
   }
 
+  /** An in-app path the notification points to (set by src/lib/notify.ts). */
+  function linkOf(notification: Notification): string | null {
+    const url = notification.data?.url;
+    return typeof url === 'string' && url.startsWith('/') && !url.startsWith('//') ? url : null;
+  }
+
+  function openNotification(notification: Notification) {
+    if (!notification.read) void markAsRead(notification.id);
+    const url = linkOf(notification);
+    if (url) {
+      setIsOpen(false);
+      router.push(url);
+    }
+  }
+
   function toggleDropdown() {
     if (!isOpen) {
       fetchNotifications();
@@ -113,16 +134,11 @@ export function NotificationBell({ placement = 'below' }: { placement?: 'below' 
   function formatTimeAgo(dateString: string) {
     const date = new Date(dateString);
     const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMins / 60);
-    const diffDays = Math.floor(diffHours / 24);
+    const diffMins = Math.floor((now.getTime() - date.getTime()) / 60000);
 
-    if (diffMins < 1) return 'just now';
-    if (diffMins < 60) return `${diffMins}m ago`;
-    if (diffHours < 24) return `${diffHours}h ago`;
-    if (diffDays < 7) return `${diffDays}d ago`;
-    return date.toLocaleDateString();
+    if (diffMins < 1) return t('justNow');
+    if (diffMins < 7 * 24 * 60) return format.relativeTime(date, now);
+    return format.dateTime(date, { day: 'numeric', month: 'short' });
   }
 
   function getTypeIcon(type: string) {
@@ -143,7 +159,7 @@ export function NotificationBell({ placement = 'below' }: { placement?: 'below' 
       <button
         onClick={toggleDropdown}
         className="button buttonGhost"
-        aria-label={`Notifications ${unreadCount > 0 ? `(${unreadCount} unread)` : ''}`}
+        aria-label={unreadCount > 0 ? t('labelUnread', { count: unreadCount }) : t('label')}
         style={{ padding: 0, width: 44, position: 'relative' }}
       >
         <BellIcon size={20} />
@@ -197,36 +213,41 @@ export function NotificationBell({ placement = 'below' }: { placement?: 'below' 
               alignItems: 'center',
             }}
           >
-            <h3 style={{ margin: 0, fontSize: '1rem' }}>Notifications</h3>
+            <h3 style={{ margin: 0, fontSize: '1rem' }}>{t('title')}</h3>
             {unreadCount > 0 && (
               <button
                 onClick={markAllAsRead}
                 className="button buttonGhost"
                 style={{ minHeight: 32, padding: '0 10px', fontSize: 13 }}
               >
-                Mark all read
+                {t('markAllRead')}
               </button>
             )}
           </div>
 
           {loading ? (
             <div style={{ padding: 24, textAlign: 'center', color: 'var(--fgMuted)' }}>
-              Loading...
+              {t('loading')}
             </div>
           ) : notifications.length === 0 ? (
             <div style={{ padding: 24, textAlign: 'center', color: 'var(--fgMuted)' }}>
-              No notifications yet
+              {t('empty')}
             </div>
           ) : (
             <div>
               {notifications.map((notification) => (
                 <div
                   key={notification.id}
-                  onClick={() => !notification.read && markAsRead(notification.id)}
+                  role={linkOf(notification) ? 'link' : undefined}
+                  tabIndex={linkOf(notification) || !notification.read ? 0 : undefined}
+                  onClick={() => openNotification(notification)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') openNotification(notification);
+                  }}
                   style={{
                     padding: '12px 16px',
                     borderBottom: '1px solid var(--border)',
-                    cursor: notification.read ? 'default' : 'pointer',
+                    cursor: linkOf(notification) || !notification.read ? 'pointer' : 'default',
                     background: notification.read ? 'transparent' : 'var(--bgElevated)',
                     transition: 'background 0.15s',
                   }}
@@ -240,18 +261,19 @@ export function NotificationBell({ placement = 'below' }: { placement?: 'below' 
                           marginBottom: 4,
                         }}
                       >
-                        {notification.title}
+                        {notificationText(notification, tn, format).title}
                       </div>
                       <div
                         style={{
                           fontSize: '0.85rem',
                           color: 'var(--fgMuted)',
                           overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap',
+                          display: '-webkit-box',
+                          WebkitLineClamp: 2,
+                          WebkitBoxOrient: 'vertical',
                         }}
                       >
-                        {notification.message}
+                        {notificationText(notification, tn, format).message}
                       </div>
                       <div
                         style={{
@@ -293,7 +315,7 @@ export function NotificationBell({ placement = 'below' }: { placement?: 'below' 
               scroll={false}
               style={{ fontSize: 14, color: 'var(--ice)' }}
             >
-              Notification settings
+              {t('settings')}
             </Link>
           </div>
         </div>

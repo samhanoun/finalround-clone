@@ -4,7 +4,7 @@
 // visible to that user unless the service-role key is used, like RLS.
 
 import http from 'node:http';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import config from './config.cjs';
 
 const { KEYS, RESUME, USER } = config;
@@ -69,8 +69,18 @@ function seed() {
 
 let tables = seed();
 const rpcCalls = [];
+/** "Forgot your password?" requests: the email and where the link should lead. */
+const recoverRequests = [];
+/** Google sign-in: one-time codes handed back to the app, with the PKCE challenge each must match. */
+const oauthCodes = new Map();
+const oauthRequests = [];
 
 const TABLE_DEFAULTS = {
+  // Column defaults from migration 0031, so filters like archived = false match as in Postgres.
+  goals: () => ({ archived: false, round: 'other' }),
+  materials: () => ({ kind: 'notes' }),
+  memories: () => ({ source: 'manual', goal_id: null }),
+  company_questions: () => ({ shared: false, source: 'reported', question_type: 'general' }),
   copilot_sessions: () => ({
     status: 'active',
     title: null,
@@ -252,15 +262,26 @@ async function handleRest(req, res, url) {
     if (!who.service && input.some((row) => 'user_id' in row && row.user_id !== who.userId)) {
       return send(res, 403, { code: '42501', message: 'new row violates row-level security policy' });
     }
-    const created = input.map((row) => ({
-      id: randomUUID(),
-      ...(TABLE_DEFAULTS[table]?.() ?? {}),
-      created_at: timestamp(),
-      updated_at: timestamp(),
-      ...row,
-    }));
-    rows.push(...created);
-    return respondRows(req, res, created, 201);
+    // Upserts (supabase-js: POST ?on_conflict=cols, Prefer: resolution=merge-duplicates|ignore-duplicates)
+    // update or skip the row that already has those values, as PostgREST does.
+    const conflictCols = url.searchParams.get('on_conflict')?.split(',').filter(Boolean) ?? [];
+    const prefer = String(req.headers.prefer ?? '');
+    const resolution = /resolution=merge-duplicates/.test(prefer) ? 'merge' : /resolution=ignore-duplicates/.test(prefer) ? 'ignore' : null;
+    const written = [];
+    for (const row of input) {
+      const existing = conflictCols.length && resolution ? rows.find((r) => conflictCols.every((col) => r[col] === row[col])) : null;
+      if (existing) {
+        if (resolution === 'merge') {
+          Object.assign(existing, row, { updated_at: timestamp() });
+          written.push(existing);
+        }
+        continue;
+      }
+      const created = { id: randomUUID(), ...(TABLE_DEFAULTS[table]?.() ?? {}), created_at: timestamp(), updated_at: timestamp(), ...row };
+      rows.push(created);
+      written.push(created);
+    }
+    return respondRows(req, res, written, 201);
   }
   if (req.method === 'PATCH') {
     const patch = await readJson(req);
@@ -282,6 +303,14 @@ async function handleAuth(req, res, url) {
     const grant = url.searchParams.get('grant_type');
     if (grant === 'password' && body.email === USER.email && body.password === USER.password) return send(res, 200, session());
     if (grant === 'refresh_token' && typeof body.refresh_token === 'string') return send(res, 200, session());
+    // The code exchange: the verifier must hash to the challenge sent at /authorize (S256), once.
+    if (grant === 'pkce' && oauthCodes.has(body.auth_code)) {
+      const challenge = oauthCodes.get(body.auth_code);
+      oauthCodes.delete(body.auth_code);
+      const hashed = createHash('sha256').update(String(body.code_verifier ?? '')).digest('base64url');
+      if (hashed === challenge) return send(res, 200, session());
+      return send(res, 400, { error: 'invalid_grant', error_description: 'code verifier does not match' });
+    }
     return send(res, 400, { error: 'invalid_grant', error_description: 'Invalid login credentials', code: 'invalid_credentials' });
   }
   if (url.pathname === '/auth/v1/user') {
@@ -289,6 +318,26 @@ async function handleAuth(req, res, url) {
     return userId ? send(res, 200, userJson()) : send(res, 401, { code: 'bad_jwt', message: 'invalid JWT' });
   }
   if (url.pathname === '/auth/v1/logout') return send(res, 204);
+  // "Continue with Google": Supabase would send the browser to Google; the fake goes straight back to the
+  // app's callback with a one-time code, as Supabase does once Google says yes.
+  if (url.pathname === '/auth/v1/authorize') {
+    const provider = url.searchParams.get('provider');
+    const redirectTo = url.searchParams.get('redirect_to');
+    const challenge = url.searchParams.get('code_challenge');
+    oauthRequests.push({ provider, redirectTo, pkce: Boolean(challenge) });
+    if (provider !== 'google' || !redirectTo || !challenge) return send(res, 400, { error: 'invalid_request' });
+    const code = randomUUID();
+    oauthCodes.set(code, challenge);
+    const back = new URL(redirectTo);
+    back.searchParams.set('code', code);
+    res.writeHead(302, { location: back.toString() });
+    return res.end();
+  }
+  if (url.pathname === '/auth/v1/recover') {
+    const body = (await readJson(req)) ?? {};
+    recoverRequests.push({ email: body.email, redirectTo: url.searchParams.get('redirect_to') });
+    return send(res, 200, {});
+  }
   return send(res, 404, { message: 'not found' });
 }
 
@@ -308,10 +357,11 @@ export function startFakeSupabase(port) {
     const url = new URL(req.url ?? '/', `http://127.0.0.1:${port}`);
     try {
       if (url.pathname === '/__health') return send(res, 200, { ok: true });
-      if (url.pathname === '/__state') return send(res, 200, { tables, rpcCalls });
+      if (url.pathname === '/__state') return send(res, 200, { tables, rpcCalls, recoverRequests, oauthRequests });
       if (url.pathname === '/__reset') {
         tables = seed();
         rpcCalls.length = 0;
+        recoverRequests.length = 0;
         return send(res, 200, { ok: true });
       }
       if (url.pathname.startsWith('/auth/v1/')) return await handleAuth(req, res, url);

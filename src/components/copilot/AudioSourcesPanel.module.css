@@ -125,8 +125,47 @@
   margin: 0;
 }
 
+.voiceSample {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 12px;
+  background: var(--well);
+  border: 1px solid var(--line);
+  --voice: var(--ember);
+}
+
+.voiceSample[data-state='none'] {
+  border-color: var(--ember);
+}
+
+.voiceTitle {
+  margin: 0;
+  font-weight: 600;
+  color: var(--ember);
+}
+
+.voiceSample :global(.small),
+.voiceSample :global(.error) {
+  margin: 0;
+}
+
+.readAloud {
+  margin: 0;
+  font-size: 15.5px;
+  line-height: 1.55;
+  color: var(--paper);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .fill {
     transition: none;
   }
+}
+
+.steps {
+  margin: 0 0 8px;
+  padding-left: 18px;
+  display: grid;
+  gap: 2px;
 }

@@ -1,26 +1,25 @@
 'use client';
 
+import { useTranslations } from 'next-intl';
 import { Link } from '@/i18n/routing';
 import { NewPracticeButton } from './NewPracticeButton';
 import styles from './DashboardClient.module.css';
 
 /** The top of Home: the next interview is what the app is for. */
 export function DashboardClient() {
+  const t = useTranslations('Home');
   return (
     <section className={styles.panel} aria-labelledby="next-interview-heading">
       <div className={styles.copy}>
         <h2 id="next-interview-heading" className={styles.title}>
-          Interview coming up?
+          {t('heroTitle')}
         </h2>
-        <p className={styles.lead}>
-          Add your résumé and the job, share your meeting, and answers appear as the questions are asked. Setup takes about two
-          minutes.
-        </p>
+        <p className={styles.lead}>{t('heroLead')}</p>
         <div className={styles.actions}>
           <Link className="button buttonPrimary" href="/copilot/live">
-            Set up the live copilot
+            {t('heroCta')}
           </Link>
-          <NewPracticeButton />
+          <NewPracticeButton label={t('practice')} />
         </div>
       </div>
       <svg className={styles.signal} viewBox="0 0 360 120" aria-hidden="true">

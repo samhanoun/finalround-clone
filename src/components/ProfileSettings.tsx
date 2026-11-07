@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Image from 'next/image';
+import { useLocale, useTranslations } from 'next-intl';
 
 type ProfileData = {
   id: string;
@@ -14,33 +15,21 @@ type ProfileData = {
   email_notifications: boolean;
 };
 
+/** Suggested roles; the chosen names are saved as shown, in the app's language. */
 const COMMON_ROLES = [
-  'Frontend Developer',
-  'Backend Developer',
-  'Full Stack Developer',
-  'DevOps Engineer',
-  'Data Scientist',
-  'Machine Learning Engineer',
-  'Product Manager',
-  'UX Designer',
-  'Software Engineer',
-  'Mobile Developer',
-  'Cloud Engineer',
-  'Security Engineer',
-];
-
-const LANGUAGES = [
-  { code: 'en', name: 'English' },
-  { code: 'es', name: 'Español' },
-  { code: 'fr', name: 'Français' },
-  { code: 'de', name: 'Deutsch' },
-  { code: 'pt', name: 'Português' },
-  { code: 'it', name: 'Italiano' },
-  { code: 'nl', name: 'Nederlands' },
-  { code: 'ja', name: '日本語' },
-  { code: 'zh', name: '中文' },
-  { code: 'ko', name: '한국어' },
-];
+  'frontend',
+  'backend',
+  'fullStack',
+  'devops',
+  'dataScientist',
+  'mlEngineer',
+  'productManager',
+  'uxDesigner',
+  'softwareEngineer',
+  'mobile',
+  'cloud',
+  'security',
+] as const;
 
 const TIMEZONES = [
   'UTC',
@@ -60,19 +49,40 @@ const TIMEZONES = [
   'Pacific/Auckland',
 ];
 
+const MAX_ROLES = 10;
+
+/**
+ * "Hora del este de Norteamérica (New York)": the zone's name in the app's
+ * language, from the browser. This card renders only after it loads, in the
+ * browser, so server and browser never disagree about the wording.
+ */
+function timeZoneLabel(timeZone: string, locale: string): string {
+  try {
+    const name = new Intl.DateTimeFormat(locale, { timeZone, timeZoneName: 'longGeneric' })
+      .formatToParts(new Date())
+      .find((part) => part.type === 'timeZoneName')?.value;
+    if (!name) return timeZone;
+    const city = timeZone.includes('/') ? timeZone.split('/').pop()!.replace(/_/g, ' ') : null;
+    return city ? `${name} (${city})` : name;
+  } catch {
+    return timeZone;
+  }
+}
+
+/** Name, avatar, target roles and time zone. The app language has its own card (LanguageSwitcher). */
 export function ProfileSettings() {
+  const t = useTranslations('ProfileSettings');
+  const locale = useLocale();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
-  
+
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [fullName, setFullName] = useState('');
   const [avatarUrl, setAvatarUrl] = useState('');
   const [targetRoles, setTargetRoles] = useState<string[]>([]);
-  const [language, setLanguage] = useState('en');
   const [timezone, setTimezone] = useState('UTC');
-  const [emailNotifications, setEmailNotifications] = useState(true);
   const [customRole, setCustomRole] = useState('');
 
   useEffect(() => {
@@ -80,38 +90,32 @@ export function ProfileSettings() {
       try {
         const res = await fetch('/api/settings/profile');
         const json = await res.json();
-        
+
         if (res.ok && json.profile) {
           setProfile(json.profile);
           setFullName(json.profile.full_name ?? '');
           setAvatarUrl(json.profile.avatar_url ?? '');
           setTargetRoles(json.profile.target_roles ?? []);
-          setLanguage(json.profile.language ?? 'en');
           setTimezone(json.profile.timezone ?? 'UTC');
-          setEmailNotifications(json.profile.email_notifications ?? true);
         }
       } catch (e) {
         console.error('Failed to fetch profile:', e);
-        setError('Failed to load profile');
+        setError(t('loadFailed'));
       } finally {
         setLoading(false);
       }
     }
     fetchProfile();
-  }, []);
+  }, [t]);
 
   function handleRoleToggle(role: string) {
-    setTargetRoles(prev => 
-      prev.includes(role)
-        ? prev.filter(r => r !== role)
-        : [...prev, role]
-    );
+    setTargetRoles((prev) => (prev.includes(role) ? prev.filter((r) => r !== role) : [...prev, role]));
   }
 
   function handleAddCustomRole() {
     const role = customRole.trim();
     if (role && !targetRoles.includes(role)) {
-      setTargetRoles(prev => [...prev, role]);
+      setTargetRoles((prev) => [...prev, role]);
       setCustomRole('');
     }
   }
@@ -129,22 +133,16 @@ export function ProfileSettings() {
           full_name: fullName || null,
           avatar_url: avatarUrl || null,
           target_roles: targetRoles,
-          language,
           timezone,
-          email_notifications: emailNotifications,
         }),
       });
 
-      const json = await res.json().catch(() => ({}));
-
-      if (!res.ok) {
-        throw new Error(json.error ?? 'Failed to save profile');
-      }
+      if (!res.ok) throw new Error(t('saveFailed'));
 
       setSuccess(true);
       setTimeout(() => setSuccess(false), 3000);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to save');
+      setError(e instanceof Error ? e.message : t('saveFailed'));
     } finally {
       setSaving(false);
     }
@@ -154,7 +152,7 @@ export function ProfileSettings() {
     return (
       <div className="card">
         <div className="cardInner stack">
-          <p>Loading profile…</p>
+          <p>{t('loading')}</p>
         </div>
       </div>
     );
@@ -163,60 +161,47 @@ export function ProfileSettings() {
   return (
     <div className="card">
       <div className="cardInner stack">
-        <h2 className="cardTitle">Profile</h2>
-        <p className="cardDesc">
-          Your name, the roles you are aiming for, and your time zone.
-        </p>
+        <h2 className="cardTitle">{t('title')}</h2>
+        <p className="cardDesc">{t('desc')}</p>
 
         <div className="stack" style={{ gap: 16 }}>
-          {/* Email (read-only) */}
           <label className="label">
-            Email
-            <input
-              className="input"
-              type="email"
-              value={profile?.email ?? ''}
-              disabled
-              aria-readonly
-            />
-            <span style={{ fontSize: '0.875rem', color: 'var(--muted)' }}>
-              Your sign-in email can&apos;t be changed here.
-            </span>
+            {t('email')}
+            <input className="input" type="email" value={profile?.email ?? ''} disabled aria-readonly />
+            <span style={{ fontSize: '0.875rem', color: 'var(--muted)' }}>{t('emailHelp')}</span>
           </label>
 
-          {/* Full Name */}
           <label className="label">
-            Full name
+            {t('fullName')}
             <input
               className="input"
               type="text"
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
-              placeholder="Enter your full name"
+              placeholder={t('fullNamePlaceholder')}
               maxLength={100}
             />
           </label>
 
-          {/* Avatar URL */}
           <label className="label">
-            Avatar image URL
+            {t('avatar')}
             <input
               className="input"
               type="url"
               value={avatarUrl}
               onChange={(e) => setAvatarUrl(e.target.value)}
-              placeholder="https://example.com/avatar.jpg"
+              placeholder={t('avatarPlaceholder')}
             />
             {avatarUrl && (
-              <Image 
-                src={avatarUrl} 
-                alt="Avatar preview" 
+              <Image
+                src={avatarUrl}
+                alt={t('avatarPreview')}
                 width={64}
                 height={64}
-                style={{ 
-                  borderRadius: '50%', 
+                style={{
+                  borderRadius: '50%',
                   marginTop: 8,
-                  objectFit: 'cover'
+                  objectFit: 'cover',
                 }}
                 onError={(e) => {
                   (e.target as HTMLImageElement).style.display = 'none';
@@ -225,25 +210,28 @@ export function ProfileSettings() {
             )}
           </label>
 
-          {/* Target Roles */}
           <fieldset style={{ border: 'none', padding: 0, margin: 0 }}>
-            <legend style={{ fontWeight: 600, marginBottom: 8 }}>Target roles</legend>
-            <p style={{ fontSize: '0.875rem', color: 'var(--muted)', marginBottom: 12 }}>
-              Select the roles you&apos;re targeting (max 10)
-            </p>
+            <legend style={{ fontWeight: 600, marginBottom: 8 }}>{t('targetRoles')}</legend>
+            <p style={{ fontSize: '0.875rem', color: 'var(--muted)', marginBottom: 12 }}>{t('targetRolesHelp', { max: MAX_ROLES })}</p>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
-              {COMMON_ROLES.map(role => (
-                <button
-                  key={role}
-                  type="button"
-                  className={`button ${targetRoles.includes(role) ? 'buttonPrimary' : ''}`}
-                  onClick={() => handleRoleToggle(role)}
-                  disabled={targetRoles.length >= 10 && !targetRoles.includes(role)}
-                  style={{ fontSize: '0.875rem', padding: '4px 12px' }}
-                >
-                  {targetRoles.includes(role) && '✓ '}{role}
-                </button>
-              ))}
+              {COMMON_ROLES.map((key) => {
+                const role = t(`roles.${key}`);
+                const selected = targetRoles.includes(role);
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    className={`button ${selected ? 'buttonPrimary' : ''}`}
+                    onClick={() => handleRoleToggle(role)}
+                    disabled={targetRoles.length >= MAX_ROLES && !selected}
+                    aria-pressed={selected}
+                    style={{ fontSize: '0.875rem', padding: '4px 12px' }}
+                  >
+                    {selected && '✓ '}
+                    {role}
+                  </button>
+                );
+              })}
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
               <input
@@ -251,7 +239,8 @@ export function ProfileSettings() {
                 type="text"
                 value={customRole}
                 onChange={(e) => setCustomRole(e.target.value)}
-                placeholder="Add custom role"
+                placeholder={t('customRole')}
+                aria-label={t('customRole')}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
                     e.preventDefault();
@@ -259,22 +248,17 @@ export function ProfileSettings() {
                   }
                 }}
               />
-              <button
-                type="button"
-                className="button"
-                onClick={handleAddCustomRole}
-                disabled={!customRole.trim()}
-              >
-                Add
+              <button type="button" className="button" onClick={handleAddCustomRole} disabled={!customRole.trim()}>
+                {t('add')}
               </button>
             </div>
             {targetRoles.length > 0 && (
               <div style={{ marginTop: 12 }}>
                 <p style={{ fontSize: '0.875rem', fontWeight: 600, marginBottom: 4 }}>
-                  Selected: {targetRoles.length}/10
+                  {t('selected', { count: targetRoles.length, max: MAX_ROLES })}
                 </p>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                  {targetRoles.map(role => (
+                  {targetRoles.map((role) => (
                     <span
                       key={role}
                       style={{
@@ -292,6 +276,7 @@ export function ProfileSettings() {
                       <button
                         type="button"
                         onClick={() => handleRoleToggle(role)}
+                        aria-label={t('removeRole', { role })}
                         style={{
                           background: 'none',
                           border: 'none',
@@ -313,56 +298,25 @@ export function ProfileSettings() {
 
           <hr style={{ border: 'none', borderTop: '1px solid var(--border)', width: '100%' }} />
 
-          {/* Language */}
           <label className="label">
-            Preferred language
-            <select
-              className="select"
-              value={language}
-              onChange={(e) => setLanguage(e.target.value)}
-            >
-              {LANGUAGES.map(lang => (
-                <option key={lang.code} value={lang.code}>
-                  {lang.name}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          {/* Timezone */}
-          <label className="label">
-            Time zone
-            <select
-              className="select"
-              value={timezone}
-              onChange={(e) => setTimezone(e.target.value)}
-            >
-              {TIMEZONES.map(tz => (
+            {t('timezone')}
+            <select className="select" value={timezone} onChange={(e) => setTimezone(e.target.value)}>
+              {TIMEZONES.map((tz) => (
                 <option key={tz} value={tz}>
-                  {tz}
+                  {timeZoneLabel(tz, locale)}
                 </option>
               ))}
             </select>
           </label>
 
-          {/* Email Notifications */}
-          <label className="checkbox-label">
-            <input
-              type="checkbox"
-              checked={emailNotifications}
-              onChange={(e) => setEmailNotifications(e.target.checked)}
-            />
-            <span>Receive email notifications</span>
-          </label>
+          <p className="help" style={{ margin: 0 }}>
+            {t('timezoneHelp')}
+          </p>
         </div>
 
         <div className="row" style={{ justifyContent: 'flex-end', marginTop: 16 }}>
-          <button
-            className="button buttonPrimary"
-            onClick={save}
-            disabled={saving}
-          >
-            {saving ? 'Saving…' : 'Save profile'}
+          <button className="button buttonPrimary" onClick={save} disabled={saving}>
+            {saving ? t('saving') : t('save')}
           </button>
         </div>
 
@@ -373,7 +327,7 @@ export function ProfileSettings() {
         )}
         {success && (
           <div className="success" role="status">
-            Profile saved successfully.
+            {t('saved')}
           </div>
         )}
       </div>

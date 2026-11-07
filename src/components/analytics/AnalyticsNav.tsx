@@ -1,24 +1,26 @@
 'use client';
 
-import Link from 'next/link';
+import { Link } from '@/i18n/routing';
 import { usePathname } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import styles from './AnalyticsNav.module.css';
 
 const VIEWS = [
-  { href: '/analytics', label: 'Overview' },
-  { href: '/analytics/funnel', label: 'Funnel' },
-  { href: '/analytics/cohort', label: 'Cohorts' },
-  { href: '/analytics/reports', label: 'Reports' },
-];
+  { href: '/analytics', key: 'overview' },
+  { href: '/analytics/funnel', key: 'funnel' },
+  { href: '/analytics/weekly', key: 'weekly' },
+  { href: '/analytics/reports', key: 'reports' },
+] as const;
 
 /** The four analytics views, as one segmented control. */
 export function AnalyticsNav() {
+  const t = useTranslations('AnalyticsNav');
   const path = (usePathname() ?? '').replace(/^\/[a-z]{2}(?=\/|$)/, '') || '/';
   return (
-    <nav className={styles.nav} aria-label="Analytics views">
-      {VIEWS.map(({ href, label }) => (
+    <nav className={styles.nav} aria-label={t('label')}>
+      {VIEWS.map(({ href, key }) => (
         <Link key={href} href={href} className={styles.link} aria-current={path === href ? 'page' : undefined}>
-          {label}
+          {t(key)}
         </Link>
       ))}
     </nav>

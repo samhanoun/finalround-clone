@@ -1,9 +1,13 @@
 'use client';
 
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { Link } from '@/i18n/routing';
 import { useRouter } from 'next/navigation';
+import { useLocale, useTranslations } from 'next-intl';
 import { NewPracticeButton } from '@/components/NewPracticeButton';
 import type { AnswerFeedback, StoredPracticeSetup } from '@/lib/practice/practice';
+import { InterviewerAvatar } from './InterviewerAvatar';
+import { useInterviewerVoice } from './useInterviewerVoice';
 import styles from './PracticeInterview.module.css';
 
 export type PracticeQuestion = {
@@ -14,7 +18,8 @@ export type PracticeQuestion = {
   order_index: number;
   response_text: string | null;
   response_score: number | null;
-  rubric: { feedback?: AnswerFeedback } | null;
+  /** `follow_up_of`: this is the interviewer's follow-up to that question; `follow_up_id`: this question's follow-up. */
+  rubric: { feedback?: AnswerFeedback; follow_up_of?: string; follow_up_id?: string } | null;
   answered_at: string | null;
 };
 
@@ -32,47 +37,23 @@ export type PracticeReport = {
 
 export type ResumeOption = { id: string; filename: string | null };
 
-const TYPES = [
-  { value: 'behavioral', label: 'Behavioral' },
-  { value: 'technical', label: 'Technical' },
-  { value: 'situational', label: 'Situational' },
-  { value: 'mixed', label: 'Mixed' },
-] as const;
-const DIFFICULTIES = [
-  { value: 'easy', label: 'Easy' },
-  { value: 'medium', label: 'Medium' },
-  { value: 'hard', label: 'Hard' },
-] as const;
+/** Setup fields filled in from a link, e.g. "Practice these" in the question bank. */
+export type PracticePrefill = { company?: string; fromBank?: boolean };
+
+const TYPES = ['behavioral', 'technical', 'situational', 'mixed'] as const;
+const DIFFICULTIES = ['easy', 'medium', 'hard'] as const;
 const LENGTHS = [3, 5, 8] as const;
+const DIMENSIONS = ['relevance', 'structure', 'clarity', 'confidence'] as const;
 
-const SIGNALS: Record<string, string> = {
-  strong_hire: 'Strong hire',
-  hire: 'Hire',
-  lean_hire: 'Leaning hire',
-  lean_no_hire: 'Leaning no hire',
-  no_hire: 'No hire',
-  strong_no_hire: 'Strong no hire',
-};
+type T = ReturnType<typeof useTranslations>;
 
-const DIMENSIONS = [
-  { key: 'relevance', label: 'Relevance' },
-  { key: 'structure', label: 'Structure' },
-  { key: 'clarity', label: 'Clarity' },
-  { key: 'confidence', label: 'Confidence' },
-] as const;
+function errorText(t: T, code: unknown, fallback: string) {
+  return typeof code === 'string' && t.has(`errors.${code}`) ? t(`errors.${code}`) : fallback;
+}
 
-const ERRORS: Record<string, string> = {
-  llm_unavailable: 'No AI model is set up for this app yet: it needs an OpenAI or Anthropic API key.',
-  questions_unavailable: "The questions didn't come through. Try again.",
-  feedback_unavailable: "Your answer is saved, but the feedback didn't come through. Submit it again.",
-  rate_limited: 'Too many requests in a row. Wait a few seconds and try again.',
-  resume_not_parsed: "That résumé hasn't been read yet. Pick another, or none.",
-  already_started: 'This interview has already started. Reload the page.',
-  report_generation_failed: "The report didn't come through. Try again.",
-};
-
-function errorText(code: unknown, fallback: string) {
-  return (typeof code === 'string' && ERRORS[code]) || fallback;
+/** A stored value shown through the message files when they know it, as it is otherwise. */
+function label(t: T, group: string, value: string) {
+  return t.has(`${group}.${value}`) ? t(`${group}.${value}`) : value;
 }
 
 function scoreTone(score10: number) {
@@ -82,6 +63,8 @@ function scoreTone(score10: number) {
 function wordCount(text: string) {
   return text.trim() ? text.trim().split(/\s+/).length : 0;
 }
+
+const isFollowUp = (question: PracticeQuestion) => Boolean(question.rubric?.follow_up_of);
 
 /** Browser speech recognition, where the browser has it (Chrome, Edge, Safari). */
 type Recognition = {
@@ -107,6 +90,7 @@ export function PracticeInterview(props: {
   questions: PracticeQuestion[];
   report: PracticeReport | null;
   resumes: ResumeOption[];
+  prefill?: PracticePrefill;
 }) {
   const [questions, setQuestions] = useState(props.questions);
   const [setup, setSetup] = useState(props.setup);
@@ -117,6 +101,7 @@ export function PracticeInterview(props: {
       <SetupForm
         sessionId={props.sessionId}
         resumes={props.resumes}
+        prefill={props.prefill}
         onStarted={(next, nextSetup) => {
           setQuestions(next);
           setSetup(nextSetup);
@@ -130,17 +115,26 @@ export function PracticeInterview(props: {
       sessionId={props.sessionId}
       setup={setup}
       questions={questions}
-      onAnswered={(question) => setQuestions((list) => list.map((q) => (q.id === question.id ? question : q)))}
+      onAnswered={(question, followUp) =>
+        setQuestions((list) => {
+          const next = list.map((q) => (q.id === question.id ? question : q));
+          // The follow-up comes right after the answer it digs into.
+          if (followUp && !next.some((q) => q.id === followUp.id)) {
+            next.splice(next.findIndex((q) => q.id === question.id) + 1, 0, followUp);
+          }
+          return next;
+        })
+      }
       onReport={setReport}
     />
   );
 }
 
-function Segmented<T extends string | number>(props: {
+function Segmented<V extends string | number>(props: {
   label: string;
-  options: ReadonlyArray<{ value: T; label: string }>;
-  value: T;
-  onChange: (value: T) => void;
+  options: ReadonlyArray<{ value: V; label: string }>;
+  value: V;
+  onChange: (value: V) => void;
 }) {
   return (
     <div className={styles.field}>
@@ -166,24 +160,52 @@ function Segmented<T extends string | number>(props: {
 function SetupForm(props: {
   sessionId: string;
   resumes: ResumeOption[];
+  prefill?: PracticePrefill;
   onStarted: (questions: PracticeQuestion[], setup: StoredPracticeSetup) => void;
 }) {
+  const t = useTranslations('Practice');
+  const locale = useLocale();
   const router = useRouter();
   const [role, setRole] = useState('');
-  const [company, setCompany] = useState('');
-  const [type, setType] = useState<(typeof TYPES)[number]['value']>('behavioral');
-  const [difficulty, setDifficulty] = useState<(typeof DIFFICULTIES)[number]['value']>('medium');
+  const [company, setCompany] = useState(props.prefill?.company ?? '');
+  const [type, setType] = useState<(typeof TYPES)[number]>('behavioral');
+  const [difficulty, setDifficulty] = useState<(typeof DIFFICULTIES)[number]>('medium');
   const [count, setCount] = useState<(typeof LENGTHS)[number]>(5);
   const [resumeId, setResumeId] = useState('');
   const [job, setJob] = useState('');
+  const [useBank, setUseBank] = useState(props.prefill?.fromBank ?? true);
+  const [followUps, setFollowUps] = useState(true);
+  const [bank, setBank] = useState<{ company: string; count: number } | null>(null);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const ids = { role: useId(), company: useId(), resume: useId(), job: useId(), error: useId() };
+
+  // How many questions the company's bank has, once the name has settled.
+  const companyName = company.trim();
+  useEffect(() => {
+    if (!companyName) return;
+    let cancelled = false;
+    const timer = window.setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/question-bank?company=${encodeURIComponent(companyName)}`);
+        const json = (await res.json().catch(() => ({}))) as { mine?: unknown[]; shared?: unknown[] };
+        if (!cancelled && res.ok) setBank({ company: companyName, count: (json.mine?.length ?? 0) + (json.shared?.length ?? 0) });
+      } catch {
+        // No bank count; the interview still starts without it.
+      }
+    }, 400);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [companyName]);
+  const bankCount = bank && companyName && bank.company === companyName ? bank.count : 0;
 
   async function start(event: React.FormEvent) {
     event.preventDefault();
     setError(null);
     setStarting(true);
+    const failed = t('setup.startFailed');
     try {
       const res = await fetch(`/api/interviews/${props.sessionId}/practice/start`, {
         method: 'POST',
@@ -196,14 +218,17 @@ function SetupForm(props: {
           count,
           resumeDocumentId: resumeId || undefined,
           jobDescription: job.trim() || undefined,
+          fromBank: bankCount > 0 && useBank ? true : undefined,
+          locale,
+          followUps,
         }),
       });
       const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(errorText(json?.error, 'The interview could not start. Try again.'));
+      if (!res.ok) throw new Error(errorText(t, json?.error, failed));
       props.onStarted(json.questions, json.setup);
       router.refresh();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'The interview could not start. Try again.');
+      setError(e instanceof Error ? e.message : failed);
     } finally {
       setStarting(false);
     }
@@ -213,71 +238,97 @@ function SetupForm(props: {
     <form className={`card ${styles.setup}`} onSubmit={start} aria-describedby={error ? ids.error : undefined}>
       <div className="cardInner stack">
         <div>
-          <h2 className="cardTitle">Set up your practice interview</h2>
+          <h2 className="cardTitle">{t('setup.title')}</h2>
           <p className="cardDesc">
-            An AI interviewer asks questions for the role, then scores each answer and tells you what to change.
+            {t.rich('setup.desc', { bank: (chunks) => <Link href="/interview/bank">{chunks}</Link> })}
           </p>
         </div>
 
         <div className={styles.twoCol}>
           <label className="label" htmlFor={ids.role}>
-            Role
+            {t('setup.role')}
             <input
               id={ids.role}
               className="input"
               value={role}
               onChange={(e) => setRole(e.target.value)}
-              placeholder="e.g. Senior Product Manager"
+              placeholder={t('setup.rolePlaceholder')}
               required
               maxLength={120}
             />
           </label>
           <label className="label" htmlFor={ids.company}>
-            Company (optional)
+            {t('setup.company')}
             <input
               id={ids.company}
               className="input"
               value={company}
               onChange={(e) => setCompany(e.target.value)}
-              placeholder="e.g. Acme"
+              placeholder={t('setup.companyPlaceholder')}
               maxLength={120}
             />
           </label>
         </div>
 
-        <Segmented label="Interview type" options={TYPES} value={type} onChange={setType} />
+        {bankCount > 0 ? (
+          <label className={styles.check}>
+            <input type="checkbox" checked={useBank} onChange={(e) => setUseBank(e.target.checked)} />
+            <span>
+              <strong>{t('setup.fromBank', { company: companyName, count: bankCount })}</strong> {t('setup.fromBankHelp')}
+            </span>
+          </label>
+        ) : null}
+
+        <Segmented
+          label={t('setup.type')}
+          options={TYPES.map((value) => ({ value, label: t(`types.${value}`) }))}
+          value={type}
+          onChange={setType}
+        />
         <div className={styles.twoCol}>
-          <Segmented label="Difficulty" options={DIFFICULTIES} value={difficulty} onChange={setDifficulty} />
           <Segmented
-            label="Length"
-            options={LENGTHS.map((n) => ({ value: n, label: `${n} questions` }))}
+            label={t('setup.difficulty')}
+            options={DIFFICULTIES.map((value) => ({ value, label: t(`difficulties.${value}`) }))}
+            value={difficulty}
+            onChange={setDifficulty}
+          />
+          <Segmented
+            label={t('setup.length')}
+            options={LENGTHS.map((n) => ({ value: n, label: t('setup.lengthOption', { count: n }) }))}
             value={count}
             onChange={setCount}
           />
         </div>
 
+        <label className={styles.check}>
+          <input type="checkbox" checked={followUps} onChange={(e) => setFollowUps(e.target.checked)} />
+          <span>
+            <strong>{t('setup.followUps')}</strong> {t('setup.followUpsHelp')}
+          </span>
+        </label>
+
         <label className="label" htmlFor={ids.resume}>
-          Résumé (optional)
+          {t('setup.resume')}
           <select id={ids.resume} className="select" value={resumeId} onChange={(e) => setResumeId(e.target.value)}>
-            <option value="">None</option>
+            <option value="">{t('setup.none')}</option>
             {props.resumes.map((resume) => (
               <option key={resume.id} value={resume.id}>
-                {resume.filename ?? 'Résumé'}
+                {resume.filename ?? t('setup.resumeFallback')}
               </option>
             ))}
           </select>
-          <span className="help">Questions can then refer to your own projects.</span>
+          <span className="help">{t('setup.resumeHelp')}</span>
         </label>
 
         <label className="label" htmlFor={ids.job}>
-          Job description (optional)
+          {t('setup.job')}
           <textarea
             id={ids.job}
             className="textarea"
             rows={4}
             value={job}
             onChange={(e) => setJob(e.target.value)}
-            placeholder="Paste the posting to get questions about what this team needs."
+            placeholder={t('setup.jobPlaceholder')}
             maxLength={20_000}
           />
         </label>
@@ -290,7 +341,7 @@ function SetupForm(props: {
 
         <div className={styles.actions}>
           <button type="submit" className="button buttonPrimary" disabled={starting || !role.trim()}>
-            {starting ? 'Writing your questions…' : 'Start the interview'}
+            {starting ? t('setup.starting') : t('setup.start')}
           </button>
         </div>
       </div>
@@ -302,17 +353,24 @@ function InterviewView(props: {
   sessionId: string;
   setup: StoredPracticeSetup | null;
   questions: PracticeQuestion[];
-  onAnswered: (question: PracticeQuestion) => void;
+  onAnswered: (question: PracticeQuestion, followUp: PracticeQuestion | null) => void;
   onReport: (report: PracticeReport) => void;
 }) {
+  const t = useTranslations('Practice');
+  const locale = useLocale();
   const { questions } = props;
   const router = useRouter();
-  const firstOpen = questions.findIndex((q) => !q.rubric?.feedback);
+  // The first question still to answer; a follow-up that was skipped (a later answer exists) doesn't count.
+  const firstOpen = questions.findIndex(
+    (q, i) => !q.rubric?.feedback && !(isFollowUp(q) && questions.slice(i + 1).some((later) => later.rubric?.feedback)),
+  );
   const [index, setIndex] = useState(firstOpen === -1 ? questions.length - 1 : firstOpen);
   const question = questions[index];
   const feedback = question.rubric?.feedback ?? null;
-  const isLast = index === questions.length - 1;
-  const allAnswered = questions.every((q) => q.rubric?.feedback);
+  const next = questions[index + 1] ?? null;
+  const nextIsFollowUp = next?.rubric?.follow_up_of === question.id;
+  // Follow-ups are optional: the interview is done once every main question has feedback.
+  const allAnswered = questions.every((q) => q.rubric?.feedback || isFollowUp(q));
 
   const [draft, setDraft] = useState(question.response_text ?? '');
   const [editing, setEditing] = useState(!feedback);
@@ -325,6 +383,8 @@ function InterviewView(props: {
   const recognitionRef = useRef<Recognition | null>(null);
   const answerId = useId();
   const canDictate = useMemo(() => speechRecognition() !== null, []);
+  const voice = useInterviewerVoice(locale);
+  const { speak, stop: stopVoice } = voice;
 
   useEffect(() => {
     const timer = window.setInterval(() => setSeconds((s) => s + 1), 1000);
@@ -333,12 +393,19 @@ function InterviewView(props: {
 
   useEffect(() => () => recognitionRef.current?.stop(), []);
 
-  function goTo(next: number) {
+  // The interviewer asks each question aloud when it comes up.
+  const questionText = question.question_text;
+  useEffect(() => {
+    if (editing) speak(questionText);
+  }, [editing, questionText, speak]);
+
+  function goTo(target: number) {
     recognitionRef.current?.stop();
-    const target = questions[next];
-    setIndex(next);
-    setDraft(target.response_text ?? '');
-    setEditing(!target.rubric?.feedback);
+    stopVoice();
+    const nextQuestion = questions[target];
+    setIndex(target);
+    setDraft(nextQuestion.response_text ?? '');
+    setEditing(!nextQuestion.rubric?.feedback);
     setError(null);
     setSeconds(0);
   }
@@ -350,8 +417,10 @@ function InterviewView(props: {
     }
     const Speech = speechRecognition();
     if (!Speech) return;
+    // The microphone would hear the interviewer.
+    stopVoice();
     const recognition = new Speech();
-    recognition.lang = document.documentElement.lang || 'en-US';
+    recognition.lang = document.documentElement.lang || locale;
     recognition.continuous = true;
     recognition.interimResults = false;
     const base = draft.trim();
@@ -371,8 +440,10 @@ function InterviewView(props: {
 
   async function submit() {
     recognitionRef.current?.stop();
+    stopVoice();
     setError(null);
     setSubmitting(true);
+    const failed = t('interview.scoreFailed');
     try {
       const res = await fetch(`/api/interviews/${props.sessionId}/practice/answer`, {
         method: 'POST',
@@ -380,25 +451,31 @@ function InterviewView(props: {
         body: JSON.stringify({ questionId: question.id, answer: draft }),
       });
       const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(errorText(json?.error, 'Your answer could not be scored. Try again.'));
-      props.onAnswered({
-        ...question,
-        response_text: draft,
-        response_score: json.feedback.score * 10,
-        rubric: { feedback: json.feedback },
-        answered_at: json.answeredAt,
-      });
+      if (!res.ok) throw new Error(errorText(t, json?.error, failed));
+      const followUp = (json.followUp ?? null) as PracticeQuestion | null;
+      props.onAnswered(
+        {
+          ...question,
+          response_text: draft,
+          response_score: json.feedback.score * 10,
+          rubric: { ...question.rubric, feedback: json.feedback, ...(followUp ? { follow_up_id: followUp.id } : {}) },
+          answered_at: json.answeredAt,
+        },
+        followUp,
+      );
       setEditing(false);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Your answer could not be scored. Try again.');
+      setError(e instanceof Error ? e.message : failed);
     } finally {
       setSubmitting(false);
     }
   }
 
   async function finish() {
+    stopVoice();
     setError(null);
     setFinishing(true);
+    const failed = t('errors.report_generation_failed');
     try {
       const mode = props.setup?.type === 'mixed' ? 'general' : (props.setup?.type ?? 'general');
       const res = await fetch(`/api/interviews/${props.sessionId}/report`, {
@@ -407,25 +484,34 @@ function InterviewView(props: {
         body: JSON.stringify({ mode }),
       });
       const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(errorText(json?.error, "The report didn't come through. Try again."));
+      if (!res.ok) throw new Error(errorText(t, json?.error, failed));
       props.onReport(json.report);
       // The header shows the interview's status, which is now "Completed".
       router.refresh();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "The report didn't come through. Try again.");
+      setError(e instanceof Error ? e.message : failed);
     } finally {
       setFinishing(false);
     }
   }
 
+  function skipFollowUp() {
+    if (next) goTo(index + 1);
+    else if (allAnswered) void finish();
+  }
+
   const words = wordCount(draft);
+  const avatarState = voice.speaking ? 'speaking' : listening ? 'listening' : 'idle';
+  const finishButton = (
+    <button type="button" className="button buttonPrimary" onClick={finish} disabled={finishing || !allAnswered}>
+      {finishing ? t('interview.finishing') : t('interview.finish')}
+    </button>
+  );
 
   return (
     <div className={styles.interview}>
-      <nav className={styles.progress} aria-label="Questions">
-        <span className={styles.progressLabel}>
-          Question {index + 1} of {questions.length}
-        </span>
+      <nav className={styles.progress} aria-label={t('interview.questions')}>
+        <span className={styles.progressLabel}>{t('interview.progress', { current: index + 1, total: questions.length })}</span>
         <ol className={styles.steps}>
           {questions.map((q, i) => (
             <li key={q.id}>
@@ -433,8 +519,12 @@ function InterviewView(props: {
                 type="button"
                 className={styles.step}
                 data-state={i === index ? 'current' : q.rubric?.feedback ? 'done' : 'open'}
+                data-kind={isFollowUp(q) ? 'follow-up' : undefined}
                 aria-current={i === index ? 'step' : undefined}
-                aria-label={`Question ${i + 1}${q.rubric?.feedback ? ', answered' : ''}`}
+                aria-label={t(isFollowUp(q) ? 'interview.stepFollowUp' : 'interview.step', {
+                  n: i + 1,
+                  answered: q.rubric?.feedback ? 'yes' : 'no',
+                })}
                 disabled={!q.rubric?.feedback && i !== firstOpen && i !== index}
                 onClick={() => goTo(i)}
               />
@@ -443,51 +533,75 @@ function InterviewView(props: {
         </ol>
       </nav>
 
-      <section className={styles.questionCard} aria-label="Question">
-        <div className={styles.questionMeta}>
-          <span className={styles.who}>Interviewer</span>
-          <span className="badge">{question.question_type}</span>
-          <span className="badge">{question.difficulty}</span>
+      <section className={styles.questionCard} aria-label={t('interview.question')}>
+        <div className={styles.questionRow}>
+          <InterviewerAvatar state={avatarState} label={t(`interview.avatar.${avatarState}`)} />
+          <div className={styles.questionBody}>
+            <div className={styles.questionMeta}>
+              <span className={styles.who}>{t('interview.interviewer')}</span>
+              {isFollowUp(question) ? <span className="badge badgePro">{t('interview.followUp')}</span> : null}
+              <span className="badge">{label(t, 'questionTypes', question.question_type)}</span>
+              <span className="badge">{label(t, 'difficulties', question.difficulty)}</span>
+            </div>
+            <p className={styles.questionText}>{question.question_text}</p>
+            {voice.supported ? (
+              <div className={styles.voiceControls}>
+                <button
+                  type="button"
+                  className="button buttonGhost"
+                  onClick={() => (voice.speaking ? stopVoice() : speak(question.question_text))}
+                  disabled={voice.muted}
+                >
+                  {voice.speaking ? t('interview.stopSpeaking') : t('interview.repeat')}
+                </button>
+                <button type="button" className="button buttonGhost" aria-pressed={voice.muted} onClick={() => voice.setMuted(!voice.muted)}>
+                  {voice.muted ? t('interview.unmute') : t('interview.mute')}
+                </button>
+              </div>
+            ) : null}
+          </div>
         </div>
-        <p className={styles.questionText}>{question.question_text}</p>
       </section>
 
       {editing ? (
         <section className="card">
           <div className="cardInner stack">
             <label className="label" htmlFor={answerId}>
-              <span className={styles.youLabel}>Your answer</span>
+              <span className={styles.youLabel}>{t('interview.yourAnswer')}</span>
               <textarea
                 id={answerId}
                 className={`textarea ${styles.answer}`}
                 rows={8}
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
-                placeholder="Answer as you would out loud: the situation, what you did, and the result."
+                placeholder={t('interview.placeholder')}
                 maxLength={8_000}
               />
             </label>
             <div className={styles.answerBar}>
               <span className={styles.meta}>
-                <span>
-                  {words} {words === 1 ? 'word' : 'words'}
-                </span>
-                <span aria-label="Time on this question">
+                <span>{t('interview.words', { count: words })}</span>
+                <span aria-label={t('interview.time')}>
                   {Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, '0')}
                 </span>
               </span>
               <div className={styles.answerButtons}>
+                {isFollowUp(question) ? (
+                  <button type="button" className="button buttonGhost" onClick={skipFollowUp} disabled={submitting || finishing}>
+                    {t('interview.skipFollowUp')}
+                  </button>
+                ) : null}
                 {canDictate ? (
                   <button type="button" className="button" onClick={toggleDictation} aria-pressed={listening}>
-                    {listening ? 'Stop dictating' : 'Dictate'}
+                    {listening ? t('interview.stopDictating') : t('interview.dictate')}
                   </button>
                 ) : null}
                 <button type="button" className="button buttonPrimary" onClick={submit} disabled={submitting || !draft.trim()}>
-                  {submitting ? 'Scoring your answer…' : 'Submit answer'}
+                  {submitting ? t('interview.scoring') : t('interview.submit')}
                 </button>
               </div>
             </div>
-            {canDictate ? <p className="help">Dictation uses your browser’s speech recognition.</p> : null}
+            {canDictate ? <p className="help">{t('interview.dictationHelp')}</p> : null}
           </div>
         </section>
       ) : feedback ? (
@@ -501,28 +615,33 @@ function InterviewView(props: {
       ) : null}
 
       {!editing && feedback ? (
-        <div className={styles.actions}>
-          <button type="button" className="button buttonGhost" onClick={() => setEditing(true)}>
-            Answer again
-          </button>
-          {isLast || allAnswered ? (
-            <button type="button" className="button buttonPrimary" onClick={finish} disabled={finishing || !allAnswered}>
-              {finishing ? 'Writing your report…' : 'Finish and see my report'}
+        <>
+          {nextIsFollowUp && !next?.rubric?.feedback ? (
+            <p className={styles.followUpNote} role="status">
+              {t('interview.followUpComing')}
+            </p>
+          ) : null}
+          <div className={styles.actions}>
+            <button type="button" className="button buttonGhost" onClick={() => setEditing(true)}>
+              {t('interview.answerAgain')}
             </button>
-          ) : (
-            <button type="button" className="button buttonPrimary" onClick={() => goTo(index + 1)}>
-              Next question
-            </button>
-          )}
-        </div>
+            {next ? (
+              <button type="button" className={`button ${allAnswered && !nextIsFollowUp ? '' : 'buttonPrimary'}`} onClick={() => goTo(index + 1)}>
+                {nextIsFollowUp ? t('interview.answerFollowUp') : t('interview.next')}
+              </button>
+            ) : null}
+            {!next || allAnswered ? finishButton : null}
+          </div>
+        </>
       ) : null}
     </div>
   );
 }
 
 function FeedbackPanel({ answer, feedback }: { answer: string; feedback: AnswerFeedback }) {
+  const t = useTranslations('Practice');
   return (
-    <section className={`card ${styles.feedback}`} aria-label="Feedback on your answer">
+    <section className={`card ${styles.feedback}`} aria-label={t('feedback.label')}>
       <div className="cardInner stack">
         <div className={styles.scoreRow}>
           <span className={styles.score} data-tone={scoreTone(feedback.score)}>
@@ -534,7 +653,7 @@ function FeedbackPanel({ answer, feedback }: { answer: string; feedback: AnswerF
         <div className={styles.columns}>
           {feedback.strengths.length ? (
             <div>
-              <h3 className={styles.listTitle}>What worked</h3>
+              <h3 className={styles.listTitle}>{t('feedback.worked')}</h3>
               <ul className={styles.points} data-tone="good">
                 {feedback.strengths.map((item) => (
                   <li key={item}>{item}</li>
@@ -544,7 +663,7 @@ function FeedbackPanel({ answer, feedback }: { answer: string; feedback: AnswerF
           ) : null}
           {feedback.improvements.length ? (
             <div>
-              <h3 className={styles.listTitle}>To improve</h3>
+              <h3 className={styles.listTitle}>{t('feedback.improve')}</h3>
               <ul className={styles.points} data-tone="ember">
                 {feedback.improvements.map((item) => (
                   <li key={item}>{item}</li>
@@ -555,7 +674,7 @@ function FeedbackPanel({ answer, feedback }: { answer: string; feedback: AnswerF
         </div>
         {feedback.stronger_answer.length ? (
           <div>
-            <h3 className={styles.listTitle}>A stronger answer would cover</h3>
+            <h3 className={styles.listTitle}>{t('feedback.stronger')}</h3>
             <ul className={styles.points} data-tone="ice">
               {feedback.stronger_answer.map((item) => (
                 <li key={item}>{item}</li>
@@ -564,7 +683,7 @@ function FeedbackPanel({ answer, feedback }: { answer: string; feedback: AnswerF
           </div>
         ) : null}
         <details className={styles.yourAnswer}>
-          <summary>Your answer</summary>
+          <summary>{t('feedback.yourAnswer')}</summary>
           <p>{answer}</p>
         </details>
       </div>
@@ -573,19 +692,22 @@ function FeedbackPanel({ answer, feedback }: { answer: string; feedback: AnswerF
 }
 
 function ReportView(props: { sessionId: string; report: PracticeReport; questions: PracticeQuestion[] }) {
+  const t = useTranslations('Practice');
   const { report } = props;
   const overall = report.overall_score ?? 0;
-  const signal = report.hiring_signal ? (SIGNALS[report.hiring_signal] ?? report.hiring_signal) : null;
+  const signal = report.hiring_signal ? label(t, 'signals', report.hiring_signal) : null;
   const tone = overall >= 75 ? 'good' : overall >= 50 ? 'fair' : 'low';
+  // Skipped follow-ups weren't part of the interview.
+  const asked = props.questions.filter((q) => !(isFollowUp(q) && !q.rubric?.feedback));
 
   return (
     <div className={styles.report}>
-      <section className={`card ${styles.reportHero}`} aria-label="Overall result">
+      <section className={`card ${styles.reportHero}`} aria-label={t('report.overall')}>
         <div className="cardInner">
           <div className={styles.heroRow}>
             <div className={styles.overall} data-tone={tone}>
               <span className={styles.overallNumber}>{overall}</span>
-              <span className={styles.overallOf}>out of 100</span>
+              <span className={styles.overallOf}>{t('report.outOf')}</span>
             </div>
             <div className={styles.heroText}>
               {signal ? <span className={`badge ${tone === 'good' ? 'badgeLive' : tone === 'fair' ? 'badgePro' : 'badgeAlert'}`}>{signal}</span> : null}
@@ -596,18 +718,18 @@ function ReportView(props: { sessionId: string; report: PracticeReport; question
       </section>
 
       {report.rubric ? (
-        <section className="card" aria-label="Scores by area">
+        <section className="card" aria-label={t('report.byAreaLabel')}>
           <div className="cardInner stack">
-            <h2 className="cardTitle">By area</h2>
+            <h2 className="cardTitle">{t('report.byArea')}</h2>
             <ul className={styles.dimensions}>
-              {DIMENSIONS.map(({ key, label }) => {
+              {DIMENSIONS.map((key) => {
                 const dimension = report.rubric?.[key];
                 if (!dimension) return null;
                 return (
                   <li key={key} className={styles.dimension}>
                     <div className={styles.dimensionHead}>
-                      <span>{label}</span>
-                      <span className={styles.meta}>{dimension.score} / 5</span>
+                      <span>{t(`dimensions.${key}`)}</span>
+                      <span className={styles.meta}>{t('report.outOfFive', { score: dimension.score })}</span>
                     </div>
                     <div className={styles.bar} aria-hidden="true">
                       <span style={{ width: `${(dimension.score / 5) * 100}%` }} />
@@ -622,30 +744,33 @@ function ReportView(props: { sessionId: string; report: PracticeReport; question
       ) : null}
 
       <div className={styles.reportLists}>
-        <ReportList title="Strengths" items={report.strengths} tone="good" />
-        <ReportList title="To work on" items={report.weaknesses} tone="ember" />
-        <ReportList title="Next steps" items={report.next_steps} tone="ice" ordered />
+        <ReportList title={t('report.strengths')} items={report.strengths} tone="good" />
+        <ReportList title={t('report.toWorkOn')} items={report.weaknesses} tone="ember" />
+        <ReportList title={t('report.nextSteps')} items={report.next_steps} tone="ice" ordered />
       </div>
 
-      <section className="card" aria-label="Each answer">
+      <section className="card" aria-label={t('report.eachAnswer')}>
         <div className="cardInner stack">
-          <h2 className="cardTitle">Each answer</h2>
+          <h2 className="cardTitle">{t('report.eachAnswer')}</h2>
           <ol className={styles.breakdown}>
-            {props.questions.map((q, i) => {
+            {asked.map((q, i) => {
               const fb = q.rubric?.feedback;
               return (
                 <li key={q.id}>
                   <details>
                     <summary className={styles.breakdownSummary}>
                       <span className={styles.breakdownIndex}>{i + 1}</span>
-                      <span className={styles.breakdownQuestion}>{q.question_text}</span>
+                      <span className={styles.breakdownQuestion}>
+                        {isFollowUp(q) ? <span className={styles.followUpTag}>{t('interview.followUp')}</span> : null}
+                        {q.question_text}
+                      </span>
                       {fb ? (
                         <span className={styles.breakdownScore} data-tone={scoreTone(fb.score)}>
                           {fb.score}/10
                         </span>
                       ) : null}
                     </summary>
-                    {fb ? <FeedbackPanel answer={q.response_text ?? ''} feedback={fb} /> : <p className="help">Not answered.</p>}
+                    {fb ? <FeedbackPanel answer={q.response_text ?? ''} feedback={fb} /> : <p className="help">{t('report.notAnswered')}</p>}
                   </details>
                 </li>
               );
@@ -656,9 +781,9 @@ function ReportView(props: { sessionId: string; report: PracticeReport; question
 
       <div className={styles.actions}>
         <a className="button" href={`/api/interviews/${props.sessionId}/export`}>
-          Export
+          {t('report.export')}
         </a>
-        <NewPracticeButton primary label="Practice again" />
+        <NewPracticeButton primary label={t('report.again')} />
       </div>
     </div>
   );

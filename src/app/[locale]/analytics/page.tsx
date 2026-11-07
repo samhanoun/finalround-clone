@@ -1,28 +1,25 @@
 'use client';
+import { useTranslations } from 'next-intl';
 
 import { AppShell } from '@/components/AppShell';
 import { AnalyticsNav } from '@/components/analytics/AnalyticsNav';
 import { CustomDashboard } from '@/components/analytics/CustomDashboard';
-import { ScheduledReports } from '@/components/analytics/ScheduledReports';
 import { AnalyticsReconciliation } from '@/components/AnalyticsReconciliation';
 
 export default function AnalyticsPage() {
+  const tPage = useTranslations('PageTitles');
   return (
-    <AppShell title="Analytics">
+    <AppShell title={tPage('analytics')}>
       <div className="stack">
-        <p className="help">
-          Your live sessions, practice interviews and scores over time.
-        </p>
+        <p className="help">{tPage('analyticsIntro')}</p>
 
         <AnalyticsNav />
 
         {/* Exports its own CSV and PDF. */}
         <CustomDashboard />
 
-        <ScheduledReports />
-
         <details className="data-checks card">
-          <summary className="cardTitle">Data checks</summary>
+          <summary className="cardTitle">{tPage('dataChecks')}</summary>
           <AnalyticsReconciliation />
         </details>
       </div>

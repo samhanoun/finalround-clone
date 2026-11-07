@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { BillingActions } from './BillingActions';
 
 interface UsageData {
@@ -43,6 +44,7 @@ function ProgressBar({ used, limit, label }: { used: number; limit: number; labe
 }
 
 export function UsageWidget() {
+  const t = useTranslations('Usage');
   const [data, setData] = useState<UsageData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -67,7 +69,7 @@ export function UsageWidget() {
     return (
       <div className="card">
         <div className="cardInner">
-          <p className="small">Loading usage...</p>
+          <p className="small">{t('loading')}</p>
         </div>
       </div>
     );
@@ -77,7 +79,7 @@ export function UsageWidget() {
     return (
       <div className="card">
         <div className="cardInner">
-          <p className="small error">Failed to load usage data</p>
+          <p className="small error">{t('failed')}</p>
         </div>
       </div>
     );
@@ -87,9 +89,9 @@ export function UsageWidget() {
     <div className="card">
       <div className="cardInner stack">
         <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-          <h2 className="cardTitle">Usage this month</h2>
+          <h2 className="cardTitle">{t('title')}</h2>
           <span className={`badge ${data.isPro ? 'badgePro' : 'badgeFree'}`}>
-            {data.plan} plan
+            {t('plan', { plan: t.has(`plans.${data.plan.toLowerCase()}`) ? t(`plans.${data.plan.toLowerCase()}`) : data.plan })}
           </span>
         </div>
 
@@ -97,33 +99,33 @@ export function UsageWidget() {
           <ProgressBar
             used={data.usage.copilot_minutes_monthly}
             limit={data.limits.copilot_minutes_monthly}
-            label="Live copilot, this month"
+            label={t('copilotMonth')}
           />
           <ProgressBar
             used={data.usage.copilot_session_minutes}
             limit={data.limits.copilot_session_minutes}
-            label="Per session"
+            label={t('perSession')}
           />
           <ProgressBar
             used={data.usage.copilot_daily_minutes}
             limit={data.limits.copilot_daily_minutes}
-            label="Live copilot, today"
+            label={t('copilotToday')}
           />
           <ProgressBar
             used={data.usage.smart_mode_minutes_monthly}
             limit={data.limits.smart_mode_minutes_monthly}
-            label="Smart mode, this month"
+            label={t('smartMonth')}
           />
           <ProgressBar
             used={data.usage.resume_deep_reviews_monthly}
             limit={data.limits.resume_deep_reviews_monthly}
-            label="Résumé reviews, this month"
+            label={t('reviewsMonth')}
           />
         </div>
 
         {!data.isPro && (
           <p className="small help">
-            Pro raises the limits to 400 minutes a month, 30-minute sessions, 45 minutes a day, 80 Smart mode minutes and 10 résumé reviews a month.
+            {t('proLimits')}
           </p>
         )}
 

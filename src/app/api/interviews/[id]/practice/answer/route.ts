@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { z } from 'zod';
+import { userModels } from '@/lib/answerModels';
 import { jsonError } from '@/lib/api';
 import { rateLimit } from '@/lib/rateLimit';
 import { createClient } from '@/lib/supabase/server';
@@ -9,7 +10,7 @@ import {
   completeChat,
   feedbackRequest,
   parseFeedback,
-  practiceModel,
+  parseFollowUp,
   type StoredPracticeSetup,
 } from '@/lib/practice/practice';
 
@@ -18,7 +19,13 @@ const BodySchema = z.object({
   answer: z.string().trim().min(1).max(8_000),
 });
 
-/** Saves an answer to one practice question and returns the coach's feedback on it. */
+type QuestionRubric = { feedback?: unknown; follow_up_of?: string; follow_up_id?: string } & Record<string, unknown>;
+
+/**
+ * Saves an answer to one practice question and returns the coach's feedback
+ * on it. After a main question's first answer the interviewer may follow up:
+ * the follow-up is saved as its own question, right after this one.
+ */
 export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
   const supabase = await createClient();
@@ -43,11 +50,20 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
 
   const { data: question } = await supabase
     .from('interview_questions')
-    .select('id, session_id, question_text, question_type, difficulty')
+    .select('id, session_id, question_text, question_type, difficulty, order_index, rubric')
     .eq('id', questionId)
     .eq('session_id', id)
-    .maybeSingle<{ id: string; session_id: string; question_text: string; question_type: string; difficulty: string }>();
+    .maybeSingle<{
+      id: string;
+      session_id: string;
+      question_text: string;
+      question_type: string;
+      difficulty: string;
+      order_index: number;
+      rubric: QuestionRubric | null;
+    }>();
   if (!question) return jsonError(404, 'question_not_found');
+  const rubric: QuestionRubric = question.rubric ?? {};
 
   // Keep the answer even if the feedback fails, so nothing typed is lost.
   const answeredAt = new Date().toISOString();
@@ -59,15 +75,18 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   if (saveError) return jsonError(500, 'db_error', saveError);
 
   const practice = (session.meta?.practice ?? {}) as Partial<StoredPracticeSetup>;
+  // One follow-up per main question: none on follow-ups, none again on a second answer.
+  const askFollowUp = practice.followUps !== false && !rubric.follow_up_of && !rubric.follow_up_id;
   let reply: string;
   try {
     reply = await completeChat({
-      model: practiceModel(),
+      model: (await userModels(supabase, userId)).answer,
       ...feedbackRequest(
         { text: question.question_text, type: question.question_type, difficulty: question.difficulty },
         answer,
         { role: practice.role ?? 'the role', company: practice.company },
         readContextPack(session.meta),
+        { followUp: askFollowUp },
       ),
       maxTokens: 700,
       temperature: 0.3,
@@ -82,12 +101,36 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   const feedback = parseFeedback(reply);
   if (!feedback) return jsonError(502, 'feedback_unavailable');
 
+  // Same order_index, created later: it sorts right after this question.
+  const followUpText = askFollowUp ? parseFollowUp(reply) : null;
+  let followUp: Record<string, unknown> | null = null;
+  if (followUpText) {
+    const { data, error } = await supabase
+      .from('interview_questions')
+      .insert({
+        session_id: id,
+        user_id: userId,
+        question_text: followUpText,
+        question_type: question.question_type,
+        difficulty: question.difficulty,
+        order_index: question.order_index,
+        rubric: { follow_up_of: questionId },
+      })
+      .select('id, question_text, question_type, difficulty, order_index, response_text, response_score, rubric, answered_at')
+      .maybeSingle<Record<string, unknown>>();
+    if (error) console.error('[practice] follow-up not saved', error.message);
+    else followUp = data;
+  }
+
   const { error: feedbackError } = await supabase
     .from('interview_questions')
-    .update({ response_score: feedback.score * 10, rubric: { feedback } })
+    .update({
+      response_score: feedback.score * 10,
+      rubric: { ...rubric, feedback, ...(followUp ? { follow_up_id: followUp.id } : {}) },
+    })
     .eq('id', questionId)
     .eq('session_id', id);
   if (feedbackError) return jsonError(500, 'db_error', feedbackError);
 
-  return NextResponse.json({ questionId, answeredAt, feedback });
+  return NextResponse.json({ questionId, answeredAt, feedback, followUp });
 }

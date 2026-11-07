@@ -1,13 +1,15 @@
 'use client';
 
 import { useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { exportToCSV, exportToPDF } from '@/lib/export';
 
 interface ExportButtonProps {
   data?: unknown[];
   elementId?: string;
   filename: string;
-  label?: string;
+  /** The section's heading, in the user's language: the PDF's title. */
+  title: string;
   disabled?: boolean;
 }
 
@@ -15,14 +17,15 @@ export function ExportButton({
   data,
   elementId,
   filename,
-  label = 'Export',
+  title,
   disabled = false
 }: ExportButtonProps) {
+  const t = useTranslations('Export');
   const [exporting, setExporting] = useState(false);
 
   const handleCSVExport = async () => {
     if (!data || data.length === 0) {
-      alert('No data to export');
+      alert(t('noData'));
       return;
     }
 
@@ -31,7 +34,7 @@ export function ExportButton({
       exportToCSV(data as Record<string, unknown>[], filename);
     } catch (error) {
       console.error('CSV export failed:', error);
-      alert('Failed to export CSV');
+      alert(t('csvFailed'));
     } finally {
       setExporting(false);
     }
@@ -39,16 +42,16 @@ export function ExportButton({
 
   const handlePDFExport = async () => {
     if (!elementId) {
-      alert('No element to export');
+      alert(t('noData'));
       return;
     }
 
     setExporting(true);
     try {
-      await exportToPDF(elementId, filename, `${filename} Report`);
+      await exportToPDF(elementId, filename, title);
     } catch (error) {
       console.error('PDF export failed:', error);
-      alert('Failed to export PDF');
+      alert(t('pdfFailed'));
     } finally {
       setExporting(false);
     }
@@ -60,17 +63,17 @@ export function ExportButton({
         className="export-btn csv"
         onClick={handleCSVExport}
         disabled={disabled || exporting}
-        title="Export to CSV"
+        title={t('csv')}
       >
-        CSV
+        {t('csvShort')}
       </button>
       <button
         className="export-btn pdf"
         onClick={handlePDFExport}
         disabled={disabled || exporting}
-        title="Export to PDF"
+        title={t('pdf')}
       >
-        PDF
+        {t('pdfShort')}
       </button>
 
       <style jsx>{`

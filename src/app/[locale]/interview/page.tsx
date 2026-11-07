@@ -1,20 +1,23 @@
-import Link from 'next/link';
+import { Link } from '@/i18n/routing';
+import { getFormatter, getTranslations } from 'next-intl/server';
 import { AppShell } from '@/components/AppShell';
 import { RequireAuth } from '@/components/RequireAuth';
 import { NewPracticeButton } from '@/components/NewPracticeButton';
 import { createClient } from '@/lib/supabase/server';
 import styles from '../dashboard/dashboard.module.css';
 
-const STATUS_LABEL: Record<string, string> = { draft: 'Not started', in_progress: 'In progress', completed: 'Completed' };
+const STATUSES = ['draft', 'in_progress', 'completed'] as const;
 
 /** Practice interviews: answer questions in a mock session and get feedback. */
 export default async function PracticePage() {
+  const t = await getTranslations('PracticePages');
+  const format = await getFormatter();
   const supabase = await createClient();
   const { data: userData } = await supabase.auth.getUser();
 
   if (!userData.user) {
     return (
-      <AppShell title="Practice">
+      <AppShell title={t('title')}>
         <RequireAuth>
           <div />
         </RequireAuth>
@@ -29,15 +32,25 @@ export default async function PracticePage() {
     .limit(50);
 
   return (
-    <AppShell title="Practice" actions={<NewPracticeButton primary label="New practice interview" />}>
+    <AppShell
+      title={t('title')}
+      actions={
+        <>
+          <Link className="button" href="/interview/bank">
+            {t('bank')}
+          </Link>
+          <NewPracticeButton primary label={t('new')} />
+        </>
+      }
+    >
       <RequireAuth>
         <section className="card" aria-labelledby="practice-heading">
           <div className="cardInner stack">
             <div>
               <h2 className="cardTitle" id="practice-heading">
-                Your practice interviews
+                {t('listTitle')}
               </h2>
-              <p className="cardDesc">Answer interview questions, then read the score and feedback on each session.</p>
+              <p className="cardDesc">{t('listDesc')}</p>
             </div>
             <ul className={styles.list}>
               {(sessions ?? []).length ? (
@@ -51,16 +64,18 @@ export default async function PracticePage() {
                       </Link>
                       <span className={styles.rowMeta}>
                         {typeof latest?.overall_score === 'number' ? (
-                          <span className="badge badgeLive">{latest.overall_score}/100</span>
+                          <span className="badge badgeLive">{t('score', { score: latest.overall_score })}</span>
                         ) : null}
-                        <span className="badge">{STATUS_LABEL[s.status] ?? s.status}</span>
-                        <span>{new Date(s.created_at).toLocaleDateString()}</span>
+                        <span className="badge">
+                          {(STATUSES as readonly string[]).includes(s.status) ? t(`status.${s.status}`) : s.status}
+                        </span>
+                        <span>{format.dateTime(new Date(s.created_at), { dateStyle: 'medium' })}</span>
                       </span>
                     </li>
                   );
                 })
               ) : (
-                <li className={styles.empty}>No practice interviews yet. Start one to get a score and feedback.</li>
+                <li className={styles.empty}>{t('empty')}</li>
               )}
             </ul>
           </div>

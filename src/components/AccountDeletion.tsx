@@ -1,9 +1,14 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter } from '@/i18n/routing';
+import { useTranslations } from 'next-intl';
+
+/** Typed to confirm; it stays the same in every language. */
+const CONFIRM_WORD = 'DELETE';
 
 export function AccountDeletion() {
+  const t = useTranslations('AccountDeletion');
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [reason, setReason] = useState('');
@@ -30,7 +35,7 @@ export function AccountDeletion() {
       const json = await res.json().catch(() => ({}));
 
       if (!res.ok) {
-        throw new Error(json.error ?? 'Failed to delete account');
+        throw new Error(typeof json.error === 'string' && t.has(`errors.${json.error}`) ? t(`errors.${json.error}`) : t('failed'));
       }
 
       setSuccess(true);
@@ -42,7 +47,7 @@ export function AccountDeletion() {
         router.refresh();
       }, 2000);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to delete account');
+      setError(e instanceof Error ? e.message : t('failed'));
     } finally {
       setSaving(false);
     }
@@ -53,12 +58,9 @@ export function AccountDeletion() {
       <div className="card">
         <div className="cardInner stack">
           <h2 className="cardTitle" style={{ color: 'var(--success)' }}>
-            Account deleted
+            {t('deletedTitle')}
           </h2>
-          <p>
-            Your account has been permanently deleted. All your data has been removed.
-            Taking you to the home page…
-          </p>
+          <p>{t('deletedBody')}</p>
         </div>
       </div>
     );
@@ -68,10 +70,8 @@ export function AccountDeletion() {
     return (
       <div className="card">
         <div className="cardInner stack">
-          <h2 className="cardTitle">Delete account</h2>
-          <p className="cardDesc">
-            Permanently delete your account and all associated data. This action cannot be undone.
-          </p>
+          <h2 className="cardTitle">{t('title')}</h2>
+          <p className="cardDesc">{t('desc')}</p>
           
           <div 
             style={{ 
@@ -82,13 +82,13 @@ export function AccountDeletion() {
             }}
           >
             <p style={{ margin: 0, fontWeight: 600, color: 'var(--alert-text)' }}>
-              This permanently deletes:
+              {t('deletes')}
             </p>
             <ul style={{ margin: '8px 0 0', paddingLeft: 20 }}>
-              <li>Your profile and account</li>
-              <li>All interview sessions</li>
-              <li>All résumés and cover letters</li>
-              <li>All usage history and quotas</li>
+              <li>{t('deletesProfile')}</li>
+              <li>{t('deletesSessions')}</li>
+              <li>{t('deletesDocuments')}</li>
+              <li>{t('deletesUsage')}</li>
             </ul>
           </div>
 
@@ -97,7 +97,7 @@ export function AccountDeletion() {
             onClick={() => setShowWarning(true)}
             style={{ alignSelf: 'flex-start' }}
           >
-            Delete my account
+            {t('start')}
           </button>
         </div>
       </div>
@@ -108,44 +108,42 @@ export function AccountDeletion() {
     <div className="card">
       <div className="cardInner stack">
         <h2 className="cardTitle" style={{ color: 'var(--error)' }}>
-          Confirm account deletion
+          {t('confirmTitle')}
         </h2>
-        <p className="cardDesc">
-          Enter your email address and type DELETE to confirm.
-        </p>
+        <p className="cardDesc">{t('confirmDesc', { word: CONFIRM_WORD })}</p>
 
         <div className="stack" style={{ gap: 16 }}>
           <label className="label">
-            Your email address
+            {t('email')}
             <input
               className="input"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@example.com"
+              placeholder={t('emailPlaceholder')}
             />
           </label>
 
           <label className="label">
-            Why are you leaving? (optional)
+            {t('reason')}
             <textarea
               className="input"
               value={reason}
               onChange={(e) => setReason(e.target.value)}
-              placeholder="What could we have done better?"
+              placeholder={t('reasonPlaceholder')}
               rows={3}
               style={{ resize: 'vertical' }}
             />
           </label>
 
           <label className="label">
-            Type <strong>DELETE</strong> to confirm
+            {t.rich('typeWord', { word: CONFIRM_WORD, strong: (chunks) => <strong>{chunks}</strong> })}
             <input
               className="input"
               type="text"
               value={confirmText}
               onChange={(e) => setConfirmText(e.target.value)}
-              placeholder="DELETE"
+              placeholder={CONFIRM_WORD}
             />
           </label>
         </div>
@@ -159,14 +157,14 @@ export function AccountDeletion() {
             }}
             disabled={saving}
           >
-            Cancel
+            {t('cancel')}
           </button>
           <button
             className="button buttonDanger"
             onClick={handleDelete}
-            disabled={saving || email !== email.toLowerCase() || confirmText !== 'DELETE'}
+            disabled={saving || email !== email.toLowerCase() || confirmText !== CONFIRM_WORD}
           >
-            {saving ? 'Deleting…' : 'Delete account permanently'}
+            {saving ? t('deleting') : t('confirm')}
           </button>
         </div>
 

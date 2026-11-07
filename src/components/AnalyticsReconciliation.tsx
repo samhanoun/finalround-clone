@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useFormatter, useTranslations } from 'next-intl';
 
 interface MetricReconciliation {
   metricName: string;
@@ -27,40 +28,37 @@ interface ReconciliationSummary {
   };
 }
 
+const STATUS_MARK = { consistent: '✓', warning: '⚠', critical: '✕' } as const;
+
 function StatusBadge({ status }: { status: 'consistent' | 'warning' | 'critical' }) {
-  const config = {
-    consistent: { label: '✓ Consistent', className: 'status-consistent' },
-    warning: { label: '⚠ Warning', className: 'status-warning' },
-    critical: { label: '✕ Critical', className: 'status-critical' },
-  };
-  
-  const { label, className } = config[status];
-  
+  const t = useTranslations('DataChecks');
   return (
-    <span className={`status-badge ${className}`}>
-      {label}
+    <span className={`status-badge status-${status}`}>
+      {STATUS_MARK[status]} {t(`status.${status}`)}
     </span>
   );
 }
 
 function MetricRow({ metric }: { metric: MetricReconciliation }) {
+  const t = useTranslations('DataChecks');
+  const format = useFormatter();
   const percentDiff = Math.abs(metric.differencePercent * 100).toFixed(1);
   const diffDisplay = metric.difference >= 0 ? `+${metric.difference}` : `${metric.difference}`;
-  
+
   return (
     <div className={`metric-row metric-${metric.status}`}>
       <div className="metric-name">{metric.metricName}</div>
       <div className="metric-values">
         <div className="metric-actual">
-          <span className="metric-label">Actual (Events):</span>
-          <span className="metric-value">{metric.rawEventCount.toLocaleString()}</span>
+          <span className="metric-label">{t('actual')}</span>
+          <span className="metric-value">{format.number(metric.rawEventCount)}</span>
         </div>
         <div className="metric-expected">
-          <span className="metric-label">Expected (Aggregated):</span>
-          <span className="metric-value">{metric.aggregatedCount.toLocaleString()}</span>
+          <span className="metric-label">{t('expected')}</span>
+          <span className="metric-value">{format.number(metric.aggregatedCount)}</span>
         </div>
         <div className="metric-diff">
-          <span className="metric-label">Difference:</span>
+          <span className="metric-label">{t('difference')}</span>
           <span className={`metric-value ${metric.difference >= 0 ? 'positive' : 'negative'}`}>
             {diffDisplay} ({percentDiff}%)
           </span>
@@ -74,6 +72,8 @@ function MetricRow({ metric }: { metric: MetricReconciliation }) {
 }
 
 export function AnalyticsReconciliation() {
+  const t = useTranslations('DataChecks');
+  const format = useFormatter();
   const [data, setData] = useState<ReconciliationSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -82,11 +82,11 @@ export function AnalyticsReconciliation() {
     async function fetchReconciliation() {
       try {
         const res = await fetch('/api/analytics/reconciliation');
-        if (!res.ok) throw new Error('Failed to fetch reconciliation data');
+        if (!res.ok) throw new Error(`reconciliation: ${res.status}`);
         const json = await res.json();
         setData(json);
       } catch (e) {
-        setError(e instanceof Error ? e.message : 'Failed to load');
+        setError(e instanceof Error ? e.message : 'failed');
       } finally {
         setLoading(false);
       }
@@ -98,7 +98,7 @@ export function AnalyticsReconciliation() {
     return (
       <div className="card">
         <div className="cardInner stack">
-          <p className="small">Loading analytics reconciliation...</p>
+          <p className="small">{t('loading')}</p>
         </div>
       </div>
     );
@@ -108,33 +108,23 @@ export function AnalyticsReconciliation() {
     return (
       <div className="card">
         <div className="cardInner stack">
-          <p className="small error">Failed to load reconciliation data</p>
+          <p className="small error">{t('failed')}</p>
         </div>
       </div>
     );
   }
 
-  const overallConfig = {
-    healthy: { label: '✓ Data Consistent', className: 'overall-healthy' },
-    warning: { label: '⚠ Some Discrepancies', className: 'overall-warning' },
-    critical: { label: '✕ Data Issues Detected', className: 'overall-critical' },
-  };
+  const overallMark = { healthy: '✓', warning: '⚠', critical: '✕' }[data.overallStatus];
+  const overallLabel = `${overallMark} ${t(`overall.${data.overallStatus}`)}`;
+  const overallClass = `overall-${data.overallStatus}`;
 
-  const { label: overallLabel, className: overallClass } = overallConfig[data.overallStatus];
-
-  const formatDate = (dateStr: string) => {
-    return new Date(dateStr).toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    });
-  };
+  const formatDate = (dateStr: string) => format.dateTime(new Date(dateStr), { dateStyle: 'medium' });
 
   return (
     <div className="card">
       <div className="cardInner stack">
         <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-          <h2 className="cardTitle">Analytics Reconciliation</h2>
+          <h2 className="cardTitle">{t('title')}</h2>
           <span className={`overall-badge ${overallClass}`}>
             {overallLabel}
           </span>
@@ -142,32 +132,32 @@ export function AnalyticsReconciliation() {
 
         <div className="reconciliation-info">
           <p className="small help">
-            Period: {formatDate(data.period.start)} — {formatDate(data.period.end)}
+            {t('period', { start: formatDate(data.period.start), end: formatDate(data.period.end) })}
             {' • '}
-            Last checked: {new Date(data.lastChecked).toLocaleTimeString()}
+            {t('lastChecked', { time: format.dateTime(new Date(data.lastChecked), { timeStyle: 'medium' }) })}
           </p>
         </div>
 
         <div className="summary-stats">
           <div className="stat-item">
             <span className="stat-value">{data.summary.totalMetrics}</span>
-            <span className="stat-label">Total Metrics</span>
+            <span className="stat-label">{t('total')}</span>
           </div>
           <div className="stat-item stat-consistent">
             <span className="stat-value">{data.summary.withinTolerance}</span>
-            <span className="stat-label">Within ±1%</span>
+            <span className="stat-label">{t('within')}</span>
           </div>
           <div className="stat-item stat-warning">
             <span className="stat-value">{data.summary.outsideTolerance}</span>
-            <span className="stat-label">Outside Tolerance</span>
+            <span className="stat-label">{t('outside')}</span>
           </div>
         </div>
 
         <div className="metrics-list">
           <div className="metrics-header">
-            <span>Metric</span>
-            <span>Values</span>
-            <span>Status</span>
+            <span>{t('metric')}</span>
+            <span>{t('values')}</span>
+            <span>{t('statusHeader')}</span>
           </div>
           {data.metrics.map((metric, index) => (
             <MetricRow key={index} metric={metric} />
@@ -175,13 +165,8 @@ export function AnalyticsReconciliation() {
         </div>
 
         <p className="small help">
-          Metrics reconcile with raw events within ±1% tolerance as per PRD section 13.6.
-          {' '}
-          {data.overallStatus !== 'healthy' && (
-            <span className="error">
-              Please investigate the discrepancies above.
-            </span>
-          )}
+          {t('note')}{' '}
+          {data.overallStatus !== 'healthy' && <span className="error">{t('investigate')}</span>}
         </p>
       </div>
 
@@ -191,7 +176,7 @@ export function AnalyticsReconciliation() {
           background: var(--color-bg-subtle, var(--well));
           border-radius: 6px;
         }
-        
+
         .summary-stats {
           display: flex;
           gap: 16px;
@@ -199,7 +184,7 @@ export function AnalyticsReconciliation() {
           background: var(--color-bg-subtle, var(--well));
           border-radius: 8px;
         }
-        
+
         .stat-item {
           display: flex;
           flex-direction: column;
@@ -207,31 +192,31 @@ export function AnalyticsReconciliation() {
           flex: 1;
           padding: 8px;
         }
-        
+
         .stat-value {
           font-size: 1.5rem;
           font-weight: 600;
         }
-        
+
         .stat-label {
           font-size: 0.75rem;
           color: var(--color-text-muted, var(--mist));
         }
-        
+
         .stat-consistent .stat-value {
           color: var(--live);
         }
-        
+
         .stat-warning .stat-value {
           color: var(--caution);
         }
-        
+
         .metrics-list {
           border: 1px solid var(--color-border, var(--line));
           border-radius: 8px;
           overflow: hidden;
         }
-        
+
         .metrics-header {
           display: grid;
           grid-template-columns: 1fr 2fr 120px;
@@ -242,7 +227,7 @@ export function AnalyticsReconciliation() {
           font-size: 0.875rem;
           border-bottom: 1px solid var(--color-border, var(--line));
         }
-        
+
         .metric-row {
           display: grid;
           grid-template-columns: 1fr 2fr 120px;
@@ -251,58 +236,58 @@ export function AnalyticsReconciliation() {
           border-bottom: 1px solid var(--color-border, var(--line));
           align-items: center;
         }
-        
+
         .metric-row:last-child {
           border-bottom: none;
         }
-        
+
         .metric-row.metric-consistent {
           background: rgba(69, 212, 155, 0.05);
         }
-        
+
         .metric-row.metric-warning {
           background: rgba(247, 195, 95, 0.05);
         }
-        
+
         .metric-row.metric-critical {
           background: rgba(255, 107, 107, 0.05);
         }
-        
+
         .metric-name {
           font-weight: 500;
         }
-        
+
         .metric-values {
           display: flex;
           gap: 16px;
           flex-wrap: wrap;
         }
-        
+
         .metric-actual,
         .metric-expected,
         .metric-diff {
           display: flex;
           flex-direction: column;
         }
-        
+
         .metric-label {
           font-size: 0.7rem;
           color: var(--color-text-muted, var(--mist));
         }
-        
+
         .metric-value {
           font-weight: 500;
           font-family: monospace;
         }
-        
+
         .metric-value.positive {
           color: var(--live);
         }
-        
+
         .metric-value.negative {
           color: var(--alert);
         }
-        
+
         .status-badge {
           display: inline-block;
           padding: 4px 8px;
@@ -310,44 +295,44 @@ export function AnalyticsReconciliation() {
           font-size: 0.75rem;
           font-weight: 500;
         }
-        
+
         .status-consistent {
           background: rgba(69, 212, 155, 0.1);
           color: var(--live);
         }
-        
+
         .status-warning {
           background: rgba(247, 195, 95, 0.1);
           color: var(--caution);
         }
-        
+
         .status-critical {
           background: rgba(255, 107, 107, 0.1);
           color: var(--alert);
         }
-        
+
         .overall-badge {
           padding: 6px 12px;
           border-radius: 6px;
           font-weight: 600;
           font-size: 0.875rem;
         }
-        
+
         .overall-healthy {
           background: rgba(69, 212, 155, 0.1);
           color: var(--live);
         }
-        
+
         .overall-warning {
           background: rgba(247, 195, 95, 0.1);
           color: var(--caution);
         }
-        
+
         .overall-critical {
           background: rgba(255, 107, 107, 0.1);
           color: var(--alert);
         }
-        
+
         .error {
           color: var(--alert);
         }

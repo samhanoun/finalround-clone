@@ -13,9 +13,13 @@ export type AnswerState = {
   superseded: number;
   /** Time from request to first token, as the server measured it. */
   ttftMs: number | null;
+  /** Where the answer's facts came from (the candidate's résumé, materials, memories). */
+  sources: AnswerSourceRef[];
 };
 
-export type AnswerResult = { model?: string; ttftMs?: number | null } | void;
+export type AnswerSourceRef = { tag: string; source: string; kind: string };
+
+export type AnswerResult = { model?: string; ttftMs?: number | null; sources?: AnswerSourceRef[] } | void;
 
 /** A question to answer. Solve screen requests carry the frame to read instead of speech. */
 export type AnswerRequest = GatedQuestion & { screen?: { jpegBase64: string } };
@@ -40,6 +44,7 @@ export const IDLE_ANSWER: AnswerState = {
   error: null,
   superseded: 0,
   ttftMs: null,
+  sources: [],
 };
 
 /**
@@ -92,6 +97,7 @@ export class AnswerController {
       error: null,
       superseded: this.state.superseded + (replacing ? 1 : 0),
       ttftMs: null,
+      sources: [],
     });
 
     const onText = (text: string) => {
@@ -119,7 +125,7 @@ export class AnswerController {
     try {
       const result = await this.send(question, abort.signal, onText);
       if (seq === this.seq) {
-        this.update({ ...this.state, status: 'answered', ttftMs: result?.ttftMs ?? null });
+        this.update({ ...this.state, status: 'answered', ttftMs: result?.ttftMs ?? null, sources: result?.sources ?? [] });
         report('answered', result?.ttftMs ?? null, this.now());
       } else {
         report(flight.endedBy ?? 'superseded', null, null); // finished after being replaced
@@ -129,7 +135,7 @@ export class AnswerController {
         report(flight.endedBy ?? 'stopped', null, null);
         return;
       }
-      this.update({ ...this.state, status: 'error', error: e instanceof Error ? e.message : 'Could not get an answer.' });
+      this.update({ ...this.state, status: 'error', error: e instanceof Error ? e.message : 'unknown' });
       report('error', null, null);
     } finally {
       if (this.inFlight === flight) this.inFlight = null;

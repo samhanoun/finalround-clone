@@ -1,282 +1,140 @@
-import { createServerClient } from '@supabase/ssr';
-import { cookies } from 'next/headers';
-import type { SAMLConnection, SAMLStatus } from './organizations';
+import type { User } from '@supabase/supabase-js';
+import { createAdminClient } from '@/lib/supabase/admin';
 
-export interface SAMLConfig {
-  idp_entity_id: string;
-  idp_sso_url: string;
-  idp_certificate: string;
-  attribute_mapping?: Record<string, string>;
-}
+/**
+ * Team single sign-on through Supabase Auth's SAML 2.0 support: Supabase is
+ * the service provider and verifies the identity provider's signed
+ * assertions; this app never parses SAML itself.
+ *
+ * - A team owner gives their email domain(s) and the identity provider's
+ *   metadata (a URL, or the XML). The server registers the provider through
+ *   the Supabase Management API, which needs SUPABASE_MANAGEMENT_TOKEN (a
+ *   personal access token; keep it server-only) and SAML turned on for the
+ *   project (Pro plan and above).
+ * - Members sign in with "Use single sign-on" (signInWithSSO by email domain);
+ *   /api/auth/callback finishes the sign-in and adds them to the team.
+ */
 
-export interface SAMLAssertion {
-  email: string;
-  first_name?: string;
-  last_name?: string;
-  groups?: string[];
-}
+const MANAGEMENT_API = 'https://api.supabase.com/v1';
 
-// Generate SP metadata
-export function generateSPMetadata(organizationId: string, baseUrl: string): string {
-  const entityId = `${baseUrl}/saml/metadata/${organizationId}`;
-  const acsUrl = `${baseUrl}/saml/acs/${organizationId}`;
-
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<md:EntityDescriptor xmlns:md="urn:oasis:names:tc:SAML:2.0:metadata" entityID="${entityId}">
-  <md:SPSSODescriptor AuthnRequestsSigned="false" WantAssertionsSigned="true" protocolSupportEnumeration="urn:oasis:names:tc:SAML:2.0:protocol">
-    <md:AssertionConsumerService Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST" Location="${acsUrl}" index="0" isDefault="true"/>
-  </md:SPSSODescriptor>
-</md:EntityDescriptor>`;
-}
-
-// Generate AuthnRequest for SAML SSO
-export function generateAuthnRequest(
-  organizationId: string,
-  baseUrl: string,
-  relayState?: string
-): { request: string; entityId: string } {
-  const entityId = `${baseUrl}/saml/metadata/${organizationId}`;
-  const acsUrl = `${baseUrl}/saml/acs/${organizationId}`;
-  const requestId = `_${Math.random().toString(36).substring(2)}`;
-  const issueInstant = new Date().toISOString();
-
-  let request = `<?xml version="1.0" encoding="UTF-8"?>
-<samlp:AuthnRequest xmlns:samlp="urn:oasis:names:tc:SAML:2.0:protocol"
-  ID="${requestId}"
-  Version="2.0"
-  IssueInstant="${issueInstant}"
-  AssertionConsumerServiceURL="${acsUrl}"
-  ProtocolBinding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST">
-  <saml:Issuer xmlns:saml="urn:oasis:names:tc:SAML:2.0:assertion">${entityId}</saml:Issuer>
-  <samlp:NameIDPolicy Format="urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress" AllowCreate="true"/>
-</samlp:AuthnRequest>`;
-
-  // Add RelayState if provided
-  if (relayState) {
-    request = request.replace('</samlp:AuthnRequest>', `<samlp:RelayState>${relayState}</samlp:RelayState></samlp:AuthnRequest>`);
+export class SsoSetupError extends Error {
+  constructor(
+    readonly code: 'not_configured' | 'saml_not_enabled' | 'token_rejected' | 'invalid_metadata' | 'domain_taken' | 'failed',
+    message: string,
+  ) {
+    super(message);
+    this.name = 'SsoSetupError';
   }
+}
 
-  // Base64 encode
-  const encodedRequest = Buffer.from(request).toString('base64');
+function supabaseUrl(): string | null {
+  return process.env.NEXT_PUBLIC_SUPABASE_URL?.trim().replace(/\/+$/, '') || null;
+}
 
+/** The project ref: SUPABASE_PROJECT_REF, or the subdomain of a *.supabase.co URL. */
+export function projectRef(): string | null {
+  const explicit = process.env.SUPABASE_PROJECT_REF?.trim();
+  if (explicit) return explicit;
+  const url = supabaseUrl();
+  const match = url ? /^https:\/\/([a-z0-9]{20})\.supabase\.co$/i.exec(url) : null;
+  return match?.[1] ?? null;
+}
+
+export function isSsoManageable(): boolean {
+  return Boolean(process.env.SUPABASE_MANAGEMENT_TOKEN?.trim() && projectRef());
+}
+
+/** What the identity provider's admin needs (Supabase Auth is the service provider). */
+export function serviceProviderInfo() {
+  const base = supabaseUrl();
+  if (!base) return null;
   return {
-    request: encodedRequest,
-    entityId,
+    entityId: `${base}/auth/v1/sso/saml/metadata`,
+    metadataUrl: `${base}/auth/v1/sso/saml/metadata?download=true`,
+    acsUrl: `${base}/auth/v1/sso/saml/acs`,
+    nameIdFormat: 'emailAddress',
   };
 }
 
-// Parse SAML Response (simplified - in production use a proper SAML library)
-export function parseSAMLResponse(
-  samlResponse: string,
-  idpCertificate: string
-): SAMLAssertion | null {
-  try {
-    // Decode base64 response
-    const decoded = Buffer.from(samlResponse, 'base64').toString('utf-8');
-    
-    // In a real implementation, you would:
-    // 1. Verify XML signature using idpCertificate
-    // 2. Check conditions (NotBefore, NotOnOrAfter)
-    // 3. Extract attributes
-    
-    // Simplified parsing - extract email from Assertion
-    const emailMatch = decoded.match(/<saml:Attribute Name="email">[\s\S]*?<saml:AttributeValue[^>]*>([^<]+)<\/saml:AttributeValue>/);
-    const email = emailMatch ? emailMatch[1] : null;
-    
-    if (!email) {
-      // Try NameID
-      const nameIdMatch = decoded.match(/<saml:NameID[^>]*>([^<]+)<\/saml:NameID>/);
-      if (nameIdMatch) {
-        return { email: nameIdMatch[1] };
-      }
-      return null;
-    }
+export { domainFromEmail, normalizeDomains } from '@/lib/ssoDomain';
 
-    // Extract first/last name if available
-    const firstNameMatch = decoded.match(/<saml:Attribute Name="firstName">[\s\S]*?<saml:AttributeValue[^>]*>([^<]+)<\/saml:AttributeValue>/);
-    const lastNameMatch = decoded.match(/<saml:Attribute Name="lastName">[\s\S]*?<saml:AttributeValue[^>]*>([^<]+)<\/saml:AttributeValue>/);
+type ProviderInput = { metadataUrl?: string; metadataXml?: string; domains: string[] };
 
-    // Extract groups if available
-    const groupMatches = decoded.match(/<saml:Attribute Name="groups">[\s\S]*?<saml:AttributeValue[^>]*>([^<]+)<\/saml:AttributeValue>/g);
-    const groups = groupMatches?.map(g => g.replace(/[\s\S]*?>([^<]+)<\/saml:AttributeValue>/, '$1'));
+async function managementFetch(path: string, init: RequestInit = {}): Promise<unknown> {
+  const token = process.env.SUPABASE_MANAGEMENT_TOKEN?.trim();
+  const ref = projectRef();
+  if (!token || !ref) throw new SsoSetupError('not_configured', 'Single sign-on isn’t set up on this server.');
 
-    return {
-      email,
-      first_name: firstNameMatch ? firstNameMatch[1] : undefined,
-      last_name: lastNameMatch ? lastNameMatch[1] : undefined,
-      groups: groups || undefined,
-    };
-  } catch (error) {
-    console.error('SAML response parse error:', error);
-    return null;
+  const res = await fetch(`${MANAGEMENT_API}/projects/${ref}/config/auth/sso${path}`, {
+    ...init,
+    headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json', ...(init.headers ?? {}) },
+  });
+  const body = await res.json().catch(() => null);
+  if (res.ok) return body;
+
+  const message = typeof body?.message === 'string' ? body.message : `HTTP ${res.status}`;
+  if (res.status === 404) throw new SsoSetupError('saml_not_enabled', 'SAML isn’t turned on for this Supabase project.');
+  if (res.status === 401 || res.status === 403) throw new SsoSetupError('token_rejected', 'The server’s Supabase management token was refused.');
+  if (/domain/i.test(message) && /(exist|taken|already|use)/i.test(message)) {
+    throw new SsoSetupError('domain_taken', 'Another identity provider already uses that domain.');
   }
+  if (res.status === 400 || res.status === 422) throw new SsoSetupError('invalid_metadata', message);
+  throw new SsoSetupError('failed', message);
 }
 
-// SSO/SAML Database operations
-export async function getSAMLConnection(
-  supabase: ReturnType<typeof createServerClient>,
-  organizationId: string
-): Promise<SAMLConnection | null> {
-  const { data, error } = await supabase
-    .from('saml_connections')
-    .select('*')
-    .eq('organization_id', organizationId)
-    .single();
-
-  if (error) return null;
-  return data;
+function providerBody(input: ProviderInput) {
+  return {
+    ...(input.metadataUrl ? { metadata_url: input.metadataUrl } : {}),
+    ...(input.metadataXml ? { metadata_xml: input.metadataXml } : {}),
+    domains: input.domains,
+  };
 }
 
-export async function createSAMLConnection(
-  supabase: ReturnType<typeof createServerClient>,
-  organizationId: string,
-  config: SAMLConfig
-): Promise<SAMLConnection> {
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
-  const spEntityId = `${baseUrl}/saml/metadata/${organizationId}`;
-  const spAcsUrl = `${baseUrl}/saml/acs/${organizationId}`;
-
-  const { data, error } = await supabase
-    .from('saml_connections')
-    .insert({
-      organization_id: organizationId,
-      idp_entity_id: config.idp_entity_id,
-      idp_sso_url: config.idp_sso_url,
-      idp_certificate: config.idp_certificate,
-      sp_entity_id: spEntityId,
-      sp_acs_url: spAcsUrl,
-      attribute_mapping: config.attribute_mapping || {
-        email: 'email',
-        firstName: 'first_name',
-        lastName: 'last_name',
-      },
-      status: 'pending',
-    })
-    .select()
-    .single();
-
-  if (error) throw error;
-  return data;
-}
-
-export async function updateSAMLConnection(
-  supabase: ReturnType<typeof createServerClient>,
-  organizationId: string,
-  connectionId: string,
-  updates: Partial<Pick<SAMLConnection, 'status' | 'error_message' | 'last_sync_at'>>
-): Promise<void> {
-  const { error } = await supabase
-    .from('saml_connections')
-    .update({
-      ...updates,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', connectionId)
-    .eq('organization_id', organizationId);
-
-  if (error) throw error;
-}
-
-export async function deleteSAMLConnection(
-  supabase: ReturnType<typeof createServerClient>,
-  organizationId: string,
-  connectionId: string
-): Promise<void> {
-  const { error } = await supabase
-    .from('saml_connections')
-    .delete()
-    .eq('id', connectionId)
-    .eq('organization_id', organizationId);
-
-  if (error) throw error;
-}
-
-export async function enableOrganizationSSO(
-  supabase: ReturnType<typeof createServerClient>,
-  organizationId: string,
-  provider: 'saml' | 'oidc'
-): Promise<void> {
-  const { error } = await supabase
-    .from('organizations')
-    .update({
-      sso_enabled: true,
-      sso_provider: provider,
-    })
-    .eq('id', organizationId);
-
-  if (error) throw error;
-}
-
-export async function disableOrganizationSSO(
-  supabase: ReturnType<typeof createServerClient>,
-  organizationId: string
-): Promise<void> {
-  const { error } = await supabase
-    .from('organizations')
-    .update({
-      sso_enabled: false,
-      sso_provider: null,
-    })
-    .eq('id', organizationId);
-
-  if (error) throw error;
-}
-
-// OIDC Support (simplified)
-export interface OIDCConfig {
-  issuer: string;
-  client_id: string;
-  client_secret: string;
-  scope?: string;
-}
-
-export interface OIDCTokens {
-  access_token: string;
-  id_token: string;
-  token_type: string;
-  expires_in: number;
-  refresh_token?: string;
-}
-
-export async function exchangeOIDCCode(
-  config: OIDCConfig,
-  code: string,
-  redirectUri: string
-): Promise<OIDCTokens> {
-  const response = await fetch(`${config.issuer}/oauth/token`, {
+export async function registerSamlProvider(input: ProviderInput): Promise<string> {
+  const created = (await managementFetch('/providers', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-    },
-    body: new URLSearchParams({
-      grant_type: 'authorization_code',
-      code,
-      redirect_uri: redirectUri,
-      client_id: config.client_id,
-      client_secret: config.client_secret,
-    }),
-  });
-
-  if (!response.ok) {
-    throw new Error('OIDC token exchange failed');
-  }
-
-  return response.json();
+    body: JSON.stringify({ type: 'saml', ...providerBody(input) }),
+  })) as { id?: string } | null;
+  if (!created?.id) throw new SsoSetupError('failed', 'Supabase returned no provider id.');
+  return created.id;
 }
 
-export async function getOIDCUserInfo(
-  issuer: string,
-  accessToken: string
-): Promise<{ email: string; name?: string; given_name?: string; family_name?: string }> {
-  const response = await fetch(`${issuer}/userinfo`, {
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-    },
-  });
+export async function updateSamlProvider(providerId: string, input: ProviderInput): Promise<void> {
+  await managementFetch(`/providers/${encodeURIComponent(providerId)}`, { method: 'PUT', body: JSON.stringify(providerBody(input)) });
+}
 
-  if (!response.ok) {
-    throw new Error('OIDC userinfo fetch failed');
+export async function removeSamlProvider(providerId: string): Promise<void> {
+  try {
+    await managementFetch(`/providers/${encodeURIComponent(providerId)}`, { method: 'DELETE' });
+  } catch (error) {
+    // Already gone at Supabase: nothing left to remove.
+    if (!(error instanceof SsoSetupError && error.code === 'saml_not_enabled')) throw error;
   }
+}
 
-  return response.json();
+/** The SSO provider a user signed in through ("sso:<uuid>" identities), if any. */
+export function ssoProviderIdOf(user: Pick<User, 'app_metadata' | 'identities'>): string | null {
+  const fromIdentity = user.identities?.find((identity) => identity.provider?.startsWith('sso:'))?.provider;
+  const raw = fromIdentity ?? (typeof user.app_metadata?.provider === 'string' ? user.app_metadata.provider : '');
+  return raw.startsWith('sso:') ? raw.slice(4) || null : null;
+}
+
+/** Adds an SSO user to the team that owns their identity provider. Returns that team's id. */
+export async function joinSsoOrganization(user: Pick<User, 'id' | 'app_metadata' | 'identities'>): Promise<string | null> {
+  const providerId = ssoProviderIdOf(user);
+  if (!providerId) return null;
+  const admin = createAdminClient();
+  const { data: org } = await admin
+    .from('organizations')
+    .select('id')
+    .eq('sso_enabled', true)
+    .eq('sso_config->>provider_id', providerId)
+    .maybeSingle();
+  if (!org?.id) return null;
+  const { error } = await admin.from('organization_members').upsert(
+    { organization_id: org.id, user_id: user.id, role: 'member', status: 'active', joined_at: new Date().toISOString() },
+    { onConflict: 'organization_id,user_id', ignoreDuplicates: true },
+  );
+  if (error) throw new Error(`Could not add the SSO member: ${error.message}`);
+  return org.id as string;
 }

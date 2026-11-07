@@ -1,20 +1,22 @@
-import Link from 'next/link';
+import { getTranslations } from 'next-intl/server';
+import { Link } from '@/i18n/routing';
 import { AppShell } from '@/components/AppShell';
 import { RequireAuth } from '@/components/RequireAuth';
 import { ResumeClient } from '@/components/ResumeClient';
 import { createClient } from '@/lib/supabase/server';
 
 export default async function ResumePage() {
+  const tPage = await getTranslations('PageTitles');
   const supabase = await createClient();
   const { data: userData } = await supabase.auth.getUser();
 
   if (!userData.user) {
     return (
       <AppShell
-      title="Résumé"
+      title={tPage('resume')}
       actions={
         <Link className="button" href="/cover-letters">
-          Cover letters
+          {tPage('coverLetters')}
         </Link>
       }
     >
@@ -39,10 +41,10 @@ export default async function ResumePage() {
 
   return (
     <AppShell
-      title="Résumé"
+      title={tPage('resume')}
       actions={
         <Link className="button" href="/cover-letters">
-          Cover letters
+          {tPage('coverLetters')}
         </Link>
       }
     >

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useFormatter, useTranslations } from 'next-intl';
 import styles from './ReferralPanel.module.css';
 
 /** Referral links open the sign-up form. */
@@ -8,12 +9,7 @@ function referralLink(code: string): string {
   return `${window.location.origin}/auth?mode=signup&ref=${encodeURIComponent(code)}`;
 }
 
-const STATUS_LABEL: Record<string, string> = {
-  pending: 'Clicked',
-  signed_up: 'Signed up',
-  converted: 'Upgraded',
-  expired: 'Expired',
-};
+const STATUSES = ['pending', 'signed_up', 'converted', 'expired'];
 
 type Referral = {
   id: string;
@@ -41,6 +37,8 @@ type ReferralCode = {
 };
 
 export function ReferralPanel() {
+  const t = useTranslations('Referrals');
+  const format = useFormatter();
   const [referralCode, setReferralCode] = useState<ReferralCode | null>(null);
   const [referrals, setReferrals] = useState<Referral[]>([]);
   const [loading, setLoading] = useState(true);
@@ -54,21 +52,21 @@ export function ReferralPanel() {
         const data = await response.json();
 
         if (data.error) {
-          setError(data.error);
+          setError(t('loadFailed'));
         } else {
           setReferralCode(data.referral_code);
           setReferrals(data.referrals || []);
         }
       } catch (err) {
         console.error('Failed to fetch referral data:', err);
-        setError('Failed to load referral data');
+        setError(t('loadFailed'));
       } finally {
         setLoading(false);
       }
     };
 
     fetchReferralData();
-  }, []);
+  }, [t]);
 
   const copyReferralLink = useCallback(() => {
     if (!referralCode) return;
@@ -92,7 +90,7 @@ export function ReferralPanel() {
     if (!referralCode) return;
 
     const referralUrl = referralLink(referralCode.code);
-    const shareText = `I use Apex Round to prepare for interviews. Sign up with my code ${referralCode.code}.`;
+    const shareText = t('shareText', { code: referralCode.code });
     
     let shareUrl = '';
     const encodedUrl = encodeURIComponent(referralUrl);
@@ -106,7 +104,7 @@ export function ReferralPanel() {
         shareUrl = `https://twitter.com/intent/tweet?text=${encodedText}&url=${encodedUrl}`;
         break;
       case 'email':
-        window.location.href = `mailto:?subject=Join Apex Round&body=${encodedText}%0A%0A${encodedUrl}`;
+        window.location.href = `mailto:?subject=${encodeURIComponent(t('emailSubject'))}&body=${encodedText}%0A%0A${encodedUrl}`;
         return;
       default:
         return;
@@ -131,17 +129,17 @@ export function ReferralPanel() {
     } catch (error) {
       console.error('Failed to record share:', error);
     }
-  }, [referralCode]);
+  }, [referralCode, t]);
 
   if (loading) {
-    return <div className="small">Loading your invite link…</div>;
+    return <div className="small">{t('loading')}</div>;
   }
 
   if (error) {
     return (
       <div className="card">
         <div className="cardInner stack">
-          <h3 className="cardTitle">Invite a friend</h3>
+          <h3 className="cardTitle">{t('title')}</h3>
           <div className="error">{error}</div>
         </div>
       </div>
@@ -153,58 +151,58 @@ export function ReferralPanel() {
   return (
     <div className="card">
       <div className="cardInner stack">
-        <h3 className="cardTitle">Invite a friend</h3>
-        <p className="cardDesc">Share your link. Everyone who signs up with it shows up here.</p>
+        <h3 className="cardTitle">{t('title')}</h3>
+        <p className="cardDesc">{t('desc')}</p>
 
         <div className={styles.linkRow}>
-          <input className={`input ${styles.link}`} type="text" readOnly value={referralUrl} aria-label="Your invite link" />
+          <input className={`input ${styles.link}`} type="text" readOnly value={referralUrl} aria-label={t('link')} />
           <button className="button buttonPrimary" onClick={copyReferralLink}>
-            {copied === 'link' ? 'Copied' : 'Copy link'}
+            {copied === 'link' ? t('copied') : t('copyLink')}
           </button>
         </div>
 
         <div className={styles.meta}>
           <span>
-            Code <code className={styles.code}>{referralCode?.code}</code>
+            {t.rich('code', { code: referralCode?.code ?? '', value: (chunks) => <code className={styles.code}>{chunks}</code> })}
           </span>
-          <button className="button buttonGhost" onClick={copyCode} aria-label="Copy invite code">
-            {copied === 'code' ? 'Copied' : 'Copy code'}
+          <button className="button buttonGhost" onClick={copyCode} aria-label={t('copyCodeLabel')}>
+            {copied === 'code' ? t('copied') : t('copyCode')}
           </button>
         </div>
 
         <div className={styles.share}>
-          <span className={styles.shareLabel}>Share on</span>
+          <span className={styles.shareLabel}>{t('shareOn')}</span>
           <button className="button" onClick={() => shareReferral('linkedin')}>
-            LinkedIn
+            {t('linkedin')}
           </button>
-          <button className="button" onClick={() => shareReferral('twitter')} aria-label="Share on X">
+          <button className="button" onClick={() => shareReferral('twitter')} aria-label={t('shareOnX')}>
             X
           </button>
-          <button className="button" onClick={() => shareReferral('email')} aria-label="Share by email">
-            Email
+          <button className="button" onClick={() => shareReferral('email')} aria-label={t('shareByEmail')}>
+            {t('email')}
           </button>
         </div>
 
         <dl className={styles.stats}>
           <div>
-            <dt>Signed up</dt>
+            <dt>{t('statuses.signed_up')}</dt>
             <dd>{referralCode?.referral_count || 0}</dd>
           </div>
           <div>
-            <dt>Upgraded</dt>
+            <dt>{t('statuses.converted')}</dt>
             <dd>{referralCode?.conversion_count || 0}</dd>
           </div>
         </dl>
 
         {referrals.length > 0 && (
-          <ul className={styles.history} aria-label="Invites">
+          <ul className={styles.history} aria-label={t('invites')}>
             {referrals.map((ref) => (
               <li key={ref.id}>
                 <span className={`badge ${ref.status === 'converted' ? 'badgeLive' : ref.status === 'signed_up' ? 'badgeIce' : ''}`}>
-                  {STATUS_LABEL[ref.status] ?? ref.status}
+                  {STATUSES.includes(ref.status) ? t(`statuses.${ref.status}`) : ref.status}
                 </span>
-                {ref.source && <span className="small muted">via {ref.source}</span>}
-                <span className={`small muted ${styles.when}`}>{new Date(ref.created_at).toLocaleDateString()}</span>
+                {ref.source && <span className="small muted">{t('via', { source: ref.source })}</span>}
+                <span className={`small muted ${styles.when}`}>{format.dateTime(new Date(ref.created_at), { dateStyle: 'medium' })}</span>
               </li>
             ))}
           </ul>

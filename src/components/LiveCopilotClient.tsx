@@ -1,18 +1,23 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { useFormatter, useTranslations } from 'next-intl';
 import styles from './LiveCopilotClient.module.css';
 import { formatCopilotActionError } from './liveCopilotDataControls';
 import { sloClient, SLO_TYPE_OVERLAY_INTERACTION, SLO_TYPE_TRANSCRIPT_TO_SUGGESTION, getStatusEmoji, formatLatency, type SLOCompliance, type SLOMetric } from '@/lib/sloClient';
 import { AudioSourcesPanel } from './copilot/AudioSourcesPanel';
+import { useMeetingSettings } from './copilot/useMeetingSettings';
+import { detectMeetingPlatform, meetingUrl } from '@/lib/meetingSettings';
 import { useAudioCapture } from './copilot/useAudioCapture';
 import { useLiveTranscription } from './copilot/useLiveTranscription';
+import { useVoiceSample } from './copilot/useVoiceSample';
 import { useCopilotAnswers } from './copilot/useCopilotAnswers';
 import { AnswerPanel } from './copilot/AnswerPanel';
 import { AutoEndNotice } from './copilot/AutoEndNotice';
 import { LatencyDrawer, LatencyTable } from './copilot/LatencyDrawer';
 import { isLatencyPayload, summarizeLatencyEvents } from '@/lib/copilot/latency';
-import { grabScreenFrame } from '@/lib/copilot/screenFrame';
+import { grabScreenFrame, screenSignature } from '@/lib/copilot/screenFrame';
+import { AutoScreenWatcher } from '@/lib/copilot/autoScreen';
 import { onDesktopCommand } from '@/lib/desktop';
 import type { ConnectionState, TailLine } from './copilot/AnswerView';
 import { SuggestionFeed, TranscriptFeed } from './copilot/LiveFeeds';
@@ -131,14 +136,7 @@ type ReportViewModel = {
   source: 'api' | 'legacy';
 };
 
-const RUBRIC_DIMENSIONS: Array<{ key: RubricKey; label: string }> = [
-  { key: 'communication', label: 'Communication' },
-  { key: 'technical_accuracy', label: 'Technical accuracy' },
-  { key: 'problem_solving', label: 'Problem solving' },
-  { key: 'structure', label: 'Structure' },
-  { key: 'ownership', label: 'Ownership' },
-  { key: 'role_fit', label: 'Role fit' },
-];
+const RUBRIC_KEYS: RubricKey[] = ['communication', 'technical_accuracy', 'problem_solving', 'structure', 'ownership', 'role_fit'];
 
 function defaultRubric(): Record<RubricKey, ReportDimensionView> {
   return {
@@ -171,11 +169,6 @@ function asHiringSignal(value: unknown): HiringSignal | null {
     : null;
 }
 
-function formatHiringSignal(value: HiringSignal | null): string {
-  if (!value) return 'Unknown';
-  return value.split('_').map((part) => `${part[0]?.toUpperCase() ?? ''}${part.slice(1)}`).join(' ');
-}
-
 function asPercent(value: number | null, max: number): number {
   if (value === null || max <= 0) return 0;
   return Math.max(0, Math.min(100, Math.round((value / max) * 100)));
@@ -196,9 +189,9 @@ function parseReportPayload(payload: unknown): Omit<ReportViewModel, 'source'> |
 
   const rubric = defaultRubric();
   const rubricInput = asObject(source.rubric);
-  for (const item of RUBRIC_DIMENSIONS) {
-    const dim = asObject(rubricInput[item.key]);
-    rubric[item.key] = {
+  for (const key of RUBRIC_KEYS) {
+    const dim = asObject(rubricInput[key]);
+    rubric[key] = {
       score: asRubricScore(dim.score),
       evidence: asText(dim.evidence, ''),
       recommendation: asText(dim.recommendation, ''),
@@ -243,15 +236,12 @@ function appendUniqueEvents(current: CopilotEvent[], incoming: CopilotEvent[]): 
 /** Why a session ended; stored on the session by the stop route. */
 type StopReason = 'user' | 'tab_closed' | 'sharing_stopped';
 
+/** Typed to confirm deleting all copilot data; the purge route checks it, so it stays the same in every language. */
+const PURGE_PHRASE = 'DELETE ALL COPILOT DATA';
+
 function isTypingTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   return target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName);
-}
-
-function formatModeLabel(mode: string): string {
-  const raw = mode.trim();
-  if (!raw) return 'General';
-  return `${raw[0].toUpperCase()}${raw.slice(1)}`;
 }
 
 function calculateDurationMinutes(startedAt?: string | null, stoppedAt?: string | null): number {
@@ -262,7 +252,17 @@ function calculateDurationMinutes(startedAt?: string | null, stoppedAt?: string 
   return Math.max(0, Math.round((end - start) / 60_000));
 }
 
-export function LiveCopilotClient() {
+export function LiveCopilotClient({ initialGoalId = null }: { initialGoalId?: string | null } = {}) {
+  const t = useTranslations('Copilot');
+  const tSetup = useTranslations('SessionSetup');
+  const tErrors = useTranslations('CopilotErrors');
+  const tAnswer = useTranslations('Answer');
+  const format = useFormatter();
+  const modeLabel = (mode: string) => {
+    const raw = mode.trim() || 'general';
+    return t.has(`modes.${raw}`) ? t(`modes.${raw}`) : `${raw[0].toUpperCase()}${raw.slice(1)}`;
+  };
+  const statusLabel = (status: string) => (t.has(`statuses.${status}`) ? t(`statuses.${status}`) : status);
   // The page renders only on the client (inside RequireAuth), so reading storage here is safe.
   const [setup, setSetup] = useState<SessionSetupValue>(loadSavedSetup);
   const [session, setSession] = useState<CopilotSession | null>(null);
@@ -273,6 +273,16 @@ export function LiveCopilotClient() {
   const [draftText, setDraftText] = useState('');
   const [draftSpeaker, setDraftSpeaker] = useState<'interviewer' | 'candidate'>('interviewer');
   const audio = useAudioCapture();
+  // Settings → Meeting apps: share steps, the meeting link, auto start, auto end and the microphone.
+  const meeting = useMeetingSettings();
+  const audioStart = audio.start;
+  // Phone / in-person mode: one microphone, no screen share (the setup is fixed while a session runs).
+  const singleMic = setup.singleMic;
+  const startListening = useCallback(
+    () => audioStart({ useMicrophone: meeting.useMicrophone, singleMic }),
+    [audioStart, meeting.useMicrophone, singleMic],
+  );
+  const voiceSample = useVoiceSample(audio);
   const [micSyncing, setMicSyncing] = useState(false);
   const [streamOpen, setStreamOpen] = useState(false);
   const [lastMicSyncAt, setLastMicSyncAt] = useState<string | null>(null);
@@ -379,9 +389,9 @@ export function LiveCopilotClient() {
             }
           : prev,
       );
-      setError(message ?? 'Session expired due to inactivity. Start a new session to continue.');
+      setError(message ?? t('errors.expired'));
     },
-    [stopHeartbeat],
+    [stopHeartbeat, t],
   );
 
   const startHeartbeat = useCallback(
@@ -427,7 +437,7 @@ export function LiveCopilotClient() {
     try {
       const res = await fetch('/api/copilot/sessions/history');
       const json = (await res.json().catch(() => ({}))) as { sessions?: CopilotHistorySession[]; error?: string };
-      if (!res.ok) throw new Error(json.error ?? 'Failed to load session history');
+      if (!res.ok) throw new Error(t('errors.historyFailed'));
 
       const nextSessions = Array.isArray(json.sessions) ? json.sessions : [];
       setHistorySessions(nextSessions);
@@ -442,14 +452,14 @@ export function LiveCopilotClient() {
         setDetailError(null);
       }
     } catch (e) {
-      setHistoryError(e instanceof Error ? e.message : 'Failed to load session history');
+      setHistoryError(e instanceof Error ? e.message : t('errors.historyFailed'));
       setHistorySessions([]);
       setSelectedHistoryId(null);
       setHistoryDetail(null);
     } finally {
       setHistoryLoading(false);
     }
-  }, []);
+  }, [t]);
 
   // Bumped by the Retry button to fetch the selected session's detail again.
   const [detailReload, setDetailReload] = useState(0);
@@ -484,7 +494,7 @@ export function LiveCopilotClient() {
           summaries?: CopilotSummary[];
           error?: string;
         };
-        if (!res.ok || !json.session) throw new Error(json.error ?? 'Failed to load session details');
+        if (!res.ok || !json.session) throw new Error(t('errors.detailFailed'));
 
         setHistoryDetail({
           session: json.session,
@@ -492,7 +502,7 @@ export function LiveCopilotClient() {
           summaries: Array.isArray(json.summaries) ? json.summaries : [],
         });
       } catch (e) {
-        setDetailError(e instanceof Error ? e.message : 'Failed to load session details');
+        setDetailError(e instanceof Error ? e.message : t('errors.detailFailed'));
         setHistoryDetail(null);
       } finally {
         setDetailLoading(false);
@@ -500,7 +510,7 @@ export function LiveCopilotClient() {
     };
 
     void loadDetail();
-  }, [activePanel, selectedHistoryId, detailReload]);
+  }, [activePanel, selectedHistoryId, detailReload, t]);
 
   // T4: Timer effect for overlay countdown
   useEffect(() => {
@@ -609,7 +619,7 @@ export function LiveCopilotClient() {
 
         if (!res.ok) {
           if (res.status === 404) return;
-          throw new Error(json.error ?? 'Failed to load report');
+          throw new Error(t('errors.reportFailed'));
         }
 
         const parsed = parseReportPayload(json.report);
@@ -620,7 +630,7 @@ export function LiveCopilotClient() {
         }
       } catch (e) {
         if (cancelled) return;
-        setHistoryReportError(e instanceof Error ? e.message : 'Failed to load report');
+        setHistoryReportError(e instanceof Error ? e.message : t('errors.reportFailed'));
       } finally {
         if (!cancelled) setHistoryReportLoading(false);
       }
@@ -631,7 +641,7 @@ export function LiveCopilotClient() {
     return () => {
       cancelled = true;
     };
-  }, [activePanel, selectedHistoryId, historyDetail]);
+  }, [activePanel, selectedHistoryId, historyDetail, t]);
 
   function connectStream(sessionId: string) {
     streamRef.current?.close();
@@ -681,7 +691,7 @@ export function LiveCopilotClient() {
 
     es.onerror = () => {
       setConnecting(false);
-      setError('Live stream disconnected. Stop and restart the session to reconnect.');
+      setError(t('errors.streamDisconnected'));
     };
   }
 
@@ -700,22 +710,24 @@ export function LiveCopilotClient() {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         // T10's "no full code" guardrail is part of the setup and goes in the session metadata.
-        body: JSON.stringify(setupStartBody(setup)),
+        body: JSON.stringify(
+          setupStartBody(setup, {
+            at: (role, company) => tSetup('titleAt', { role, company }),
+            fallback: (mode) => tSetup('titleDefault', { mode: tSetup(`modes.${mode}`) }),
+          }),
+        ),
       });
       const json = (await res.json().catch(() => ({}))) as { session?: CopilotSession; error?: string };
       if (!res.ok || !json.session) {
-        const startErrors: Record<string, string> = {
-          resume_not_found: 'That résumé could not be found. Pick another one.',
-          resume_not_parsed: "That résumé hasn't been parsed yet. Open it on the Résumé page first.",
-          quota_exceeded: 'You have no copilot minutes left on your plan.',
-        };
-        throw new Error((json.error && startErrors[json.error]) ?? json.error ?? 'Failed to start session');
+        throw new Error(json.error && t.has(`startErrors.${json.error}`) ? t(`startErrors.${json.error}`) : t('errors.startFailed'));
       }
 
       setSession(json.session);
       connectStream(json.session.id);
+      // Still inside the Start session click, so the share prompt is allowed.
+      if (meeting.autoStartListening) void startListening();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to start session');
+      setError(e instanceof Error ? e.message : t('errors.startFailed'));
     } finally {
       setSubmitting(false);
     }
@@ -734,7 +746,7 @@ export function LiveCopilotClient() {
         body: JSON.stringify({ sessionId: session.id, reason }),
       });
       const json = (await res.json().catch(() => ({}))) as { session?: CopilotSession; error?: string };
-      if (!res.ok || !json.session) throw new Error(json.error ?? 'Failed to stop session');
+      if (!res.ok || !json.session) throw new Error(t('errors.stopFailed'));
 
       setSession(json.session);
       streamRef.current?.close();
@@ -749,7 +761,7 @@ export function LiveCopilotClient() {
       }
       setMicSyncing(false);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to stop session');
+      setError(e instanceof Error ? e.message : t('errors.stopFailed'));
     } finally {
       setSubmitting(false);
     }
@@ -780,7 +792,7 @@ export function LiveCopilotClient() {
         const json = (await res.json().catch(() => ({}))) as TranscriptIngestionResponse;
         if (!res.ok) {
           queue.unshift(...batch);
-          throw new Error(json.error ?? 'Failed to sync transcript chunk');
+          throw new Error(t('errors.syncFailed'));
         }
 
         setTranscript((prev) => appendUniqueEvents(prev, Array.isArray(json.events) ? json.events : []));
@@ -798,12 +810,12 @@ export function LiveCopilotClient() {
         setLastMicSyncAt(new Date().toISOString());
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to sync transcript chunk');
+      setError(e instanceof Error ? e.message : t('errors.syncFailed'));
     } finally {
       transcriptFlushInFlightRef.current = false;
       setMicSyncing(false);
     }
-  }, [currentSessionId, isActive, updateSLOCompliance]);
+  }, [currentSessionId, isActive, updateSLOCompliance, t]);
 
   const enqueueTranscriptChunk = useCallback(
     (chunk: TranscriptChunkInput) => {
@@ -846,6 +858,7 @@ export function LiveCopilotClient() {
     sessionId: isActive && session ? session.id : null,
     capture: audio,
     onUtterance: handleUtterance,
+    speakers: singleMic ? voiceSample.resolver : null,
   });
 
   const addTypedLine = answers.addTypedLine;
@@ -854,9 +867,9 @@ export function LiveCopilotClient() {
   const interviewerCaption = transcription.captions.interviewer;
   const answerNow = useCallback(() => {
     if (!requestAnswerNow(interviewerCaption)) {
-      setError('There is no interviewer question to answer yet.');
+      setError(t('errors.noQuestion'));
     }
-  }, [interviewerCaption, requestAnswerNow]);
+  }, [interviewerCaption, requestAnswerNow, t]);
 
   // Solve screen reads the tab or screen already shared for audio: no second prompt.
   const getDisplayVideoTrack = audio.getDisplayVideoTrack;
@@ -864,16 +877,46 @@ export function LiveCopilotClient() {
   const solveScreen = useCallback(async () => {
     const track = getDisplayVideoTrack();
     if (!track) {
-      setError('Start listening and share the meeting tab or your screen first: Solve screen reads what you share.');
+      setError(t('errors.shareFirst'));
       return;
     }
     try {
       const frame = await grabScreenFrame(track);
-      if (!answerScreen(frame)) setError('Start a session first.');
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not read the shared screen.');
+      if (!answerScreen(frame)) setError(t('errors.startFirst'));
+    } catch {
+      setError(t('errors.screenFailed'));
     }
-  }, [getDisplayVideoTrack, answerScreen]);
+  }, [getDisplayVideoTrack, answerScreen, t]);
+
+  // Automatic Solve screen (on by default in coding interviews): a new screen is solved once it holds still.
+  const [autoScreenChoice, setAutoScreenChoice] = useState<boolean | null>(null);
+  const autoScreen = autoScreenChoice ?? setup.mode === 'coding';
+  const autoWatcher = useRef(new AutoScreenWatcher());
+  const listening = audio.status === 'live';
+  useEffect(() => {
+    if (!autoScreen || !isActive || !listening || singleMic) return;
+    let cancelled = false;
+    let running = false;
+    const timer = window.setInterval(async () => {
+      if (running) return;
+      running = true;
+      try {
+        const track = getDisplayVideoTrack();
+        if (!track) return;
+        const signature = await screenSignature(track);
+        const busy = answers.getState().status === 'answering';
+        if (!cancelled && autoWatcher.current.feed(signature, Date.now(), busy)) void solveScreen();
+      } catch {
+        // Sharing ended or the frame wasn't ready; the next tick tries again.
+      } finally {
+        running = false;
+      }
+    }, 2500);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [autoScreen, isActive, listening, singleMic, getDisplayVideoTrack, answers, solveScreen]);
 
   // Desktop app shortcuts (Ctrl+Shift+A / S) work while the meeting app has focus.
   useEffect(() => {
@@ -908,14 +951,28 @@ export function LiveCopilotClient() {
   const sharingStoppedAt =
     isActive && audio.status !== 'live' && audio.ended?.source === 'interviewer' ? audio.ended.at : null;
 
+  // The panel's Start listening uses the microphone setting too.
+  const captureForPanel = useMemo(() => ({ ...audio, start: startListening }), [audio, startListening]);
+  const shareGuide = useMemo(() => {
+    const link = meeting.askForLink ? meetingUrl(setup.meetingUrl) : null;
+    const linkPlatform = link ? detectMeetingPlatform(link.href) : null;
+    return {
+      platform: linkPlatform ?? meeting.platform,
+      // A Meet link always runs in the browser; Zoom and Teams follow the setting.
+      desktopApp: linkPlatform === 'google_meet' ? false : meeting.desktopApp,
+      useMicrophone: meeting.useMicrophone,
+      meetingLink: link?.href,
+    };
+  }, [meeting, setup.meetingUrl]);
+
   const connection = useMemo<ConnectionState>(() => {
     if (audio.status !== 'live') {
-      return { label: audio.status === 'starting' ? 'Starting audio…' : 'Not listening', tone: 'off' };
+      return { label: audio.status === 'starting' ? t('connection.startingAudio') : t('connection.notListening'), tone: 'off' };
     }
-    if (transcription.status === 'live') return { label: 'Live', tone: 'live' };
-    if (transcription.status === 'error') return { label: 'Transcription stopped', tone: 'off' };
-    return { label: transcription.status === 'reconnecting' ? 'Reconnecting…' : 'Connecting…', tone: 'warn' };
-  }, [audio.status, transcription.status]);
+    if (transcription.status === 'live') return { label: t('connection.live'), tone: 'live' };
+    if (transcription.status === 'error') return { label: t('connection.stopped'), tone: 'off' };
+    return { label: transcription.status === 'reconnecting' ? t('connection.reconnecting') : t('connection.connecting'), tone: 'warn' };
+  }, [audio.status, transcription.status, t]);
 
   // A flush still in flight when the session ends clears micSyncing itself;
   // until then the badge reads it only while the session is active.
@@ -966,7 +1023,7 @@ export function LiveCopilotClient() {
       });
 
       const json = (await res.json().catch(() => ({}))) as TranscriptIngestionResponse;
-      if (!res.ok) throw new Error(json.error ?? 'Failed to submit transcript event');
+      if (!res.ok) throw new Error(t('errors.submitFailed'));
 
       const submitTimeKey = `submit-${transcriptSubmitTime}`;
       transcriptTimestampsRef.current.set(submitTimeKey, transcriptSubmitTime);
@@ -989,11 +1046,11 @@ export function LiveCopilotClient() {
       // Typed interviewer lines are always answered; typed candidate lines add context.
       addTypedLine(draftSpeaker, draftText.trim());
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to submit transcript event');
+      setError(e instanceof Error ? e.message : t('errors.submitFailed'));
     } finally {
       setSubmitting(false);
     }
-  }, [addTypedLine, currentSessionId, draftSpeaker, draftText, submitting, updateSLOCompliance]);
+  }, [addTypedLine, currentSessionId, draftSpeaker, draftText, submitting, updateSLOCompliance, t]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -1013,7 +1070,7 @@ export function LiveCopilotClient() {
         if (audio.status === 'live') {
           audio.stop();
         } else if (audio.status !== 'starting') {
-          void audio.start();
+          void startListening();
         }
       }
 
@@ -1039,7 +1096,7 @@ export function LiveCopilotClient() {
 
   function injectFillerLine() {
     setDraftSpeaker('candidate');
-    setDraftText("Let me take a moment to structure that. I'll start with the goal, then walk through trade-offs and implementation details.");
+    setDraftText(t('fillerLine'));
     draftTextareaRef.current?.focus();
   }
 
@@ -1077,7 +1134,7 @@ export function LiveCopilotClient() {
         error?: string;
       };
 
-      if (!res.ok || !json.summary) throw new Error(json.error ?? 'Failed to generate summary');
+      if (!res.ok || !json.summary) throw new Error(t('errors.summaryFailed'));
 
       setSummary({
         content: json.summary.content ?? '',
@@ -1086,7 +1143,7 @@ export function LiveCopilotClient() {
         next_steps: Array.isArray(json.summary.payload?.next_steps) ? json.summary.payload.next_steps : [],
       });
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to generate summary');
+      setError(e instanceof Error ? e.message : t('errors.summaryFailed'));
     } finally {
       setSummaryLoading(false);
     }
@@ -1095,8 +1152,8 @@ export function LiveCopilotClient() {
   async function deleteSelectedHistorySession() {
     if (!selectedHistorySession || deletingHistoryId) return;
 
-    const displayName = selectedHistorySession.title?.trim() || 'Untitled session';
-    const confirmation = window.prompt(`Type DELETE to remove "${displayName}" permanently.`);
+    const displayName = selectedHistorySession.title?.trim() || t('untitled');
+    const confirmation = window.prompt(t('history.deletePrompt', { name: displayName }));
     if (confirmation !== 'DELETE') return;
 
     setDeleteError(null);
@@ -1108,15 +1165,15 @@ export function LiveCopilotClient() {
         method: 'DELETE',
       });
       const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; extra?: { requestId?: string } };
-      if (!res.ok || !json.ok) throw new Error(formatCopilotActionError(json, 'Failed to delete session'));
+      if (!res.ok || !json.ok) throw new Error(formatCopilotActionError(json, t('errors.deleteFailed'), tErrors));
 
       setHistoryDetail(null);
       setHistoryReport(null);
       setHistoryReportError(null);
-      setDeleteSuccess(`Deleted "${displayName}".`);
+      setDeleteSuccess(t('history.deleted', { name: displayName }));
       await loadHistory();
     } catch (e) {
-      setDeleteError(e instanceof Error ? e.message : 'Failed to delete session');
+      setDeleteError(e instanceof Error ? e.message : t('errors.deleteFailed'));
     } finally {
       setDeletingHistoryId(null);
     }
@@ -1133,7 +1190,7 @@ export function LiveCopilotClient() {
       const res = await fetch('/api/copilot/sessions/export');
       if (!res.ok) {
         const json = (await res.json().catch(() => ({}))) as { error?: string; extra?: { requestId?: string } };
-        throw new Error(formatCopilotActionError(json, 'Failed to export data'));
+        throw new Error(formatCopilotActionError(json, t('errors.exportFailed'), tErrors));
       }
 
       const blob = await res.blob();
@@ -1150,9 +1207,9 @@ export function LiveCopilotClient() {
       anchor.remove();
       window.URL.revokeObjectURL(objectUrl);
 
-      setSettingsSuccess('Copilot data export is ready and downloaded.');
+      setSettingsSuccess(t('data.exported'));
     } catch (e) {
-      setSettingsError(e instanceof Error ? e.message : 'Failed to export data');
+      setSettingsError(e instanceof Error ? e.message : t('errors.exportFailed'));
     } finally {
       setExportingAllData(false);
     }
@@ -1162,12 +1219,12 @@ export function LiveCopilotClient() {
     if (deleteAllPending || exportingAllData) return;
 
     if (isActive) {
-      setSettingsError('Stop your active session before deleting all copilot data.');
+      setSettingsError(t('errors.stopBeforePurge'));
       return;
     }
 
-    if (deleteAllConfirmation !== 'DELETE ALL COPILOT DATA') {
-      setSettingsError('Type DELETE ALL COPILOT DATA to confirm.');
+    if (deleteAllConfirmation !== PURGE_PHRASE) {
+      setSettingsError(t('errors.typeConfirm', { phrase: PURGE_PHRASE }));
       return;
     }
 
@@ -1187,7 +1244,7 @@ export function LiveCopilotClient() {
         error?: string;
         extra?: { requestId?: string };
       };
-      if (!res.ok || !json.ok) throw new Error(formatCopilotActionError(json, 'Failed to delete all copilot data'));
+      if (!res.ok || !json.ok) throw new Error(formatCopilotActionError(json, t('errors.purgeFailed'), tErrors));
 
       setSession(null);
       setTranscript([]);
@@ -1201,12 +1258,16 @@ export function LiveCopilotClient() {
       setDeleteAllConfirmation('');
 
       setSettingsSuccess(
-        `Deleted all copilot data (${json.deleted?.sessions ?? 0} sessions, ${json.deleted?.events ?? 0} events, ${json.deleted?.summaries ?? 0} summaries).`,
+        t('data.purged', {
+          sessions: json.deleted?.sessions ?? 0,
+          events: json.deleted?.events ?? 0,
+          summaries: json.deleted?.summaries ?? 0,
+        }),
       );
 
       await loadHistory();
     } catch (e) {
-      setSettingsError(e instanceof Error ? e.message : 'Failed to delete all copilot data');
+      setSettingsError(e instanceof Error ? e.message : t('errors.purgeFailed'));
     } finally {
       setDeleteAllPending(false);
     }
@@ -1332,7 +1393,7 @@ export function LiveCopilotClient() {
       return {
         transcriptLines: 0,
         suggestions: 0,
-        mode: 'General',
+        mode: 'general',
         durationMinutes: selectedHistorySession?.consumed_minutes ?? 0,
       };
     }
@@ -1354,7 +1415,7 @@ export function LiveCopilotClient() {
     return {
       transcriptLines,
       suggestions: suggestionCount,
-      mode: formatModeLabel(modeValue),
+      mode: modeValue,
       durationMinutes,
     };
   }, [historyDetail, selectedHistorySession]);
@@ -1379,7 +1440,7 @@ export function LiveCopilotClient() {
     };
   }, [historyDetail]);
 
-  const streamState = connecting ? 'Connecting…' : streamOpen ? 'Connected' : 'Disconnected';
+  const streamState = connecting ? 'connecting' : streamOpen ? 'connected' : 'disconnected';
 
   const handlePanelTabKeyDown = useCallback(
     (event: ReactKeyboardEvent<HTMLDivElement>) => {
@@ -1409,14 +1470,22 @@ export function LiveCopilotClient() {
       {isActive && session ? (
         <SessionBar session={session} streamState={streamState} onStop={stopSession} stopping={submitting} />
       ) : (
-        <SessionSetup value={setup} onChange={setSetup} onStart={startSession} starting={submitting} />
+        <SessionSetup
+          value={setup}
+          onChange={setSetup}
+          onStart={startSession}
+          starting={submitting}
+          askForLink={meeting.askForLink}
+          autoStartListening={meeting.autoStartListening}
+          initialGoalId={initialGoalId}
+        />
       )}
 
       {error ? <div className="error" role="status" aria-live="polite">{error}</div> : null}
 
       {isActive ? (
-        <section className={styles.liveGrid} aria-label="Live assistance">
-          {sharingStoppedAt !== null && keepOpenAfterStop !== sharingStoppedAt ? (
+        <section className={styles.liveGrid} aria-label={t('liveAssistance')}>
+          {sharingStoppedAt !== null && meeting.endWhenSharingStops && keepOpenAfterStop !== sharingStoppedAt ? (
             <div className={styles.liveNotice}>
               <AutoEndNotice
                 key={sharingStoppedAt}
@@ -1430,22 +1499,30 @@ export function LiveCopilotClient() {
             <AnswerPanel
               answers={answers}
               onAnswerNow={answerNow}
-              onSolveScreen={solveScreen}
+              // Nothing is shared in phone mode, so there is no screen to solve.
+              onSolveScreen={singleMic ? undefined : solveScreen}
               screenDisabled={audio.status !== 'live'}
               disabled={!isActive}
               connection={connection}
               tail={answerTail}
+              autoScreen={{ on: autoScreen, onToggle: setAutoScreenChoice }}
             />
           </div>
           <div className={styles.signalCol}>
-            <AudioSourcesPanel capture={audio} transcription={transcription} disabled={!isActive} />
+            <AudioSourcesPanel
+              capture={captureForPanel}
+              transcription={transcription}
+              disabled={!isActive}
+              share={shareGuide}
+              voiceSample={singleMic ? voiceSample : undefined}
+            />
             <LatencyDrawer answers={answers} />
           </div>
         </section>
       ) : null}
 
-      <div className={styles.viewBar} aria-label="Copilot view tabs" role="group">
-        <div className={styles.tabRow} role="tablist" aria-label="Copilot views" onKeyDown={handlePanelTabKeyDown}>
+      <div className={styles.viewBar} aria-label={t('viewTabs')} role="group">
+        <div className={styles.tabRow} role="tablist" aria-label={t('views')} onKeyDown={handlePanelTabKeyDown}>
           <button
             id="copilot-tab-live"
             className={styles.segment}
@@ -1456,7 +1533,7 @@ export function LiveCopilotClient() {
             aria-controls="copilot-panel-live"
             onClick={() => selectPanel('live')}
           >
-            Live feed
+            {t('liveTab')}
           </button>
           <button
             id="copilot-tab-analytics"
@@ -1468,25 +1545,23 @@ export function LiveCopilotClient() {
             aria-controls="copilot-panel-analytics"
             onClick={() => selectPanel('analytics')}
           >
-            Analytics
+            {t('analyticsTab')}
           </button>
         </div>
         <p className="small" style={{ margin: 0 }}>
-          {activePanel === 'live'
-            ? 'What was said, and the answers saved this session.'
-            : 'Past sessions, their numbers and their reports.'}
+          {activePanel === 'live' ? t('liveTabDesc') : t('analyticsTabDesc')}
         </p>
       </div>
 
       <div key={activePanel} className={styles.panelStage}>
         {activePanel === 'live' ? (
           <div role="tabpanel" id="copilot-panel-live" aria-labelledby="copilot-tab-live" className="stack">
-          <div className={styles.panelHeader} aria-label="Live layout controls" role="group">
-            <h2 className="cardTitle">Transcript and answers</h2>
-            <div className={styles.tabRow} role="toolbar" aria-label="Live layout options">
-              <button className={styles.segment} type="button" aria-pressed={liveLayout === 'split'} onClick={() => setLiveLayout('split')}>Side by side</button>
-              <button className={styles.segment} type="button" aria-pressed={liveLayout === 'transcript'} onClick={() => setLiveLayout('transcript')}>Transcript</button>
-              <button className={styles.segment} type="button" aria-pressed={liveLayout === 'suggestions'} onClick={() => setLiveLayout('suggestions')}>Answers</button>
+          <div className={styles.panelHeader} aria-label={t('layout.label')} role="group">
+            <h2 className="cardTitle">{t('layout.title')}</h2>
+            <div className={styles.tabRow} role="toolbar" aria-label={t('layout.options')}>
+              <button className={styles.segment} type="button" aria-pressed={liveLayout === 'split'} onClick={() => setLiveLayout('split')}>{t('layout.split')}</button>
+              <button className={styles.segment} type="button" aria-pressed={liveLayout === 'transcript'} onClick={() => setLiveLayout('transcript')}>{t('layout.transcript')}</button>
+              <button className={styles.segment} type="button" aria-pressed={liveLayout === 'suggestions'} onClick={() => setLiveLayout('suggestions')}>{t('layout.answers')}</button>
             </div>
           </div>
           <div className={liveLayout === 'split' ? 'grid2' : 'stack'} style={{ alignItems: 'start' }}>
@@ -1494,25 +1569,23 @@ export function LiveCopilotClient() {
             {liveLayout !== 'transcript' ? <SuggestionFeed rows={suggestionRows} isActive={isActive} /> : null}
           </div>
 
-          <section className="card" aria-label="Session summary">
+          <section className="card" aria-label={t('summary.title')}>
             <div className="cardInner stack" style={{ gap: 12 }}>
               <div className={styles.panelHeader}>
-                <h2 className="cardTitle">Session summary</h2>
-                {summaryLoading ? <span className="small">Generating…</span> : null}
+                <h2 className="cardTitle">{t('summary.title')}</h2>
+                {summaryLoading ? <span className="small">{t('generating')}</span> : null}
               </div>
 
-              {!summary && !summaryLoading ? (
-                <p className={styles.emptyState}>Generate a summary once you have enough transcript context.</p>
-              ) : null}
+              {!summary && !summaryLoading ? <p className={styles.emptyState}>{t('summary.empty')}</p> : null}
 
-              {summaryLoading ? <p className={styles.emptyState}>Building strengths, weaknesses, and next steps…</p> : null}
+              {summaryLoading ? <p className={styles.emptyState}>{t('summary.building')}</p> : null}
 
               {summary ? (
                 <>
                   {summary.content ? <p style={{ margin: 0 }}>{summary.content}</p> : null}
                   <div className="grid2" style={{ alignItems: 'start' }}>
                     <div>
-                      <h3 className={styles.sectionTitle}>Strengths</h3>
+                      <h3 className={styles.sectionTitle}>{t('report.strengths')}</h3>
                       <ul className={styles.pointsList}>
                         {summary.strengths.length ? (
                           summary.strengths.map((item, idx) => (
@@ -1521,12 +1594,12 @@ export function LiveCopilotClient() {
                             </li>
                           ))
                         ) : (
-                          <li className="small">No strengths identified yet.</li>
+                          <li className="small">{t('summary.noStrengths')}</li>
                         )}
                       </ul>
                     </div>
                     <div>
-                      <h3 className={styles.sectionTitle}>Weaknesses</h3>
+                      <h3 className={styles.sectionTitle}>{t('report.weaknesses')}</h3>
                       <ul className={styles.pointsList}>
                         {summary.weaknesses.length ? (
                           summary.weaknesses.map((item, idx) => (
@@ -1535,13 +1608,13 @@ export function LiveCopilotClient() {
                             </li>
                           ))
                         ) : (
-                          <li className="small">No weaknesses identified yet.</li>
+                          <li className="small">{t('summary.noWeaknesses')}</li>
                         )}
                       </ul>
                     </div>
                   </div>
                   <div>
-                    <h3 className={styles.sectionTitle}>Next steps</h3>
+                    <h3 className={styles.sectionTitle}>{t('report.nextSteps')}</h3>
                     <ul className={styles.pointsList}>
                       {summary.next_steps.length ? (
                         summary.next_steps.map((item, idx) => (
@@ -1550,7 +1623,7 @@ export function LiveCopilotClient() {
                           </li>
                         ))
                       ) : (
-                        <li className="small">No next steps identified yet.</li>
+                        <li className="small">{t('summary.noNextSteps')}</li>
                       )}
                     </ul>
                   </div>
@@ -1561,28 +1634,28 @@ export function LiveCopilotClient() {
         </div>
       ) : (
         <div role="tabpanel" id="copilot-panel-analytics" aria-labelledby="copilot-tab-analytics">
-        <section className="card" aria-label="Analytics history view">
+        <section className="card" aria-label={t('history.label')}>
           <div className="cardInner stack" style={{ gap: 14 }}>
-            <h2 className="cardTitle">Copilot history</h2>
+            <h2 className="cardTitle">{t('history.title')}</h2>
 
             <div className={styles.metricGrid}>
-              <div className={styles.metricCard}><span className="small">Current transcript lines</span><strong>{analyticsSummary.transcriptLines}</strong></div>
-              <div className={styles.metricCard}><span className="small">Current suggestions</span><strong>{analyticsSummary.suggestions}</strong></div>
-              <div className={styles.metricCard}><span className="small">Selected session lines</span><strong>{historyInsights.transcriptLines}</strong></div>
-              <div className={styles.metricCard}><span className="small">Selected session tips</span><strong>{historyInsights.suggestions}</strong></div>
+              <div className={styles.metricCard}><span className="small">{t('history.currentLines')}</span><strong>{analyticsSummary.transcriptLines}</strong></div>
+              <div className={styles.metricCard}><span className="small">{t('history.currentSuggestions')}</span><strong>{analyticsSummary.suggestions}</strong></div>
+              <div className={styles.metricCard}><span className="small">{t('history.selectedLines')}</span><strong>{historyInsights.transcriptLines}</strong></div>
+              <div className={styles.metricCard}><span className="small">{t('history.selectedTips')}</span><strong>{historyInsights.suggestions}</strong></div>
             </div>
 
-            <section className={styles.settingsCard} aria-label="Live copilot analytics settings">
+            <section className={styles.settingsCard} aria-label={t('data.label')}>
               <div className={styles.panelHeader}>
-                <h3 className={styles.sectionTitle} style={{ margin: 0 }}>Analytics settings</h3>
-                <span className="small">Export or permanently remove all copilot data</span>
+                <h3 className={styles.sectionTitle} style={{ margin: 0 }}>{t('data.title')}</h3>
+                <span className="small">{t('data.desc')}</span>
               </div>
 
               <div className={styles.settingsGrid}>
                 <article className={styles.actionCard}>
-                  <h4 className={styles.subSectionTitle}>Data export</h4>
+                  <h4 className={styles.subSectionTitle}>{t('data.exportTitle')}</h4>
                   <p className="small" style={{ margin: 0 }}>
-                    Download a JSON export of all your copilot sessions, transcript events, and generated summaries.
+                    {t('data.exportDesc')}
                   </p>
                   <button
                     className="button"
@@ -1590,23 +1663,22 @@ export function LiveCopilotClient() {
                     onClick={() => void exportAllCopilotData()}
                     disabled={exportingAllData || deleteAllPending}
                   >
-                    {exportingAllData ? 'Exporting…' : 'Export all copilot data'}
+                    {exportingAllData ? t('data.exporting') : t('data.export')}
                   </button>
                 </article>
 
                 <article className={`${styles.actionCard} ${styles.dangerCard}`}>
-                  <h4 className={styles.subSectionTitle}>Delete all copilot data</h4>
+                  <h4 className={styles.subSectionTitle}>{t('data.purgeTitle')}</h4>
                   <p className="small" style={{ margin: 0 }}>
-                    <strong>Warning:</strong> this permanently deletes every copilot session, transcript event, and summary for your account. This cannot be undone.
-                    {' '}You must stop any active session first.
+                    {t.rich('data.purgeWarning', { strong: (chunks) => <strong>{chunks}</strong> })}
                   </p>
                   <label className="label" style={{ margin: 0 }}>
-                    Type <code>DELETE ALL COPILOT DATA</code> to confirm
+                    {t.rich('data.purgeConfirm', { phrase: PURGE_PHRASE, code: (chunks) => <code>{chunks}</code> })}
                     <input
                       className="input"
                       value={deleteAllConfirmation}
                       onChange={(e) => setDeleteAllConfirmation(e.target.value)}
-                      placeholder="DELETE ALL COPILOT DATA"
+                      placeholder={PURGE_PHRASE}
                       disabled={deleteAllPending || exportingAllData}
                     />
                   </label>
@@ -1614,9 +1686,9 @@ export function LiveCopilotClient() {
                     className="button buttonDanger"
                     type="button"
                     onClick={() => void deleteAllCopilotData()}
-                    disabled={isActive || deleteAllPending || exportingAllData || deleteAllConfirmation !== 'DELETE ALL COPILOT DATA'}
+                    disabled={isActive || deleteAllPending || exportingAllData || deleteAllConfirmation !== PURGE_PHRASE}
                   >
-                    {deleteAllPending ? 'Deleting all data…' : 'Delete all copilot data'}
+                    {deleteAllPending ? t('data.purging') : t('data.purge')}
                   </button>
                 </article>
               </div>
@@ -1626,49 +1698,50 @@ export function LiveCopilotClient() {
             </section>
 
             <div className={styles.historyScaffold}>
-              <aside className={styles.historyList} aria-label="Session history list">
+              <aside className={styles.historyList} aria-label={t('history.listLabel')}>
                 <div className={styles.panelHeader}>
-                  <h3 className={styles.sectionTitle}>Recent sessions</h3>
+                  <h3 className={styles.sectionTitle}>{t('history.recent')}</h3>
                   <button className="button" type="button" onClick={() => void loadHistory()} disabled={historyLoading}>
-                    {historyLoading ? 'Refreshing…' : 'Refresh'}
+                    {historyLoading ? t('history.refreshing') : t('history.refresh')}
                   </button>
                 </div>
 
                 <div className={styles.filtersGrid}>
                   <label className="label" style={{ margin: 0 }}>
-                    Search
+                    {t('history.search')}
                     <input
                       className="input"
                       value={historyQuery}
                       onChange={(e) => setHistoryQuery(e.target.value)}
-                      placeholder="Title, mode, status"
+                      placeholder={t('history.searchPlaceholder')}
                     />
                   </label>
                   <label className="label" style={{ margin: 0 }}>
-                    Mode
+                    {t('history.mode')}
                     <select className="select" value={historyModeFilter} onChange={(e) => setHistoryModeFilter(e.target.value as 'all' | CopilotMode)}>
-                      <option value="all">All modes</option>
-                      <option value="general">General interview</option>
-                      <option value="coding">Coding interview</option>
-                      <option value="phone">Phone screen</option>
-                      <option value="video">Video call</option>
+                      <option value="all">{t('history.allModes')}</option>
+                      {(['general', 'coding', 'phone', 'video'] as const).map((value) => (
+                        <option key={value} value={value}>
+                          {t(`modeOptions.${value}`)}
+                        </option>
+                      ))}
                     </select>
                   </label>
                 </div>
 
-                {historyLoading ? <p className={styles.emptyState}>Loading session history…</p> : null}
+                {historyLoading ? <p className={styles.emptyState}>{t('history.loading')}</p> : null}
                 {historyError ? <div className="error">{historyError}</div> : null}
                 {!historyLoading && !historyError && historySessions.length === 0 ? (
-                  <p className={styles.emptyState}>No copilot sessions yet. Run a live session to build analytics history.</p>
+                  <p className={styles.emptyState}>{t('history.empty')}</p>
                 ) : null}
                 {!historyLoading && !historyError && historySessions.length > 0 && filteredHistorySessions.length === 0 ? (
-                  <p className={styles.emptyState}>No sessions match your filters yet.</p>
+                  <p className={styles.emptyState}>{t('history.noMatches')}</p>
                 ) : null}
 
                 {filteredHistorySessions.length > 0 ? (
                   <ol className={styles.sessionList}>
                     {filteredHistorySessions.map((item) => {
-                      const modeValue = formatModeLabel(asText(item.metadata?.mode, 'general'));
+                      const modeValue = modeLabel(asText(item.metadata?.mode, 'general'));
                       const duration = typeof item.consumed_minutes === 'number'
                         ? item.consumed_minutes
                         : calculateDurationMinutes(item.started_at, item.stopped_at);
@@ -1682,13 +1755,13 @@ export function LiveCopilotClient() {
                             onClick={() => setSelectedHistoryId(item.id)}
                           >
                             <div className={styles.sessionItemTopRow}>
-                              <strong className={styles.sessionItemTitle}>{item.title?.trim() || 'Untitled session'}</strong>
-                              <span className="small mono">{new Date(item.created_at).toLocaleDateString()}</span>
+                              <strong className={styles.sessionItemTitle}>{item.title?.trim() || t('untitled')}</strong>
+                              <span className="small mono">{format.dateTime(new Date(item.created_at), { dateStyle: 'medium' })}</span>
                             </div>
                             <div className={styles.chipRow}>
-                              <span className="badge">{item.status}</span>
+                              <span className="badge">{statusLabel(item.status)}</span>
                               <span className="badge">{modeValue}</span>
-                              <span className="badge">{duration} min</span>
+                              <span className="badge">{t('minutes', { count: duration })}</span>
                             </div>
                           </button>
                         </li>
@@ -1698,14 +1771,14 @@ export function LiveCopilotClient() {
                 ) : null}
               </aside>
 
-              <section className={styles.historyDetail} aria-label="Session detail view">
-                {!selectedHistoryId ? <p className={styles.emptyState}>Select a session to inspect detailed analytics.</p> : null}
-                {selectedHistoryId && detailLoading ? <p className={styles.emptyState}>Loading session details…</p> : null}
+              <section className={styles.historyDetail} aria-label={t('history.detailLabel')}>
+                {!selectedHistoryId ? <p className={styles.emptyState}>{t('history.selectOne')}</p> : null}
+                {selectedHistoryId && detailLoading ? <p className={styles.emptyState}>{t('history.loadingDetail')}</p> : null}
                 {selectedHistoryId && detailError ? (
                   <div className="stack" style={{ gap: 10 }}>
                     <div className="error">{detailError}</div>
                     <button className="button" type="button" onClick={retryHistoryDetail}>
-                      Retry loading details
+                      {t('history.retry')}
                     </button>
                   </div>
                 ) : null}
@@ -1713,16 +1786,18 @@ export function LiveCopilotClient() {
                 {selectedHistorySession && historyDetail && !detailLoading && !detailError ? (
                   <div className="stack" style={{ gap: 12 }}>
                     <div className={styles.panelHeader}>
-                      <h3 className={styles.sectionTitle} style={{ margin: 0 }}>{selectedHistorySession.title?.trim() || 'Untitled session'}</h3>
+                      <h3 className={styles.sectionTitle} style={{ margin: 0 }}>{selectedHistorySession.title?.trim() || t('untitled')}</h3>
                       <div className={styles.detailHeaderActions}>
-                        <span className="small mono">{new Date(selectedHistorySession.started_at).toLocaleString()}</span>
+                        <span className="small mono">
+                          {format.dateTime(new Date(selectedHistorySession.started_at), { dateStyle: 'medium', timeStyle: 'short' })}
+                        </span>
                         <button
                           className="button buttonDanger"
                           type="button"
                           onClick={() => void deleteSelectedHistorySession()}
                           disabled={deletingHistoryId === selectedHistorySession.id}
                         >
-                          {deletingHistoryId === selectedHistorySession.id ? 'Deleting…' : 'Delete session'}
+                          {deletingHistoryId === selectedHistorySession.id ? t('history.deleting') : t('history.delete')}
                         </button>
                       </div>
                     </div>
@@ -1731,22 +1806,26 @@ export function LiveCopilotClient() {
                     {deleteSuccess ? <div className="success" role="status" aria-live="polite">{deleteSuccess}</div> : null}
 
                     <div className={styles.chipRow}>
-                      <span className="badge">{historyDetail.session.status}</span>
-                      <span className="badge">{historyInsights.mode}</span>
-                      <span className="badge">{historyInsights.durationMinutes} min</span>
+                      <span className="badge">{statusLabel(historyDetail.session.status)}</span>
+                      <span className="badge">{modeLabel(historyInsights.mode)}</span>
+                      <span className="badge">{t('minutes', { count: historyInsights.durationMinutes })}</span>
                     </div>
 
                     <div className={styles.metricGrid}>
-                      <div className={styles.metricCard}><span className="small">Transcript lines</span><strong>{historyInsights.transcriptLines}</strong></div>
-                      <div className={styles.metricCard}><span className="small">Suggestions</span><strong>{historyInsights.suggestions}</strong></div>
-                      <div className={styles.metricCard}><span className="small">System events</span><strong>{historyEventBreakdown.systems.length}</strong></div>
+                      <div className={styles.metricCard}><span className="small">{t('history.lines')}</span><strong>{historyInsights.transcriptLines}</strong></div>
+                      <div className={styles.metricCard}><span className="small">{t('history.suggestions')}</span><strong>{historyInsights.suggestions}</strong></div>
+                      <div className={styles.metricCard}><span className="small">{t('history.systemEvents')}</span><strong>{historyEventBreakdown.systems.length}</strong></div>
                     </div>
 
                     {historyEventBreakdown.latency.turns > 0 ? (
                       <div className={styles.summaryCard}>
                         <LatencyTable
                           summary={historyEventBreakdown.latency.stages}
-                          caption={`Latency per stage: ${historyEventBreakdown.latency.outcomes.answered} answered, ${historyEventBreakdown.latency.outcomes.superseded} replaced, ${historyEventBreakdown.latency.outcomes.error} failed`}
+                          caption={t('history.latencyCaption', {
+                            answered: historyEventBreakdown.latency.outcomes.answered,
+                            replaced: historyEventBreakdown.latency.outcomes.superseded,
+                            failed: historyEventBreakdown.latency.outcomes.error,
+                          })}
                         />
                       </div>
                     ) : null}
@@ -1754,58 +1833,58 @@ export function LiveCopilotClient() {
                     <div className={styles.summaryColumns}>
                       <article className={styles.summaryCard}>
                         <div className={styles.panelHeader}>
-                          <h4 className={styles.sectionTitle} style={{ margin: 0 }}>Recent transcript</h4>
-                          <span className="small">Last 5</span>
+                          <h4 className={styles.sectionTitle} style={{ margin: 0 }}>{t('history.recentTranscript')}</h4>
+                          <span className="small">{t('history.last5')}</span>
                         </div>
                         <ol className={styles.pointsList}>
                           {historyEventBreakdown.transcripts.slice(-5).reverse().map((event) => (
                             <li key={`transcript-preview-${event.id}`} className="small">
-                              <strong>{asText(event.payload.speaker, 'speaker')}:</strong>{' '}
+                              <strong>{asText(event.payload.speaker) === 'interviewer' ? t('interviewer') : t('you')}:</strong>{' '}
                               {asText(event.payload.text, asText(event.payload.content, '—'))}
                             </li>
                           ))}
-                          {historyEventBreakdown.transcripts.length === 0 ? <li className="small">No transcript events captured.</li> : null}
+                          {historyEventBreakdown.transcripts.length === 0 ? <li className="small">{t('history.noTranscript')}</li> : null}
                         </ol>
                       </article>
                       <article className={styles.summaryCard}>
                         <div className={styles.panelHeader}>
-                          <h4 className={styles.sectionTitle} style={{ margin: 0 }}>Recent suggestions</h4>
-                          <span className="small">Last 5</span>
+                          <h4 className={styles.sectionTitle} style={{ margin: 0 }}>{t('history.recentSuggestions')}</h4>
+                          <span className="small">{t('history.last5')}</span>
                         </div>
                         <ol className={styles.pointsList}>
                           {historyEventBreakdown.suggestions.slice(-5).reverse().map((event) => (
                             <li key={`suggestion-preview-${event.id}`} className="small">
-                              <strong>{asText(event.payload.category, 'suggestion')}:</strong>{' '}
+                              <strong>{tAnswer.has(`category.${asText(event.payload.category)}`) ? tAnswer(`category.${asText(event.payload.category)}`) : tAnswer('category.other')}:</strong>{' '}
                               {asText(event.payload.text, asText(event.payload.content, '—'))}
                             </li>
                           ))}
-                          {historyEventBreakdown.suggestions.length === 0 ? <li className="small">No suggestion events captured.</li> : null}
+                          {historyEventBreakdown.suggestions.length === 0 ? <li className="small">{t('history.noSuggestions')}</li> : null}
                         </ol>
                       </article>
                     </div>
 
                     <div className={styles.summaryCard}>
                       <div className={styles.panelHeader}>
-                        <h4 className={styles.sectionTitle} style={{ margin: 0 }}>Interview report</h4>
+                        <h4 className={styles.sectionTitle} style={{ margin: 0 }}>{t('report.title')}</h4>
                         <div className={styles.detailHeaderActions}>
-                          {historyReport ? <span className="small">{historyReport.source === 'api' ? 'Live report' : 'Legacy summary'}</span> : null}
+                          {historyReport ? <span className="small">{historyReport.source === 'api' ? t('report.live') : t('report.legacy')}</span> : null}
                           <button className="button" type="button" onClick={() => void copyReportSnapshot()} disabled={!historyReport}>
-                            {historyReportCopied ? 'Copied' : 'Copy report JSON'}
+                            {historyReportCopied ? t('report.copied') : t('report.copy')}
                           </button>
                         </div>
                       </div>
 
-                      {historyReportLoading ? <p className={styles.emptyState}>Loading report details…</p> : null}
+                      {historyReportLoading ? <p className={styles.emptyState}>{t('report.loading')}</p> : null}
                       {historyReportError ? <div className="error">{historyReportError}</div> : null}
                       {!historyReportLoading && !historyReport && !historyReportError ? (
-                        <p className={styles.emptyState}>No generated report for this session yet.</p>
+                        <p className={styles.emptyState}>{t('report.none')}</p>
                       ) : null}
 
                       {historyReport ? (
                         <>
                           <div className={styles.metricGrid}>
                             <div className={`${styles.metricCard} ${styles.reportMetricCard}`}>
-                              <span className="small">Overall score</span>
+                              <span className="small">{t('report.overall')}</span>
                               <strong>{historyReport.overallScore ?? '—'}</strong>
                               <div className={styles.progressTrack} aria-hidden="true">
                                 <span
@@ -1814,18 +1893,21 @@ export function LiveCopilotClient() {
                                 />
                               </div>
                             </div>
-                            <div className={styles.metricCard}><span className="small">Hiring signal</span><strong>{formatHiringSignal(historyReport.hiringSignal)}</strong></div>
+                            <div className={styles.metricCard}>
+                              <span className="small">{t('report.signal')}</span>
+                              <strong>{t(`signals.${historyReport.hiringSignal ?? 'unknown'}`)}</strong>
+                            </div>
                           </div>
 
                           {historyReport.summary ? <p style={{ margin: 0 }}>{historyReport.summary}</p> : null}
 
                           <div className={styles.rubricGrid}>
-                            {RUBRIC_DIMENSIONS.map((dimension) => {
-                              const item = historyReport.rubric[dimension.key];
+                            {RUBRIC_KEYS.map((key) => {
+                              const item = historyReport.rubric[key];
                               return (
-                                <article key={dimension.key} className={styles.rubricCard}>
+                                <article key={key} className={styles.rubricCard}>
                                   <div className={styles.panelHeader}>
-                                    <h5 className={styles.subSectionTitle}>{dimension.label}</h5>
+                                    <h5 className={styles.subSectionTitle}>{t(`rubric.${key}`)}</h5>
                                     <span className={`badge ${styles[`scoreBadge${scoreTone(item.score, 5)}`]}`}>{item.score ?? '—'}/5</span>
                                   </div>
                                   <div className={styles.progressTrack} aria-hidden="true">
@@ -1834,8 +1916,8 @@ export function LiveCopilotClient() {
                                       style={{ width: `${asPercent(item.score, 5)}%` }}
                                     />
                                   </div>
-                                  <p className="small" style={{ margin: 0 }}><strong>Evidence:</strong> {item.evidence || 'Not captured.'}</p>
-                                  <p className="small" style={{ margin: 0 }}><strong>Recommendation:</strong> {item.recommendation || 'Not captured.'}</p>
+                                  <p className="small" style={{ margin: 0 }}><strong>{t('report.evidence')}</strong> {item.evidence || t('report.notCaptured')}</p>
+                                  <p className="small" style={{ margin: 0 }}><strong>{t('report.recommendation')}</strong> {item.recommendation || t('report.notCaptured')}</p>
                                 </article>
                               );
                             })}
@@ -1843,28 +1925,28 @@ export function LiveCopilotClient() {
 
                           <div className={styles.summaryColumns}>
                             <div>
-                              <h5 className={styles.subSectionTitle}>Strengths</h5>
+                              <h5 className={styles.subSectionTitle}>{t('report.strengths')}</h5>
                               <ul className={styles.pointsList}>
                                 {historyReport.strengths.length > 0
                                   ? historyReport.strengths.map((point, idx) => <li key={`hist-strength-${idx}`} className="small">{point}</li>)
-                                  : <li className="small">No strengths captured.</li>}
+                                  : <li className="small">{t('report.noStrengths')}</li>}
                               </ul>
                             </div>
                             <div>
-                              <h5 className={styles.subSectionTitle}>Weaknesses</h5>
+                              <h5 className={styles.subSectionTitle}>{t('report.weaknesses')}</h5>
                               <ul className={styles.pointsList}>
                                 {historyReport.weaknesses.length > 0
                                   ? historyReport.weaknesses.map((point, idx) => <li key={`hist-weakness-${idx}`} className="small">{point}</li>)
-                                  : <li className="small">No weaknesses captured.</li>}
+                                  : <li className="small">{t('report.noWeaknesses')}</li>}
                               </ul>
                             </div>
                           </div>
                           <div>
-                            <h5 className={styles.subSectionTitle}>Next steps</h5>
+                            <h5 className={styles.subSectionTitle}>{t('report.nextSteps')}</h5>
                             <ul className={styles.pointsList}>
                               {historyReport.nextSteps.length > 0
                                 ? historyReport.nextSteps.map((point, idx) => <li key={`hist-next-${idx}`} className="small">{point}</li>)
-                                : <li className="small">No next steps captured.</li>}
+                                : <li className="small">{t('report.noNextSteps')}</li>}
                             </ul>
                           </div>
                         </>
@@ -1880,15 +1962,15 @@ export function LiveCopilotClient() {
         )}
       </div>
 
-      <section className="card" aria-label="Typed lines and tools">
+      <section className="card" aria-label={t('composer.label')}>
         <div className="cardInner stack" style={{ gap: 14 }}>
           <div className={styles.composerCard}>
             <div className={styles.composerHeader}>
-              <h2 className="cardTitle">Type a line</h2>
+              <h2 className="cardTitle">{t('composer.title')}</h2>
               <div className={styles.chipRow}>
-                <span className="badge">Audio {audio.status === 'live' ? 'live' : 'off'}</span>
-                <span className="badge">{micSyncing && isActive ? 'Transcribing…' : 'Synced'}</span>
-                {lastMicSyncAt ? <span className="small mono">{new Date(lastMicSyncAt).toLocaleTimeString()}</span> : null}
+                <span className="badge">{audio.status === 'live' ? t('composer.audioLive') : t('composer.audioOff')}</span>
+                <span className="badge">{micSyncing && isActive ? t('composer.syncing') : t('composer.synced')}</span>
+                {lastMicSyncAt ? <span className="small mono">{format.dateTime(new Date(lastMicSyncAt), { timeStyle: 'medium' })}</span> : null}
               </div>
             </div>
             <div className={styles.composerControls}>
@@ -1897,10 +1979,10 @@ export function LiveCopilotClient() {
                 value={draftSpeaker}
                 onChange={(e) => setDraftSpeaker(e.target.value as 'interviewer' | 'candidate')}
                 disabled={!isActive || submitting}
-                aria-label="Speaker for the typed line"
+                aria-label={t('composer.speaker')}
               >
-                <option value="interviewer">Interviewer</option>
-                <option value="candidate">Candidate</option>
+                <option value="interviewer">{t('interviewer')}</option>
+                <option value="candidate">{t('composer.candidate')}</option>
               </select>
               <button
                 className="button"
@@ -1908,13 +1990,13 @@ export function LiveCopilotClient() {
                 onClick={submitTranscriptEvent}
                 disabled={!isActive || !draftText.trim() || submitting}
               >
-                {submitting && isActive ? 'Sending…' : 'Send line'}
+                {submitting && isActive ? t('composer.sending') : t('composer.send')}
               </button>
               <button className="button" type="button" onClick={injectFillerLine} disabled={!isActive || submitting}>
-                Add 10-sec filler
+                {t('composer.filler')}
               </button>
               <button className="button" type="button" onClick={generateSummary} disabled={!session || summaryLoading || submitting}>
-                {summaryLoading ? 'Generating…' : 'Generate summary'}
+                {summaryLoading ? t('generating') : t('composer.summarize')}
               </button>
             </div>
             <textarea
@@ -1922,24 +2004,24 @@ export function LiveCopilotClient() {
               className="input"
               value={draftText}
               onChange={(e) => setDraftText(e.target.value)}
-              placeholder="Paste the latest question or answer here"
+              placeholder={t('composer.placeholder')}
               rows={3}
               disabled={!isActive || submitting}
             />
             <p className="small" style={{ margin: 0 }}>
-              Shortcuts: Ctrl/Cmd+Enter send · Ctrl/Cmd+M start/stop listening · Ctrl/Cmd+K focus composer
+              {t('composer.shortcuts')}
             </p>
           </div>
 
           <details className={styles.settingsCard}>
             <summary className="small" style={{ cursor: 'pointer' }}>
-              <strong>Diagnostics</strong>: overlay controls and SLO compliance
+              {t.rich('diagnostics.summary', { strong: (chunks) => <strong>{chunks}</strong> })}
             </summary>
             {/* T4: Overlay controls with hotkey hints and performance instrumentation */}
-            <section className={styles.settingsCard} aria-label="Overlay controls">
+            <section className={styles.settingsCard} aria-label={t('diagnostics.overlay')}>
               <div className={styles.panelHeader}>
-                <h3 className={styles.sectionTitle} style={{ margin: 0 }}>Overlay controls</h3>
-                <span className="small">Hotkeys: Ctrl+H (hide/show), Ctrl+M (mute), Ctrl+T (timer)</span>
+                <h3 className={styles.sectionTitle} style={{ margin: 0 }}>{t('diagnostics.overlay')}</h3>
+                <span className="small">{t('diagnostics.hotkeys')}</span>
               </div>
               <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
                 <button
@@ -1958,7 +2040,7 @@ export function LiveCopilotClient() {
                   }}
                   aria-pressed={overlayVisible}
                 >
-                  {overlayVisible ? 'Hide Overlay' : 'Show Overlay'}
+                  {overlayVisible ? t('diagnostics.hide') : t('diagnostics.show')}
                 </button>
                 <button
                   className="button"
@@ -1976,7 +2058,7 @@ export function LiveCopilotClient() {
                   }}
                   aria-pressed={overlayMuted}
                 >
-                  {overlayMuted ? 'Unmute' : 'Mute'}
+                  {overlayMuted ? t('diagnostics.unmute') : t('diagnostics.mute')}
                 </button>
                 <button
                   className="button"
@@ -1994,7 +2076,7 @@ export function LiveCopilotClient() {
                   }}
                   aria-pressed={overlayTimerRunning}
                 >
-                  {overlayTimerRunning ? 'Pause Timer' : 'Start Timer'}
+                  {overlayTimerRunning ? t('diagnostics.pauseTimer') : t('diagnostics.startTimer')}
                 </button>
                 <button
                   className="button"
@@ -2011,36 +2093,40 @@ export function LiveCopilotClient() {
                   }}
                   disabled={overlayTimerSeconds === 0}
                 >
-                  Reset Timer
+                  {t('diagnostics.resetTimer')}
                 </button>
                 <span className="badge" style={{ fontSize: '1rem', padding: '6px 12px' }}>
                   {Math.floor(overlayTimerSeconds / 60).toString().padStart(2, '0')}:{(overlayTimerSeconds % 60).toString().padStart(2, '0')}
                 </span>
-                {overlayMuted && <span className="badge badgeDanger">Muted</span>}
+                {overlayMuted && <span className="badge badgeDanger">{t('diagnostics.muted')}</span>}
               </div>
               {/* Performance metrics display for SLO verification */}
               {interactionLatency.latencyMs !== null && (
                 <p className="small" style={{ margin: '8px 0 0' }}>
-                  Last interaction: <strong>{interactionLatency.action}</strong> — <strong>{interactionLatency.latencyMs}ms</strong>
+                  {t.rich('diagnostics.lastInteraction', {
+                    action: interactionLatency.action,
+                    ms: interactionLatency.latencyMs,
+                    strong: (chunks) => <strong>{chunks}</strong>,
+                  })}
                   {interactionLatency.latencyMs <= 100 ? (
-                    <span className="success" style={{ marginLeft: 8 }}>✓ Within SLO (&lt;100ms)</span>
+                    <span className="success" style={{ marginLeft: 8 }}>✓ {t('diagnostics.withinSlo', { target: '<100ms' })}</span>
                   ) : (
-                    <span className="error" style={{ marginLeft: 8 }}>⚠ Exceeds SLO (&lt;100ms)</span>
+                    <span className="error" style={{ marginLeft: 8 }}>⚠ {t('diagnostics.exceedsSlo', { target: '<100ms' })}</span>
                   )}
                 </p>
               )}
             </section>
 
             {/* PRD T4: Real-time SLO compliance status display */}
-            <section className={styles.settingsCard} aria-label="SLO compliance status">
+            <section className={styles.settingsCard} aria-label={t('diagnostics.sloLabel')}>
               <div className={styles.panelHeader}>
-                <h3 className={styles.sectionTitle} style={{ margin: 0 }}>SLO Compliance</h3>
-                <span className="small">Real-time performance</span>
+                <h3 className={styles.sectionTitle} style={{ margin: 0 }}>{t('diagnostics.slo')}</h3>
+                <span className="small">{t('diagnostics.realtime')}</span>
               </div>
               <div className={styles.metricGrid}>
                 {sloCompliance.map((compliance) => {
                   const isOverlay = compliance.type === 'overlay_interaction';
-                  const targetLabel = isOverlay ? 'Overlay Interaction' : 'Transcript → Suggestion';
+                  const targetLabel = isOverlay ? t('diagnostics.overlayInteraction') : t('diagnostics.transcriptToSuggestion');
                   const targetSlo = isOverlay ? '<100ms' : '<3s';
                   
                   return (
@@ -2048,7 +2134,8 @@ export function LiveCopilotClient() {
                       <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
                         <span className="small" style={{ fontWeight: 600 }}>{targetLabel}</span>
                         <span className={`badge ${compliance.currentStatus === 'healthy' ? styles.badgeActive : compliance.currentStatus === 'warning' ? '' : styles.badgeDanger}`}>
-                          {getStatusEmoji(compliance.currentStatus)} {compliance.currentStatus}
+                          {getStatusEmoji(compliance.currentStatus)}{' '}
+                          {t.has(`diagnostics.status.${compliance.currentStatus}`) ? t(`diagnostics.status.${compliance.currentStatus}`) : compliance.currentStatus}
                         </span>
                       </div>
                       {compliance.totalSamples > 0 ? (
@@ -2064,12 +2151,12 @@ export function LiveCopilotClient() {
                             />
                           </div>
                           <span className="small" style={{ color: 'var(--muted)' }}>
-                            {compliance.withinTarget}/{compliance.totalSamples} within SLO ({targetSlo})
+                            {t('diagnostics.withinCount', { within: compliance.withinTarget, total: compliance.totalSamples, target: targetSlo })}
                           </span>
                         </>
                       ) : (
                         <p className="small" style={{ margin: '4px 0 0', color: 'var(--muted)' }}>
-                          No samples yet. Interact to collect metrics.
+                          {t('diagnostics.noSamples')}
                         </p>
                       )}
                     </div>
@@ -2079,7 +2166,7 @@ export function LiveCopilotClient() {
               {/* Recent metrics mini-display */}
               {recentSloMetrics.length > 0 && (
                 <div style={{ marginTop: 8 }}>
-                  <span className="small" style={{ display: 'block', marginBottom: 4 }}>Recent:</span>
+                  <span className="small" style={{ display: 'block', marginBottom: 4 }}>{t('diagnostics.recent')}</span>
                   <div className="row" style={{ gap: 4, flexWrap: 'wrap' }}>
                     {recentSloMetrics.slice(-5).reverse().map((metric, idx) => (
                       <span
@@ -2090,7 +2177,7 @@ export function LiveCopilotClient() {
                           padding: '2px 6px',
                           borderColor: metric.status === 'healthy' ? 'rgba(26, 194, 115, 0.5)' : metric.status === 'warning' ? 'rgba(255, 191, 91, 0.5)' : 'rgba(255, 92, 138, 0.5)',
                         }}
-                        title={`${metric.action}: ${metric.latencyMs}ms`}
+                        title={`${metric.action}: ${format.number(metric.latencyMs, { style: 'unit', unit: 'millisecond' })}`}
                       >
                         {formatLatency(metric.latencyMs)}
                       </span>

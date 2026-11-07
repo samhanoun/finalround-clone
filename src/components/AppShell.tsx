@@ -1,23 +1,25 @@
 'use client';
 
-import Link from 'next/link';
+import { Link } from '@/i18n/routing';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState, type ComponentType } from 'react';
+import { useTranslations } from 'next-intl';
 import type { User } from '@supabase/supabase-js';
 import { createClient } from '@/lib/supabase/browser';
 import { ApexMark } from './ApexMark';
-import { HomeIcon, JobsIcon, LiveIcon, PracticeIcon, ResumeIcon, SettingsIcon } from './icons';
+import { HelpIcon, HomeIcon, JobsIcon, LiveIcon, PracticeIcon, ResumeIcon, SettingsIcon, TargetIcon } from './icons';
 import { SignOutButton } from './SignOutButton';
 import { NotificationBell } from './NotificationBell';
 import styles from './AppShell.module.css';
 
-const NAV: Array<{ href: string; label: string; Icon: ComponentType<{ size?: number }>; also?: string[] }> = [
-  { href: '/dashboard', label: 'Home', Icon: HomeIcon },
-  { href: '/copilot/live', label: 'Live', Icon: LiveIcon },
-  { href: '/interview', label: 'Practice', Icon: PracticeIcon },
-  { href: '/resume', label: 'Résumé', Icon: ResumeIcon, also: ['/cover-letters'] },
-  { href: '/jobs', label: 'Jobs', Icon: JobsIcon },
-  { href: '/settings', label: 'Settings', Icon: SettingsIcon },
+const NAV: Array<{ href: string; label: 'home' | 'live' | 'goals' | 'practice' | 'resume' | 'jobs' | 'settings'; Icon: ComponentType<{ size?: number }>; also?: string[] }> = [
+  { href: '/dashboard', label: 'home', Icon: HomeIcon },
+  { href: '/copilot/live', label: 'live', Icon: LiveIcon },
+  { href: '/goals', label: 'goals', Icon: TargetIcon },
+  { href: '/interview', label: 'practice', Icon: PracticeIcon },
+  { href: '/resume', label: 'resume', Icon: ResumeIcon, also: ['/cover-letters'] },
+  { href: '/jobs', label: 'jobs', Icon: JobsIcon },
+  { href: '/settings', label: 'settings', Icon: SettingsIcon },
 ];
 
 /** Credits the referral link this account signed up with; the server ignores repeats. */
@@ -42,6 +44,7 @@ function isActive(pathname: string | null, href: string, also: string[] = []): b
 export function AppShell(props: { title?: string; actions?: React.ReactNode; children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const pathname = usePathname();
+  const t = useTranslations('AppShell');
 
   useEffect(() => {
     const supabase = createClient();
@@ -62,11 +65,11 @@ export function AppShell(props: { title?: string; actions?: React.ReactNode; chi
   return (
     <div className={styles.shell}>
       <aside className={styles.rail}>
-        <Link href="/dashboard" className={styles.brandLink} aria-label="Apex Round home">
+        <Link href="/dashboard" className={styles.brandLink} aria-label={t('home')}>
           <ApexMark size={38} />
         </Link>
 
-        <nav aria-label="Primary navigation" className={styles.nav}>
+        <nav aria-label={t('primaryNavigation')} className={styles.nav}>
           {NAV.map(({ href, label, Icon, also }) => (
             <Link
               key={href}
@@ -75,7 +78,7 @@ export function AppShell(props: { title?: string; actions?: React.ReactNode; chi
               aria-current={isActive(pathname, href, also) ? 'page' : undefined}
             >
               <Icon size={22} />
-              <span>{label}</span>
+              <span>{t(`nav.${label}`)}</span>
             </Link>
           ))}
         </nav>
@@ -83,15 +86,25 @@ export function AppShell(props: { title?: string; actions?: React.ReactNode; chi
         <div className={styles.account}>
           {user ? (
             <>
+              <Link
+                href="/support"
+                className="button buttonGhost"
+                style={{ padding: 0, width: 44 }}
+                aria-label={t('help')}
+                title={t('help')}
+                aria-current={isActive(pathname, '/support') ? 'page' : undefined}
+              >
+                <HelpIcon size={20} />
+              </Link>
               <NotificationBell placement="side" />
-              <span className={styles.avatar} title={user.email ?? undefined} aria-label={`Signed in as ${user.email}`}>
+              <span className={styles.avatar} title={user.email ?? undefined} aria-label={t('signedInAs', { email: user.email ?? '' })}>
                 {initial}
               </span>
               <SignOutButton compact />
             </>
           ) : (
-            <Link className="button buttonPrimary" href="/auth" aria-label="Sign in to your account">
-              Sign in
+            <Link className="button buttonPrimary" href="/auth">
+              {t('signIn')}
             </Link>
           )}
         </div>

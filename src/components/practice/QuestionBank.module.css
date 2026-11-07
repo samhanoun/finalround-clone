@@ -1,0 +1,159 @@
+.layout {
+  display: grid;
+  gap: 18px;
+  max-width: 900px;
+}
+
+.searchRow {
+  display: flex;
+  gap: 8px;
+}
+
+.searchRow :global(.input) {
+  flex: 1;
+  min-width: 0;
+}
+
+.companies {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.company {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--well);
+  color: var(--paper);
+  font: inherit;
+  font-size: 14.5px;
+  cursor: pointer;
+}
+
+.company:hover,
+.company[aria-current='true'] {
+  border-color: var(--ice);
+}
+
+.companyCount {
+  color: var(--mist);
+  font-size: 13px;
+}
+
+.bankHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.report {
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--well);
+}
+
+.report summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--ember-text);
+}
+
+.report[open] summary {
+  margin-bottom: 14px;
+}
+
+.twoCol {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.check {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 14.5px;
+  line-height: 1.5;
+  color: var(--paper-dim);
+}
+
+.check input {
+  margin-top: 4px;
+}
+
+.formActions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.group {
+  display: grid;
+  gap: 10px;
+}
+
+.groupTitle {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.questions {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.question {
+  display: grid;
+  gap: 8px;
+  padding: 14px 0;
+  border-top: 1px solid var(--line);
+}
+
+.questionText {
+  margin: 0;
+  font-size: 15.5px;
+  line-height: 1.5;
+}
+
+.questionMeta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  color: var(--mist);
+  font-size: 13.5px;
+}
+
+.questionActions {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.questionActions :global(.button[aria-pressed='true']) {
+  color: var(--ice);
+}
+
+@media (max-width: 720px) {
+  .twoCol {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .questionActions {
+    margin-left: 0;
+  }
+}

@@ -31,6 +31,30 @@ export const FATAL_CLOSE_MESSAGES: Record<number, string> = {
   [RELAY_CLOSE.notConfigured]: 'Live transcription is not set up on the server (DEEPGRAM_API_KEY or SUPABASE_SERVICE_ROLE_KEY is missing).',
 };
 
+/** Why transcription stopped or is reconnecting, for messages in the user's language (AudioSources.sttErrors). */
+export type SttErrorCode =
+  | 'replaced'
+  | 'badRequest'
+  | 'unauthorized'
+  | 'quotaExceeded'
+  | 'sessionNotFound'
+  | 'sessionEnded'
+  | 'notConfigured'
+  | 'openFailed'
+  | 'rateLimited'
+  | 'upstreamFailed'
+  | 'unreachable';
+
+export const FATAL_CLOSE_CODES: Record<number, SttErrorCode> = {
+  [RELAY_CLOSE.replaced]: 'replaced',
+  [RELAY_CLOSE.badRequest]: 'badRequest',
+  [RELAY_CLOSE.unauthorized]: 'unauthorized',
+  [RELAY_CLOSE.quotaExceeded]: 'quotaExceeded',
+  [RELAY_CLOSE.sessionNotFound]: 'sessionNotFound',
+  [RELAY_CLOSE.sessionEnded]: 'sessionEnded',
+  [RELAY_CLOSE.notConfigured]: 'notConfigured',
+};
+
 /** The relay URL for a session, on the page's own host. */
 export function sttStreamUrl(sessionId: string, location: Pick<Location, 'protocol' | 'host'>): string {
   const scheme = location.protocol === 'https:' ? 'wss' : 'ws';

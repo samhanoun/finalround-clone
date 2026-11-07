@@ -2,22 +2,13 @@
 
 import { useState } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 
-const BILLING_ERRORS: Record<string, string> = {
-  billing_unavailable: 'Billing is not set up on the server yet.',
-  already_subscribed: 'You already have Pro. Use Manage billing to change it.',
-  no_billing_account: 'There is no billing account for you yet. Upgrade first.',
-  rate_limited: 'Too many attempts. Try again in a minute.',
-  unauthorized: 'Sign in again, then retry.',
-};
-
-const RETURN_NOTES: Record<string, string> = {
-  success: 'Thanks! Pro is being activated; it can take a few seconds to show here. Refresh if it hasn’t.',
-  cancelled: 'Checkout was cancelled. You haven’t been charged.',
-};
+const RETURNS = ['success', 'cancelled'];
 
 /** Upgrade (Stripe Checkout) or manage billing (Stripe's portal); both leave the app and come back here. */
 export function BillingActions({ isPro }: { isPro: boolean }) {
+  const t = useTranslations('Billing');
   // The page's [locale] segment; Stripe sends the user back to the same language.
   const locale = useParams<{ locale?: string }>()?.locale ?? 'en';
   const returned = useSearchParams()?.get('billing') ?? '';
@@ -36,36 +27,36 @@ export function BillingActions({ isPro }: { isPro: boolean }) {
       });
       const json = (await res.json().catch(() => ({}))) as { url?: string; error?: string };
       if (!res.ok || !json.url) {
-        setError(BILLING_ERRORS[json.error ?? ''] ?? 'Could not reach billing. Try again.');
+        setError(json.error && t.has(`errors.${json.error}`) ? t(`errors.${json.error}`) : t('unreachable'));
         setBusy(false);
         return;
       }
       window.location.assign(json.url);
     } catch {
-      setError('Could not reach billing. Try again.');
+      setError(t('unreachable'));
       setBusy(false);
     }
   }
 
   return (
     <div className="stack" style={{ gap: 8 }}>
-      {RETURN_NOTES[returned] ? (
+      {RETURNS.includes(returned) ? (
         <p className="small" role="status">
-          {RETURN_NOTES[returned]}
+          {t(`returned.${returned}`)}
         </p>
       ) : null}
 
       {isPro ? (
         <div className="row" style={{ gap: 8 }}>
           <button className="button" type="button" disabled={busy} onClick={() => void go('/api/billing/portal', {})}>
-            {busy ? 'Opening…' : 'Manage billing'}
+            {busy ? t('opening') : t('manage')}
           </button>
-          <span className="small help">Change card, see invoices or cancel.</span>
+          <span className="small help">{t('manageHelp')}</span>
         </div>
       ) : (
         <div className="row" style={{ gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
           <label className="small" htmlFor="billing-currency">
-            Pay in
+            {t('payIn')}
           </label>
           <select
             id="billing-currency"
@@ -75,8 +66,8 @@ export function BillingActions({ isPro }: { isPro: boolean }) {
             disabled={busy}
             style={{ width: 'auto' }}
           >
-            <option value="usd">USD ($)</option>
-            <option value="eur">EUR (€)</option>
+            <option value="usd">{t('currencies.usd')}</option>
+            <option value="eur">{t('currencies.eur')}</option>
           </select>
           <button
             className="button buttonPrimary"
@@ -84,9 +75,9 @@ export function BillingActions({ isPro }: { isPro: boolean }) {
             disabled={busy}
             onClick={() => void go('/api/billing/checkout', { currency })}
           >
-            {busy ? 'Opening checkout…' : 'Upgrade to Pro'}
+            {busy ? t('openingCheckout') : t('upgrade')}
           </button>
-          <span className="small help">Secure checkout by Stripe; you see the price before paying.</span>
+          <span className="small help">{t('checkoutHelp')}</span>
         </div>
       )}
 

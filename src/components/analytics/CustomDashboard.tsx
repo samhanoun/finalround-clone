@@ -1,7 +1,8 @@
 'use client';
 
-import Link from 'next/link';
+import { Link } from '@/i18n/routing';
 import { useEffect, useMemo, useState } from 'react';
+import { useFormatter, useTranslations } from 'next-intl';
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
 } from 'recharts';
@@ -39,33 +40,33 @@ async function loadMonthlyUsage(): Promise<MonthlyUsage | null> {
   }
 }
 
-function dayLabel(key: string): string {
-  return new Date(`${key}T00:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-}
-
-function Delta({ current, previous, days, unit = '' }: {
+function Delta({ current, previous, days, unit = 'count' }: {
   current: number;
   previous: number | null;
   days: number;
-  unit?: string;
+  unit?: 'count' | 'minutes' | 'points';
 }) {
+  const t = useTranslations('Overview');
   if (previous === null) {
-    return <div className="tile-note">Nothing to compare in the previous {days} days</div>;
+    return <div className="tile-note">{t('noCompare', { days })}</div>;
   }
   const diff = current - previous;
   if (diff === 0) {
-    return <div className="tile-note">Same as the previous {days} days</div>;
+    return <div className="tile-note">{t('same', { days })}</div>;
   }
   return (
     <div className={`tile-note ${diff > 0 ? 'up' : ''}`}>
       <span aria-hidden="true">{diff > 0 ? '↑' : '↓'} </span>
-      <span className="srOnly">{diff > 0 ? 'Up' : 'Down'} </span>
-      {Math.abs(diff)}{unit} vs previous {days} days
+      <span className="srOnly">{diff > 0 ? t('up') : t('down')} </span>
+      {t(`delta.${unit}`, { diff: Math.abs(diff), days })}
     </div>
   );
 }
 
 export function CustomDashboard() {
+  const t = useTranslations('Overview');
+  const format = useFormatter();
+  const dayLabel = (key: string) => format.dateTime(new Date(`${key}T00:00:00`), { month: 'short', day: 'numeric' });
   const [range, setRange] = useState<OverviewRange>(30);
   const [attempt, setAttempt] = useState(0);
   const [state, setState] = useState<LoadState>({ status: 'loading' });
@@ -80,7 +81,7 @@ export function CustomDashboard() {
           setState({ status: 'signed-out' });
           return;
         }
-        if (!res.ok) throw new Error('Failed to fetch analytics overview');
+        if (!res.ok) throw new Error(`analytics overview: ${res.status}`);
         const overview = (await res.json()) as OverviewResponse;
         if (!cancelled) setState({ status: 'ready', overview, usage });
       } catch {
@@ -102,23 +103,24 @@ export function CustomDashboard() {
   const activityData = summary?.buckets.map((bucket) => ({ ...bucket, label: dayLabel(bucket.start) })) ?? [];
   const scoreData = summary?.scores.map((point, index) => ({
     key: index,
-    label: new Date(point.at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
+    label: format.dateTime(new Date(point.at), { month: 'short', day: 'numeric' }),
     score: point.score,
   })) ?? [];
+  // CSV columns in the user's language.
   const exportRows = summary?.buckets.map((bucket) => ({
-    period_start: bucket.start,
-    live_sessions: bucket.liveSessions,
-    live_minutes: bucket.liveMinutes,
-    practice_interviews: bucket.practiceInterviews,
+    [t('csvPeriod')]: bucket.start,
+    [t('liveSessions')]: bucket.liveSessions,
+    [t('liveMinutes')]: bucket.liveMinutes,
+    [t('practiceInterviews')]: bucket.practiceInterviews,
   })) ?? [];
 
   return (
     <section className="card" id="analytics-overview" aria-labelledby="analytics-overview-title">
       <div className="cardInner stack">
         <div className="overview-header">
-          <h2 className="cardTitle" id="analytics-overview-title">Your activity</h2>
+          <h2 className="cardTitle" id="analytics-overview-title">{t('title')}</h2>
           {hasActivity && (
-            <div className="range-selector" role="group" aria-label="Time range">
+            <div className="range-selector" role="group" aria-label={t('range')}>
               {OVERVIEW_RANGES.map((days) => (
                 <button
                   key={days}
@@ -127,7 +129,7 @@ export function CustomDashboard() {
                   aria-pressed={range === days}
                   onClick={() => setRange(days)}
                 >
-                  {days} days
+                  {t('days', { days })}
                 </button>
               ))}
             </div>
@@ -135,21 +137,21 @@ export function CustomDashboard() {
         </div>
 
         {state.status === 'loading' && (
-          <p className="small" role="status">Loading your activity…</p>
+          <p className="small" role="status">{t('loading')}</p>
         )}
 
         {state.status === 'signed-out' && (
           <div className="empty-state">
-            <p className="help">Sign in to see your practice interviews, live sessions and scores.</p>
+            <p className="help">{t('signedOut')}</p>
             <div>
-              <Link className="button" href="/auth">Sign in</Link>
+              <Link className="button" href="/auth">{t('signIn')}</Link>
             </div>
           </div>
         )}
 
         {state.status === 'error' && (
           <div className="empty-state">
-            <p className="error" role="alert">We couldn&apos;t load your activity.</p>
+            <p className="error" role="alert">{t('failed')}</p>
             <div>
               <button
                 type="button"
@@ -159,7 +161,7 @@ export function CustomDashboard() {
                   setAttempt((n) => n + 1);
                 }}
               >
-                Try again
+                {t('retry')}
               </button>
             </div>
           </div>
@@ -167,13 +169,11 @@ export function CustomDashboard() {
 
         {state.status === 'ready' && !hasActivity && (
           <div className="empty-state">
-            <p className="empty-title">No activity yet</p>
-            <p className="help">
-              Your numbers appear here after your first practice interview or live session.
-            </p>
+            <p className="empty-title">{t('emptyTitle')}</p>
+            <p className="help">{t('emptyBody')}</p>
             <div className="row">
-              <Link className="button buttonPrimary" href="/interview">Start a practice interview</Link>
-              <Link className="button" href="/copilot/live">Open the live copilot</Link>
+              <Link className="button buttonPrimary" href="/interview">{t('startPractice')}</Link>
+              <Link className="button" href="/copilot/live">{t('openLive')}</Link>
             </div>
           </div>
         )}
@@ -182,45 +182,45 @@ export function CustomDashboard() {
           <>
             <div className="tiles">
               <div className="tile">
-                <div className="tile-label">Live sessions</div>
-                <div className="tile-value">{summary.current.liveSessions.toLocaleString()}</div>
+                <div className="tile-label">{t('liveSessions')}</div>
+                <div className="tile-value">{format.number(summary.current.liveSessions)}</div>
                 <Delta current={summary.current.liveSessions} previous={summary.previous.liveSessions} days={range} />
               </div>
               <div className="tile">
-                <div className="tile-label">Live minutes billed</div>
-                <div className="tile-value">{summary.current.liveMinutes.toLocaleString()}</div>
-                <Delta current={summary.current.liveMinutes} previous={summary.previous.liveMinutes} days={range} unit=" min" />
+                <div className="tile-label">{t('liveMinutesBilled')}</div>
+                <div className="tile-value">{format.number(summary.current.liveMinutes)}</div>
+                <Delta current={summary.current.liveMinutes} previous={summary.previous.liveMinutes} days={range} unit="minutes" />
               </div>
               <div className="tile">
-                <div className="tile-label">Practice interviews</div>
-                <div className="tile-value">{summary.current.practiceInterviews.toLocaleString()}</div>
+                <div className="tile-label">{t('practiceInterviews')}</div>
+                <div className="tile-value">{format.number(summary.current.practiceInterviews)}</div>
                 <Delta current={summary.current.practiceInterviews} previous={summary.previous.practiceInterviews} days={range} />
               </div>
               <div className="tile">
-                <div className="tile-label">Average score</div>
+                <div className="tile-label">{t('averageScore')}</div>
                 <div className="tile-value">
                   {summary.current.averageScore ?? '—'}
                   {summary.current.averageScore !== null && <span className="tile-unit"> / 100</span>}
                 </div>
                 {summary.current.averageScore === null ? (
-                  <div className="tile-note">No scored interviews in this period</div>
+                  <div className="tile-note">{t('noScores')}</div>
                 ) : (
-                  <Delta current={summary.current.averageScore} previous={summary.previous.averageScore} days={range} unit=" pts" />
+                  <Delta current={summary.current.averageScore} previous={summary.previous.averageScore} days={range} unit="points" />
                 )}
               </div>
               <div className="tile">
-                <div className="tile-label">Copilot minutes this month</div>
+                <div className="tile-label">{t('copilotMonth')}</div>
                 {state.usage ? (
                   <>
                     <div className="tile-value">
-                      {state.usage.used.toLocaleString()}
-                      {state.usage.limit > 0 && <span className="tile-unit"> of {state.usage.limit.toLocaleString()}</span>}
+                      {format.number(state.usage.used)}
+                      {state.usage.limit > 0 && <span className="tile-unit"> {t('ofLimit', { limit: format.number(state.usage.limit) })}</span>}
                     </div>
                     {state.usage.limit > 0 ? (
                       <div
                         className="progressBar meter"
                         role="meter"
-                        aria-label="Copilot minutes used this month"
+                        aria-label={t('copilotMeter')}
                         aria-valuemin={0}
                         aria-valuemax={state.usage.limit}
                         aria-valuenow={state.usage.used}
@@ -231,13 +231,13 @@ export function CustomDashboard() {
                         />
                       </div>
                     ) : (
-                      <div className="tile-note">No monthly allowance on record</div>
+                      <div className="tile-note">{t('noAllowance')}</div>
                     )}
                   </>
                 ) : (
                   <>
                     <div className="tile-value">—</div>
-                    <div className="tile-note">Monthly usage is unavailable right now</div>
+                    <div className="tile-note">{t('usageUnavailable')}</div>
                   </>
                 )}
               </div>
@@ -245,9 +245,9 @@ export function CustomDashboard() {
 
             <div className="charts">
               <div className="chart-panel">
-                <h3>{summary.bucketDays === 7 ? 'Weekly activity' : 'Daily activity'}</h3>
+                <h3>{summary.bucketDays === 7 ? t('weekly') : t('daily')}</h3>
                 {summary.current.liveSessions + summary.current.practiceInterviews === 0 ? (
-                  <p className="chart-empty">No live sessions or practice interviews in the last {range} days.</p>
+                  <p className="chart-empty">{t('chartEmpty', { days: range })}</p>
                 ) : (
                   <ResponsiveContainer width="100%" height={260}>
                     <BarChart data={activityData} margin={{ top: 8, right: 8, left: -16, bottom: 0 }} barGap={2}>
@@ -256,37 +256,35 @@ export function CustomDashboard() {
                       <YAxis allowDecimals={false} tickLine={false} axisLine={false} />
                       <Tooltip
                         cursor={{ fill: 'var(--ice-soft)' }}
-                        labelFormatter={(label) => (summary.bucketDays === 7 ? `Week of ${label}` : String(label))}
+                        labelFormatter={(label) => (summary.bucketDays === 7 ? t('weekOf', { date: String(label) }) : String(label))}
                       />
                       <Legend
                         iconType="circle"
                         iconSize={8}
                         formatter={(value) => <span style={{ color: 'var(--paper)' }}>{value}</span>}
                       />
-                      <Bar dataKey="liveSessions" name="Live sessions" fill="var(--ember)" radius={[4, 4, 0, 0]} maxBarSize={24} />
-                      <Bar dataKey="practiceInterviews" name="Practice interviews" fill="var(--ice)" radius={[4, 4, 0, 0]} maxBarSize={24} />
+                      <Bar dataKey="liveSessions" name={t('liveSessions')} fill="var(--ember)" radius={[4, 4, 0, 0]} maxBarSize={24} />
+                      <Bar dataKey="practiceInterviews" name={t('practiceInterviews')} fill="var(--ice)" radius={[4, 4, 0, 0]} maxBarSize={24} />
                     </BarChart>
                   </ResponsiveContainer>
                 )}
               </div>
 
               <div className="chart-panel">
-                <h3>Practice scores</h3>
+                <h3>{t('scores')}</h3>
                 {scoreData.length === 0 ? (
-                  <p className="chart-empty">
-                    No scored practice interviews in the last {range} days. A score is added when an interview&apos;s report is generated.
-                  </p>
+                  <p className="chart-empty">{t('scoresEmpty', { days: range })}</p>
                 ) : (
                   <ResponsiveContainer width="100%" height={260}>
                     <LineChart data={scoreData} margin={{ top: 8, right: 12, left: -16, bottom: 0 }}>
                       <CartesianGrid vertical={false} stroke="var(--line)" />
                       <XAxis dataKey="label" tickLine={false} minTickGap={12} />
                       <YAxis domain={[0, 100]} ticks={[0, 25, 50, 75, 100]} tickLine={false} axisLine={false} />
-                      <Tooltip formatter={(value) => [`${value} / 100`, 'Score']} />
+                      <Tooltip formatter={(value) => [`${value} / 100`, t('score')]} />
                       <Line
                         type="monotone"
                         dataKey="score"
-                        name="Score"
+                        name={t('score')}
                         stroke="var(--ember)"
                         strokeWidth={2}
                         dot={{ r: 4, fill: 'var(--ember)', stroke: 'var(--well)', strokeWidth: 2 }}
@@ -299,15 +297,15 @@ export function CustomDashboard() {
             </div>
 
             <details className="table-view">
-              <summary>View as table</summary>
+              <summary>{t('table')}</summary>
               <table>
-                <caption className="srOnly">Activity in the last {range} days</caption>
+                <caption className="srOnly">{t('tableCaption', { days: range })}</caption>
                 <thead>
                   <tr>
-                    <th scope="col">{summary.bucketDays === 7 ? 'Week of' : 'Day'}</th>
-                    <th scope="col">Live sessions</th>
-                    <th scope="col">Live minutes</th>
-                    <th scope="col">Practice interviews</th>
+                    <th scope="col">{summary.bucketDays === 7 ? t('weekColumn') : t('dayColumn')}</th>
+                    <th scope="col">{t('liveSessions')}</th>
+                    <th scope="col">{t('liveMinutes')}</th>
+                    <th scope="col">{t('practiceInterviews')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -325,15 +323,13 @@ export function CustomDashboard() {
 
             <div className="overview-footer">
               <p className="small">
-                {state.overview.truncated
-                  ? 'Counts use your most recent 1,000 records of each kind, so a very busy period may read low.'
-                  : 'Counts come straight from your account. Nothing is estimated.'}
+                {state.overview.truncated ? t('truncated') : t('exact')}
               </p>
               <ExportButton
                 data={exportRows}
                 elementId="analytics-overview"
                 filename={`activity-last-${range}-days`}
-                label="Export activity"
+                title={t('title')}
               />
             </div>
           </>

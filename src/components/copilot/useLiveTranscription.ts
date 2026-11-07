@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { LiveTranscriber, type LiveSttStatus, type SpeakerRole } from '@/lib/stt/deepgramLive';
-import { sttStreamUrl } from '@/lib/stt/relayProtocol';
+import { sttStreamUrl, type SttErrorCode } from '@/lib/stt/relayProtocol';
+import type { SpeakerResolver } from '@/lib/stt/speakers';
 import { UtteranceAssembler, type Utterance } from '@/lib/stt/utterances';
 import type { AudioCapture } from './useAudioCapture';
 
@@ -13,19 +14,23 @@ const NO_CAPTIONS: LiveCaptions = { candidate: '', interviewer: '' };
 /**
  * Streams the live capture to Deepgram while the session is active and audio
  * is live. Committed utterances go to `onUtterance`; captions show what each
- * speaker is saying right now.
+ * speaker is saying right now. With `speakers` (phone / in-person mode) one
+ * microphone carries both people and the resolver tells them apart.
  */
 export function useLiveTranscription({
   sessionId,
   capture,
   onUtterance,
+  speakers = null,
 }: {
   sessionId: string | null;
   capture: Pick<AudioCapture, 'status' | 'subscribeFrames' | 'subscribeLevels'>;
   onUtterance: (utterance: Utterance) => void;
+  speakers?: SpeakerResolver | null;
 }) {
   const [status, setStatus] = useState<LiveSttStatus>('idle');
   const [error, setError] = useState<string | null>(null);
+  const [errorCode, setErrorCode] = useState<SttErrorCode | null>(null);
   const [captions, setCaptions] = useState<LiveCaptions>(NO_CAPTIONS);
   const onUtteranceRef = useRef(onUtterance);
 
@@ -39,7 +44,12 @@ export function useLiveTranscription({
   useEffect(() => {
     if (!enabled || !sessionId) return;
 
-    const transcriber = new LiveTranscriber({ getUrl: () => sttStreamUrl(sessionId, window.location) });
+    // Silence isn't sent (client voice detection), which cuts transcription cost.
+    const transcriber = new LiveTranscriber({
+      getUrl: () => sttStreamUrl(sessionId, window.location),
+      gateSilence: true,
+      speakers: speakers ?? undefined,
+    });
     const assembler = new UtteranceAssembler((utterance) => onUtteranceRef.current(utterance));
     const refreshCaptions = () =>
       setCaptions({ candidate: assembler.liveText('candidate'), interviewer: assembler.liveText('interviewer') });
@@ -52,9 +62,11 @@ export function useLiveTranscription({
       assembler.endOfUtterance(event.role, event.receivedAt);
       refreshCaptions();
     });
-    transcriber.onStatus((next, message) => {
+    transcriber.onStatus((next, message, code) => {
+      const cleared = next === 'live' || next === 'closed';
       setStatus(next);
-      setError(next === 'live' || next === 'closed' ? null : message);
+      setError(cleared ? null : message);
+      setErrorCode(cleared ? null : code);
     });
 
     const unsubscribeFrames = subscribeFrames((frame) => transcriber.sendFrame(frame));
@@ -71,9 +83,9 @@ export function useLiveTranscription({
         setCaptions(NO_CAPTIONS);
       });
     };
-  }, [enabled, sessionId, subscribeFrames, subscribeLevels]);
+  }, [enabled, sessionId, subscribeFrames, subscribeLevels, speakers]);
 
-  return { status: enabled ? status : 'idle', error, captions } as const;
+  return { status: enabled ? status : 'idle', error, errorCode, captions } as const;
 }
 
 export type LiveTranscription = ReturnType<typeof useLiveTranscription>;

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useCallback } from 'react';
+import { useTranslations } from 'next-intl';
 
 type Platform = 'linkedin' | 'twitter' | 'facebook' | 'email';
 
@@ -42,8 +43,11 @@ const platformConfig: Record<Platform, { label: string; color: string; icon: str
 };
 
 export function SocialShareButton({ platform, content, onShare, variant = 'button', size = 'md' }: SocialShareButtonProps) {
+  const t = useTranslations('Share');
   const [loading, setLoading] = useState(false);
   const config = platformConfig[platform];
+  // Brand names stay as they are; only "Email" is a word.
+  const label = platform === 'email' ? t('email') : config.label;
 
   const handleShare = useCallback(async () => {
     setLoading(true);
@@ -113,8 +117,8 @@ export function SocialShareButton({ platform, content, onShare, variant = 'butto
       style={buttonStyle}
       onClick={handleShare}
       disabled={loading}
-      aria-label={`Share on ${config.label}`}
-      title={`Share on ${config.label}`}
+      aria-label={t('shareOn', { platform: label })}
+      title={t('shareOn', { platform: label })}
     >
       <svg
         width={size === 'sm' ? 16 : size === 'lg' ? 24 : 20}
@@ -124,7 +128,7 @@ export function SocialShareButton({ platform, content, onShare, variant = 'butto
       >
         <path d={config.icon} />
       </svg>
-      {variant === 'button' && config.label}
+      {variant === 'button' && label}
     </button>
   );
 }

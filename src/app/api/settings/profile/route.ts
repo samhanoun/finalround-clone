@@ -1,12 +1,15 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { z } from 'zod';
+import { LOCALES } from '@/i18n/locales';
 
 const profileSchema = z.object({
-  full_name: z.string().max(100).optional(),
-  avatar_url: z.string().url().optional(),
-  target_roles: z.array(z.string()).max(10).optional(),
-  language: z.string().length(2).optional(),
+  // null clears the field.
+  full_name: z.string().max(100).nullable().optional(),
+  avatar_url: z.string().url().nullable().optional(),
+  target_roles: z.array(z.string().max(120)).max(10).optional(),
+  // The app language (Settings → App language); emails and notifications use it too.
+  language: z.enum(LOCALES).optional(),
   timezone: z.string().optional(),
   email_notifications: z.boolean().optional(),
 });

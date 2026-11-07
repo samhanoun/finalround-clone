@@ -9,6 +9,7 @@
  * sockets) goes to Next. Compiled with `tsc -p tsconfig.server.json`.
  */
 
+import { randomBytes } from 'node:crypto';
 import { createServer } from 'node:http';
 import next from 'next';
 import { STT_STREAM_PATH, createSttRelay } from './src/server/sttRelay';
@@ -18,6 +19,9 @@ async function main() {
   const dev = !process.argv.includes('--production');
   const hostname = process.env.HOSTNAME ?? (dev ? 'localhost' : '0.0.0.0');
   const port = Number(process.env.PORT ?? 3000);
+
+  // Lets this process call its own /api/cron/notifications (Next runs in-process, so it sees the same env).
+  process.env.INTERNAL_CRON_SECRET = randomBytes(32).toString('hex');
 
   const app = next({ dev, turbopack: dev, hostname, port });
   const handle = app.getRequestHandler();
@@ -42,7 +46,10 @@ async function main() {
     else void nextUpgrade(req, socket, head);
   });
 
+  const scheduler = startNotificationScheduler(port);
+
   const shutdown = () => {
+    clearInterval(scheduler);
     relay.close();
     server.close(() => process.exit(0));
   };
@@ -52,6 +59,30 @@ async function main() {
   server.listen(port, hostname, () => {
     console.log(`> Ready on http://${hostname}:${port} (${dev ? 'development' : 'production'}, STT relay at ${STT_STREAM_PATH})`);
   });
+}
+
+/**
+ * Reminders and weekly digests (src/lib/notificationJobs.ts): every 5 minutes,
+ * starting a minute after boot. Set NOTIFICATION_SCHEDULER=off to rely on an
+ * external scheduler calling /api/cron/notifications with CRON_SECRET instead.
+ */
+function startNotificationScheduler(port: number): NodeJS.Timeout | undefined {
+  if (process.env.NOTIFICATION_SCHEDULER === 'off' || !process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()) return undefined;
+  const run = async () => {
+    try {
+      const res = await fetch(`http://127.0.0.1:${port}/api/cron/notifications`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${process.env.INTERNAL_CRON_SECRET}` },
+      });
+      if (!res.ok) console.warn(`[notifications] scheduled run failed: ${res.status}`);
+    } catch (error) {
+      console.warn('[notifications] scheduled run failed:', error instanceof Error ? error.message : error);
+    }
+  };
+  setTimeout(() => void run(), 60_000).unref();
+  const timer = setInterval(() => void run(), 5 * 60_000);
+  timer.unref();
+  return timer;
 }
 
 main().catch((error) => {

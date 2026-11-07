@@ -1,5 +1,6 @@
 'use client';
 
+import { useTranslations } from 'next-intl';
 import styles from './Skeleton.module.css';
 
 interface SkeletonProps {
@@ -91,19 +92,21 @@ export function DashboardSkeleton() {
 }
 
 // Loading spinner with optional text
-export function LoadingSpinner({ text = 'Loading...' }: { text?: string }) {
+export function LoadingSpinner({ text }: { text?: string }) {
+  const t = useTranslations('common');
   return (
     <div className={styles.spinnerContainer} role="status" aria-live="polite">
       <div className={styles.spinner} aria-hidden="true" />
-      <span className={styles.spinnerText}>{text}</span>
+      <span className={styles.spinnerText}>{text ?? t('loading')}</span>
     </div>
   );
 }
 
 // Inline loading indicator
 export function LoadingDots() {
+  const t = useTranslations('common');
   return (
-    <span className={styles.dots} role="status" aria-label="Loading">
+    <span className={styles.dots} role="status" aria-label={t('loading')}>
       <span>.</span><span>.</span><span>.</span>
     </span>
   );

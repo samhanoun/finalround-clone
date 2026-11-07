@@ -1,6 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useId, useState } from 'react';
+import { Link } from '@/i18n/routing';
+import { useFormatter, useTranslations } from 'next-intl';
 import { createClient } from '@/lib/supabase/browser';
 import type { Organization, OrganizationMember, OrganizationInvitation, OrganizationRole } from '@/lib/organizations';
 import styles from './TeamsClient.module.css';
@@ -12,22 +14,31 @@ interface TeamsClientProps {
 
 type TabType = 'members' | 'invitations' | 'settings' | 'sso';
 
-const TABS: Array<{ id: TabType; label: string }> = [
-  { id: 'members', label: 'Members' },
-  { id: 'invitations', label: 'Invitations' },
-  { id: 'settings', label: 'Settings' },
-  { id: 'sso', label: 'Single sign-on' },
-];
+const TABS: TabType[] = ['members', 'invitations', 'settings', 'sso'];
 
-const PLAN_LABEL: Record<string, string> = { free: 'Free', team: 'Team', enterprise: 'Enterprise' };
-const ROLE_LABEL: Record<string, string> = { owner: 'Owner', admin: 'Admin', member: 'Member', viewer: 'Viewer' };
+type T = ReturnType<typeof useTranslations>;
 
+/** A stored value (plan, role, status) in the user's language when the messages know it. */
+function label(t: T, group: string, value: string) {
+  return t.has(`${group}.${value}`) ? t(`${group}.${value}`) : value;
+}
+
+type TeamInvitation = OrganizationInvitation & { invitePath?: string };
+type InviteForMe = { teamName: string; role: string; expiresAt: string; invitePath: string };
+type InviteSent = { email: string; emailSent: boolean; link: string };
+
+function absoluteLink(path: string) {
+  return typeof window === 'undefined' ? path : `${window.location.origin}${path}`;
+}
 export default function TeamsClient({ initialOrganization, role }: TeamsClientProps) {
+  const t = useTranslations('Teams');
   const [activeTab, setActiveTab] = useState<TabType>('members');
   const [organization, setOrganization] = useState<Organization | null>(initialOrganization);
   const [myRole, setMyRole] = useState<OrganizationRole | null>(role);
   const [members, setMembers] = useState<OrganizationMember[]>([]);
-  const [invitations, setInvitations] = useState<OrganizationInvitation[]>([]);
+  const [invitations, setInvitations] = useState<TeamInvitation[]>([]);
+  const [invitesForMe, setInvitesForMe] = useState<InviteForMe[]>([]);
+  const [inviteSent, setInviteSent] = useState<InviteSent | null>(null);
   const [stats, setStats] = useState({
     totalMembers: 0,
     activeMembers: 0,
@@ -52,11 +63,11 @@ export default function TeamsClient({ initialOrganization, role }: TeamsClientPr
       if (membersData.members) setMembers(membersData.members);
       if (statsData.stats) setStats(statsData.stats);
     } catch {
-      setError("The team didn't load. Reload the page to try again.");
+      setError(t('errors.load'));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   const loadInvitations = useCallback(async (org: Organization) => {
     try {
@@ -64,8 +75,21 @@ export default function TeamsClient({ initialOrganization, role }: TeamsClientPr
       const data = await res.json().catch(() => ({}));
       if (data.invitations) setInvitations(data.invitations);
     } catch {
-      setError("Invitations didn't load. Try again.");
+      setError(t('errors.invitations'));
     }
+  }, [t]);
+
+  // Invitations sent to this user's address, from any team.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const res = await fetch('/api/teams/invitations').catch(() => null);
+      const data = res?.ok ? await res.json().catch(() => null) : null;
+      if (!cancelled && data?.invitations) setInvitesForMe(data.invitations);
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -116,13 +140,22 @@ export default function TeamsClient({ initialOrganization, role }: TeamsClientPr
 
   async function handleInvite(email: string, inviteRole: string) {
     if (!organization) return;
-    const res = await call(
-      `/api/teams/${organization.id}/invitations`,
-      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, role: inviteRole }) },
-      "The invitation wasn't sent. Check the address and try again.",
-    );
-    if (!res) return;
+    setError(null);
+    const res = await fetch(`/api/teams/${organization.id}/invitations`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, role: inviteRole }),
+    }).catch(() => null);
+    const data = res ? await res.json().catch(() => ({})) : {};
+    if (!res?.ok) {
+      setError(
+        data?.error === 'already_member' ? t('errors.alreadyMember', { email }) : t('errors.invite'),
+      );
+      return;
+    }
     setShowInviteModal(false);
+    setInviteSent({ email, emailSent: Boolean(data.emailSent), link: absoluteLink(data.invitation.invitePath) });
+    setActiveTab('invitations');
     void loadInvitations(organization);
     void loadData(organization);
   }
@@ -132,7 +165,7 @@ export default function TeamsClient({ initialOrganization, role }: TeamsClientPr
     const res = await call(
       `/api/teams/${organization.id}/invitations?invitation_id=${invitationId}`,
       { method: 'DELETE' },
-      "The invitation wasn't cancelled. Try again.",
+      t('errors.cancel'),
     );
     if (!res) return;
     void loadInvitations(organization);
@@ -144,7 +177,7 @@ export default function TeamsClient({ initialOrganization, role }: TeamsClientPr
     const res = await call(
       `/api/teams/${organization.id}/members`,
       { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ member_id: memberId, action: 'remove' }) },
-      "That member wasn't removed. Try again.",
+      t('errors.remove'),
     );
     if (res) void loadData(organization);
   }
@@ -158,7 +191,7 @@ export default function TeamsClient({ initialOrganization, role }: TeamsClientPr
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ member_id: memberId, action: 'update_role', role: newRole }),
       },
-      "The role wasn't changed. Try again.",
+      t('errors.role'),
     );
     if (res) void loadData(organization);
   }
@@ -167,7 +200,7 @@ export default function TeamsClient({ initialOrganization, role }: TeamsClientPr
     const res = await call(
       '/api/teams',
       { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, slug }) },
-      "The team wasn't created. That address may be taken; try another.",
+      t('errors.create'),
     );
     if (!res) return;
     const data = await res.json();
@@ -181,7 +214,7 @@ export default function TeamsClient({ initialOrganization, role }: TeamsClientPr
     const res = await call(
       `/api/teams/${organization.id}`,
       { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) },
-      "The name wasn't saved. Try again.",
+      t('errors.rename'),
     );
     if (!res) return false;
     const data = await res.json();
@@ -189,23 +222,24 @@ export default function TeamsClient({ initialOrganization, role }: TeamsClientPr
     return true;
   }
 
+  const forMe = invitesForMe.length ? <InvitesForMe invites={invitesForMe} /> : null;
+
   if (loading && !organization) {
-    return <p className="help">Loading your team…</p>;
+    return <p className="help">{t('loadingTeam')}</p>;
   }
 
   if (!organization) {
     return (
       <>
+        {forMe}
         <section className={`card ${styles.empty}`}>
           <div className="cardInner stack">
-            <h2 className="cardTitle">Practise together</h2>
-            <p className="cardDesc">
-              Create a team to invite colleagues or classmates, see who is practising, and manage access in one place.
-            </p>
+            <h2 className="cardTitle">{t('emptyTitle')}</h2>
+            <p className="cardDesc">{t('emptyDesc')}</p>
             {error ? <p className={styles.error} role="alert">{error}</p> : null}
             <div>
               <button type="button" className="button buttonPrimary" onClick={() => setShowCreateModal(true)}>
-                Create a team
+                {t('create')}
               </button>
             </div>
           </div>
@@ -219,50 +253,52 @@ export default function TeamsClient({ initialOrganization, role }: TeamsClientPr
 
   return (
     <div className={styles.page}>
+      {forMe}
       <header className={styles.header}>
         <div>
           <h2 className={styles.teamName}>{organization.name}</h2>
           <div className={styles.badges}>
-            <span className="badge">{PLAN_LABEL[organization.plan] ?? organization.plan} plan</span>
-            {myRole ? <span className="badge badgeIce">You are {ROLE_LABEL[myRole]?.toLowerCase() ?? myRole}</span> : null}
+            <span className="badge">{t('plan', { plan: label(t, 'plans', organization.plan) })}</span>
+            {myRole ? <span className="badge badgeIce">{t('youAre', { role: label(t, 'roles', myRole) })}</span> : null}
           </div>
         </div>
         {canManage ? (
           <button type="button" className="button buttonPrimary" onClick={() => setShowInviteModal(true)}>
-            Invite someone
+            {t('invite')}
           </button>
         ) : null}
       </header>
 
       <dl className={styles.stats}>
-        <Stat label="Members" value={stats.totalMembers} />
-        <Stat label="Active" value={stats.activeMembers} />
-        <Stat label="Interviews" value={stats.totalInterviews} />
-        <Stat label="This month" value={stats.interviewsThisMonth} />
+        <Stat label={t('stats.members')} value={stats.totalMembers} />
+        <Stat label={t('stats.active')} value={stats.activeMembers} />
+        <Stat label={t('stats.interviews')} value={stats.totalInterviews} />
+        <Stat label={t('stats.thisMonth')} value={stats.interviewsThisMonth} />
       </dl>
 
-      <nav className={styles.tabs} aria-label="Team sections">
+      <nav className={styles.tabs} aria-label={t('sections')}>
         {TABS.map((tab) => (
           <button
-            key={tab.id}
+            key={tab}
             type="button"
             className={styles.tab}
-            aria-current={activeTab === tab.id ? 'page' : undefined}
+            aria-current={activeTab === tab ? 'page' : undefined}
             onClick={() => {
-              setActiveTab(tab.id);
-              if (tab.id === 'invitations') void loadInvitations(organization);
+              setActiveTab(tab);
+              if (tab === 'invitations') void loadInvitations(organization);
             }}
           >
-            {tab.label}
-            {tab.id === 'invitations' && stats.pendingInvitations ? <span className={styles.count}>{stats.pendingInvitations}</span> : null}
+            {t(`tabs.${tab}`)}
+            {tab === 'invitations' && stats.pendingInvitations ? <span className={styles.count}>{stats.pendingInvitations}</span> : null}
           </button>
         ))}
       </nav>
 
       {error ? <p className={styles.error} role="alert">{error}</p> : null}
+      {inviteSent ? <InviteSentNote sent={inviteSent} onDismiss={() => setInviteSent(null)} /> : null}
 
       {loading ? (
-        <p className="help">Loading…</p>
+        <p className="help">{t('loading')}</p>
       ) : activeTab === 'members' ? (
         <MembersTab members={members} canManage={canManage} onRemove={handleRemoveMember} onUpdateRole={handleUpdateRole} />
       ) : activeTab === 'invitations' ? (
@@ -302,19 +338,21 @@ function MembersTab({
   onRemove: (id: string) => void;
   onUpdateRole: (id: string, role: string) => void;
 }) {
+  const t = useTranslations('Teams');
+  const format = useFormatter();
   if (members.length === 0) {
-    return <p className={`card ${styles.note}`}>No members yet. Invite someone to get started.</p>;
+    return <p className={`card ${styles.note}`}>{t('noMembers')}</p>;
   }
   return (
     <div className={`card ${styles.tableCard}`}>
       <table className={styles.table}>
         <thead>
           <tr>
-            <th scope="col">Member</th>
-            <th scope="col">Role</th>
-            <th scope="col">Status</th>
-            <th scope="col">Joined</th>
-            {canManage ? <th scope="col" aria-label="Actions" /> : null}
+            <th scope="col">{t('member')}</th>
+            <th scope="col">{t('role')}</th>
+            <th scope="col">{t('status')}</th>
+            <th scope="col">{t('joined')}</th>
+            {canManage ? <th scope="col" aria-label={t('actions')} /> : null}
           </tr>
         </thead>
         <tbody>
@@ -326,7 +364,7 @@ function MembersTab({
                     {initials(member)}
                   </span>
                   <span>
-                    <span className={styles.personName}>{member.user_full_name || member.user_email || 'Unknown'}</span>
+                    <span className={styles.personName}>{member.user_full_name || member.user_email || t('unknown')}</span>
                     {member.user_full_name ? <span className={styles.personEmail}>{member.user_email}</span> : null}
                   </span>
                 </div>
@@ -336,26 +374,26 @@ function MembersTab({
                   <select
                     className={`select ${styles.roleSelect}`}
                     value={member.role}
-                    aria-label={`Role for ${member.user_email ?? 'member'}`}
+                    aria-label={t('roleFor', { member: member.user_email ?? t('member') })}
                     onChange={(e) => onUpdateRole(member.id, e.target.value)}
                   >
-                    <option value="admin">Admin</option>
-                    <option value="member">Member</option>
-                    <option value="viewer">Viewer</option>
+                    <option value="admin">{t('roles.admin')}</option>
+                    <option value="member">{t('roles.member')}</option>
+                    <option value="viewer">{t('roles.viewer')}</option>
                   </select>
                 ) : (
-                  <span className="badge">{ROLE_LABEL[member.role] ?? member.role}</span>
+                  <span className="badge">{label(t, 'roles', member.role)}</span>
                 )}
               </td>
               <td>
-                <span className={`badge ${member.status === 'active' ? 'badgeLive' : ''}`}>{member.status}</span>
+                <span className={`badge ${member.status === 'active' ? 'badgeLive' : ''}`}>{label(t, 'statuses', member.status)}</span>
               </td>
-              <td className={styles.muted}>{member.joined_at ? new Date(member.joined_at).toLocaleDateString() : '—'}</td>
+              <td className={styles.muted}>{member.joined_at ? format.dateTime(new Date(member.joined_at), { dateStyle: 'medium' }) : '—'}</td>
               {canManage ? (
                 <td className={styles.actionsCell}>
                   {member.role !== 'owner' ? (
                     <button type="button" className="button buttonGhost" onClick={() => onRemove(member.id)}>
-                      Remove
+                      {t('remove')}
                     </button>
                   ) : null}
                 </td>
@@ -368,24 +406,89 @@ function MembersTab({
   );
 }
 
+function CopyButton({ text, label: buttonLabel }: { text: string; label?: string }) {
+  const t = useTranslations('Teams');
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      className="button buttonGhost"
+      onClick={async () => {
+        try {
+          await navigator.clipboard.writeText(text);
+          setCopied(true);
+          window.setTimeout(() => setCopied(false), 2000);
+        } catch {
+          window.prompt(t('copyPrompt'), text);
+        }
+      }}
+    >
+      {copied ? t('copied') : (buttonLabel ?? t('copyLink'))}
+    </button>
+  );
+}
+
+function InviteSentNote({ sent, onDismiss }: { sent: InviteSent; onDismiss: () => void }) {
+  const t = useTranslations('Teams');
+  return (
+    <div className={`card ${styles.note}`} role="status">
+      <p>{sent.emailSent ? t('inviteEmailed', { email: sent.email }) : t('inviteCreated', { email: sent.email })}</p>
+      <div className={styles.linkRow}>
+        <code className={styles.link}>{sent.link}</code>
+        <CopyButton text={sent.link} />
+        <button type="button" className="button buttonGhost" onClick={onDismiss}>
+          {t('done')}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function InvitesForMe({ invites }: { invites: InviteForMe[] }) {
+  const t = useTranslations('Teams');
+  return (
+    <section className={`card ${styles.note}`} aria-label={t('forYou')}>
+      <h2 className="cardTitle">{t('forYou')}</h2>
+      <ul className={styles.inviteList}>
+        {invites.map((invite) => (
+          <li key={invite.invitePath}>
+            <span>
+              {t.rich('invitedYou', {
+                team: invite.teamName,
+                role: label(t, 'roles', invite.role),
+                strong: (chunks) => <strong>{chunks}</strong>,
+              })}
+            </span>
+            <Link className="button buttonPrimary" href={invite.invitePath}>
+              {t('viewInvitation')}
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 function InvitationsTab({
   invitations,
   canManage,
   onCancel,
   onInvite,
 }: {
-  invitations: OrganizationInvitation[];
+  invitations: TeamInvitation[];
   canManage: boolean;
   onCancel: (id: string) => void;
   onInvite: () => void;
 }) {
+  const t = useTranslations('Teams');
+  const format = useFormatter();
   if (invitations.length === 0) {
     return (
       <div className={`card ${styles.note}`}>
-        <p>No invitations waiting.</p>
+        <p>{t('noInvitations')}</p>
         {canManage ? (
           <button type="button" className="button" onClick={onInvite}>
-            Invite someone
+            {t('invite')}
           </button>
         ) : null}
       </div>
@@ -396,26 +499,27 @@ function InvitationsTab({
       <table className={styles.table}>
         <thead>
           <tr>
-            <th scope="col">Email</th>
-            <th scope="col">Role</th>
-            <th scope="col">Status</th>
-            <th scope="col">Expires</th>
-            {canManage ? <th scope="col" aria-label="Actions" /> : null}
+            <th scope="col">{t('email')}</th>
+            <th scope="col">{t('role')}</th>
+            <th scope="col">{t('status')}</th>
+            <th scope="col">{t('expires')}</th>
+            {canManage ? <th scope="col" aria-label={t('actions')} /> : null}
           </tr>
         </thead>
         <tbody>
           {invitations.map((inv) => (
             <tr key={inv.id}>
               <td>{inv.email}</td>
-              <td>{ROLE_LABEL[inv.role] ?? inv.role}</td>
+              <td>{label(t, 'roles', inv.role)}</td>
               <td>
-                <span className="badge">{inv.status}</span>
+                <span className="badge">{label(t, 'statuses', inv.status)}</span>
               </td>
-              <td className={styles.muted}>{new Date(inv.expires_at).toLocaleDateString()}</td>
+              <td className={styles.muted}>{format.dateTime(new Date(inv.expires_at), { dateStyle: 'medium' })}</td>
               {canManage ? (
                 <td className={styles.actionsCell}>
+                  {inv.invitePath ? <CopyButton text={absoluteLink(inv.invitePath)} /> : null}
                   <button type="button" className="button buttonGhost" onClick={() => onCancel(inv.id)}>
-                    Cancel
+                    {t('cancel')}
                   </button>
                 </td>
               ) : null}
@@ -436,6 +540,7 @@ function SettingsTab({
   canEdit: boolean;
   onRename: (name: string) => Promise<boolean>;
 }) {
+  const t = useTranslations('Teams');
   const [name, setName] = useState(organization.name);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -453,9 +558,9 @@ function SettingsTab({
   return (
     <form className="card" onSubmit={save}>
       <div className="cardInner stack">
-        <h3 className="cardTitle">Team details</h3>
+        <h3 className="cardTitle">{t('details')}</h3>
         <label className="label" htmlFor={nameId}>
-          Team name
+          {t('name')}
           <input
             id={nameId}
             className="input"
@@ -466,78 +571,235 @@ function SettingsTab({
           />
         </label>
         <div className={styles.readOnly}>
-          <span>Team address</span>
+          <span>{t('address')}</span>
           <code>{organization.slug}</code>
         </div>
         <div className={styles.readOnly}>
-          <span>Plan</span>
-          <span>{PLAN_LABEL[organization.plan] ?? organization.plan}</span>
+          <span>{t('planLabel')}</span>
+          <span>{label(t, 'plans', organization.plan)}</span>
         </div>
         {canEdit ? (
           <div className={styles.formActions}>
-            {saved ? <span className={styles.saved}>Saved</span> : null}
+            {saved ? <span className={styles.saved}>{t('saved')}</span> : null}
             <button type="submit" className="button buttonPrimary" disabled={saving || !name.trim() || name.trim() === organization.name}>
-              {saving ? 'Saving…' : 'Save name'}
+              {saving ? t('saving') : t('saveName')}
             </button>
           </div>
         ) : (
-          <p className="help">Only the team owner can change these.</p>
+          <p className="help">{t('ownerOnly')}</p>
         )}
       </div>
     </form>
   );
 }
 
-function SSOTab({ organization, canEdit }: { organization: Organization; canEdit: boolean }) {
-  const [ssoEnabled, setSsoEnabled] = useState(organization.sso_enabled);
-  const [busy, setBusy] = useState(false);
-  const entityId = typeof window !== 'undefined' ? `${window.location.origin}/saml/metadata/${organization.id}` : '';
+type SsoView = {
+  enabled: boolean;
+  domains: string[];
+  metadataUrl: string | null;
+  manageable: boolean;
+  serviceProvider: { entityId: string; metadataUrl: string; acsUrl: string; nameIdFormat: string } | null;
+};
 
-  async function toggle() {
+/** A DNS TXT record that proves the team owns a domain (src/lib/ssoVerification.ts). */
+type DomainRecord = { domain: string; type: 'TXT'; name: string; value: string };
+
+function SSOTab({ organization, canEdit }: { organization: Organization; canEdit: boolean }) {
+  const t = useTranslations('Teams');
+  const [view, setView] = useState<SsoView | null>(null);
+  const [domains, setDomains] = useState('');
+  const [source, setSource] = useState<'url' | 'xml'>('url');
+  const [metadataUrl, setMetadataUrl] = useState('');
+  const [metadataXml, setMetadataXml] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
+  const [records, setRecords] = useState<DomainRecord[]>([]);
+  const ids = { domains: useId(), url: useId(), xml: useId() };
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const res = await fetch(`/api/teams/${organization.id}/sso`).catch(() => null);
+      const data = res?.ok ? ((await res.json()) as SsoView) : null;
+      if (cancelled || !data) return;
+      setView(data);
+      setDomains(data.domains.join(', '));
+      setMetadataUrl(data.metadataUrl ?? '');
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [organization.id]);
+
+  async function send(method: 'PUT' | 'DELETE') {
     setBusy(true);
+    setMessage(null);
     try {
       const res = await fetch(`/api/teams/${organization.id}/sso`, {
-        method: 'POST',
+        method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: ssoEnabled ? 'disable' : 'enable', provider: 'saml' }),
+        body:
+          method === 'PUT'
+            ? JSON.stringify({
+                domains: domains.split(/[\s,]+/).filter(Boolean),
+                ...(source === 'url' ? { metadataUrl: metadataUrl.trim() } : { metadataXml: metadataXml.trim() }),
+              })
+            : undefined,
       });
-      if (res.ok) setSsoEnabled(!ssoEnabled);
+      const data = await res.json().catch(() => ({}));
+      setRecords(data?.error === 'domain_unverified' && Array.isArray(data.records) ? (data.records as DomainRecord[]) : []);
+      if (!res.ok) {
+        throw new Error(typeof data?.error === 'string' && t.has(`sso.errors.${data.error}`) ? t(`sso.errors.${data.error}`) : t('sso.failed'));
+      }
+      setView(data as SsoView);
+      setMessage({ kind: 'ok', text: method === 'PUT' ? t('sso.on') : t('sso.off') });
+    } catch (e) {
+      setMessage({ kind: 'error', text: e instanceof Error ? e.message : t('sso.failed') });
     } finally {
       setBusy(false);
     }
   }
+
+  if (!view) return <p className="help">{t('loading')}</p>;
+  const sp = view.serviceProvider;
+  const metadataReady = source === 'url' ? metadataUrl.trim().startsWith('https://') : metadataXml.trim().length > 50;
 
   return (
     <div className="card">
       <div className="cardInner stack">
         <div className={styles.ssoRow}>
           <div>
-            <h3 className="cardTitle">SAML sign-in</h3>
-            <p className="help">Let members sign in through your company’s identity provider.</p>
+            <h3 className="cardTitle">{t('sso.title')}</h3>
+            <p className="help">{t('sso.desc')}</p>
           </div>
-          {canEdit ? (
-            <button
-              type="button"
-              role="switch"
-              aria-checked={ssoEnabled}
-              aria-label="SAML sign-in"
-              className={styles.switch}
-              onClick={toggle}
-              disabled={busy}
-            >
-              <span />
-            </button>
-          ) : (
-            <span className={`badge ${ssoEnabled ? 'badgeLive' : ''}`}>{ssoEnabled ? 'On' : 'Off'}</span>
-          )}
+          <span className={`badge ${view.enabled ? 'badgeLive' : ''}`}>{view.enabled ? t('sso.badgeOn') : t('sso.badgeOff')}</span>
         </div>
-        {ssoEnabled ? (
-          <div className={styles.readOnly}>
-            <span>Service provider entity ID</span>
-            <code>{entityId}</code>
+
+        {!view.manageable ? (
+          <p className={styles.note} role="status">
+            {t('sso.errors.not_configured')} {t('sso.askAdmin')}
+          </p>
+        ) : null}
+
+        {sp ? (
+          <div className="stack" style={{ gap: 8 }}>
+            <span className="label">{t('sso.forProvider')}</span>
+            {[
+              [t('sso.entityId'), sp.entityId],
+              [t('sso.acsUrl'), sp.acsUrl],
+              [t('sso.metadata'), sp.metadataUrl],
+            ].map(([name, value]) => (
+              <div key={name} className={styles.linkRow}>
+                <span className={styles.muted} style={{ minWidth: 120 }}>{name}</span>
+                <code className={styles.link}>{value}</code>
+                <CopyButton text={value} label={t('copy')} />
+              </div>
+            ))}
+            <span className="help">{t('sso.nameId')}</span>
           </div>
         ) : null}
-        <p className="help">Sign-in with Google, Microsoft or Okta (OIDC) isn’t available yet.</p>
+
+        {canEdit ? (
+          <form
+            className="stack"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void send('PUT');
+            }}
+          >
+            <label className="label" htmlFor={ids.domains}>
+              {t('sso.domains')}
+              <input
+                id={ids.domains}
+                className="input"
+                value={domains}
+                onChange={(e) => setDomains(e.target.value)}
+                placeholder={t('sso.domainsPlaceholder')}
+                disabled={busy}
+              />
+              <span className="help">{t('sso.domainsHelp')}</span>
+            </label>
+            <div className="row" role="radiogroup" aria-label={t('sso.metadataChoice')} style={{ gap: 16 }}>
+              <label className="checkbox-label">
+                <input type="radio" checked={source === 'url'} onChange={() => setSource('url')} disabled={busy} />
+                <span>{t('sso.metadataUrl')}</span>
+              </label>
+              <label className="checkbox-label">
+                <input type="radio" checked={source === 'xml'} onChange={() => setSource('xml')} disabled={busy} />
+                <span>{t('sso.metadataXml')}</span>
+              </label>
+            </div>
+            {source === 'url' ? (
+              <label className="label" htmlFor={ids.url}>
+                {t('sso.metadataUrlLabel')}
+                <input
+                  id={ids.url}
+                  className="input"
+                  type="url"
+                  value={metadataUrl}
+                  onChange={(e) => setMetadataUrl(e.target.value)}
+                  placeholder={t('sso.metadataUrlPlaceholder')}
+                  disabled={busy}
+                />
+              </label>
+            ) : (
+              <label className="label" htmlFor={ids.xml}>
+                {t('sso.metadataXmlLabel')}
+                <textarea
+                  id={ids.xml}
+                  className="textarea"
+                  rows={5}
+                  value={metadataXml}
+                  onChange={(e) => setMetadataXml(e.target.value)}
+                  placeholder={t('sso.metadataXmlPlaceholder')}
+                  disabled={busy}
+                />
+              </label>
+            )}
+            {records.length ? (
+              <div className="stack" style={{ gap: 8 }} aria-live="polite">
+                <span className="label">{t('sso.verifyTitle')}</span>
+                <span className="help">{t('sso.verifyHelp')}</span>
+                {records.map((record) => (
+                  <div key={record.name} className="stack" style={{ gap: 4 }}>
+                    <strong>{record.domain}</strong>
+                    {[
+                      [t('sso.recordType'), record.type],
+                      [t('sso.recordName'), record.name],
+                      [t('sso.recordValue'), record.value],
+                    ].map(([name, value]) => (
+                      <div key={name} className={styles.linkRow}>
+                        <span className={styles.muted} style={{ minWidth: 120 }}>{name}</span>
+                        <code className={styles.link}>{value}</code>
+                        <CopyButton text={value} label={t('copy')} />
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            ) : null}
+            <p className="help" style={{ margin: 0 }}>
+              {t('sso.separateAccounts')}
+            </p>
+            <div className={styles.formActions}>
+              {message ? (
+                <span className="help" role={message.kind === 'error' ? 'alert' : 'status'}>
+                  {message.text}
+                </span>
+              ) : null}
+              {view.enabled ? (
+                <button type="button" className="button" onClick={() => void send('DELETE')} disabled={busy}>
+                  {t('sso.turnOff')}
+                </button>
+              ) : null}
+              <button type="submit" className="button buttonPrimary" disabled={busy || !view.manageable || !domains.trim() || !metadataReady}>
+                {busy ? t('saving') : view.enabled ? t('sso.save') : t('sso.turnOn')}
+              </button>
+            </div>
+          </form>
+        ) : (
+          <p className="help">{t('sso.ownerOnly')}</p>
+        )}
       </div>
     </div>
   );
@@ -565,11 +827,12 @@ function Modal(props: { title: string; onClose: () => void; children: React.Reac
 }
 
 function InviteModal({ onClose, onInvite }: { onClose: () => void; onInvite: (email: string, role: string) => void }) {
+  const t = useTranslations('Teams');
   const [email, setEmail] = useState('');
   const [inviteRole, setInviteRole] = useState('member');
   const ids = { email: useId(), role: useId() };
   return (
-    <Modal title="Invite someone" onClose={onClose}>
+    <Modal title={t('invite')} onClose={onClose}>
       <form
         className="stack"
         onSubmit={(e) => {
@@ -578,32 +841,32 @@ function InviteModal({ onClose, onInvite }: { onClose: () => void; onInvite: (em
         }}
       >
         <label className="label" htmlFor={ids.email}>
-          Email
+          {t('email')}
           <input
             id={ids.email}
             className="input"
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            placeholder="colleague@company.com"
+            placeholder={t('emailPlaceholder')}
             required
             autoFocus
           />
         </label>
         <label className="label" htmlFor={ids.role}>
-          Role
+          {t('role')}
           <select id={ids.role} className="select" value={inviteRole} onChange={(e) => setInviteRole(e.target.value)}>
-            <option value="member">Member</option>
-            <option value="admin">Admin (can manage members)</option>
-            <option value="viewer">Viewer (read-only)</option>
+            <option value="member">{t('roles.member')}</option>
+            <option value="admin">{t('roleAdminHelp')}</option>
+            <option value="viewer">{t('roleViewerHelp')}</option>
           </select>
         </label>
         <div className={styles.formActions}>
           <button type="button" className="button" onClick={onClose}>
-            Cancel
+            {t('cancel')}
           </button>
           <button type="submit" className="button buttonPrimary" disabled={!email.trim()}>
-            Send invitation
+            {t('sendInvitation')}
           </button>
         </div>
       </form>
@@ -612,6 +875,7 @@ function InviteModal({ onClose, onInvite }: { onClose: () => void; onInvite: (em
 }
 
 function CreateTeamModal({ onClose, onCreate }: { onClose: () => void; onCreate: (name: string, slug: string) => void }) {
+  const t = useTranslations('Teams');
   const [name, setName] = useState('');
   const [slug, setSlug] = useState('');
   const [slugEdited, setSlugEdited] = useState(false);
@@ -619,7 +883,7 @@ function CreateTeamModal({ onClose, onCreate }: { onClose: () => void; onCreate:
   const toSlug = (value: string) => value.toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 48);
 
   return (
-    <Modal title="Create a team" onClose={onClose}>
+    <Modal title={t('create')} onClose={onClose}>
       <form
         className="stack"
         onSubmit={(e) => {
@@ -628,7 +892,7 @@ function CreateTeamModal({ onClose, onCreate }: { onClose: () => void; onCreate:
         }}
       >
         <label className="label" htmlFor={ids.name}>
-          Team name
+          {t('name')}
           <input
             id={ids.name}
             className="input"
@@ -637,14 +901,14 @@ function CreateTeamModal({ onClose, onCreate }: { onClose: () => void; onCreate:
               setName(e.target.value);
               if (!slugEdited) setSlug(toSlug(e.target.value));
             }}
-            placeholder="e.g. Acme engineering"
+            placeholder={t('namePlaceholder')}
             required
             autoFocus
             maxLength={100}
           />
         </label>
         <label className="label" htmlFor={ids.slug}>
-          Team address
+          {t('address')}
           <input
             id={ids.slug}
             className="input"
@@ -653,17 +917,17 @@ function CreateTeamModal({ onClose, onCreate }: { onClose: () => void; onCreate:
               setSlugEdited(true);
               setSlug(toSlug(e.target.value));
             }}
-            placeholder="acme-engineering"
+            placeholder={t('addressPlaceholder')}
             required
           />
-          <span className="help">Lowercase letters, numbers and dashes.</span>
+          <span className="help">{t('addressHelp')}</span>
         </label>
         <div className={styles.formActions}>
           <button type="button" className="button" onClick={onClose}>
-            Cancel
+            {t('cancel')}
           </button>
           <button type="submit" className="button buttonPrimary" disabled={!name.trim() || !slug}>
-            Create team
+            {t('createTeam')}
           </button>
         </div>
       </form>

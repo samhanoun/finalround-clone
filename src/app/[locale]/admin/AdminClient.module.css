@@ -180,3 +180,44 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+.thread {
+  margin-top: 16px;
+}
+
+.threadHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.threadBody {
+  margin: 0;
+  white-space: pre-wrap;
+  line-height: 1.55;
+}
+
+.threadList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.threadList li {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--well);
+  border: 1px solid var(--line);
+}
+
+.threadList li[data-from='support'] {
+  border-color: color-mix(in srgb, var(--ice) 35%, transparent);
+}
+
+.threadList p {
+  margin: 4px 0 0;
+  white-space: pre-wrap;
+}

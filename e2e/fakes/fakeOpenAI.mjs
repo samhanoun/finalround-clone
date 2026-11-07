@@ -7,7 +7,11 @@ import config from './config.cjs';
 
 const { ANSWER_PIECES, KEYS } = config;
 
-/** Scripted JSON replies for the practice interview and cover letter tasks. */
+/**
+ * Scripted JSON replies for the JSON tasks (practice interview, cover letter,
+ * tailored résumé, memory). The app only reads `follow_up` for a main question,
+ * so every main question gets exactly one follow-up here.
+ */
 const PRACTICE_REPLIES = {
   'TASK: cover_letter': {
     letter:
@@ -28,6 +32,13 @@ const PRACTICE_REPLIES = {
     strengths: ['Concrete outcome: latency down 40%', 'Good pacing for a spoken answer'],
     improvements: ['Say what you decided, not what the team did', 'Open with one line of context, not three'],
     stronger_answer: ['Stakes in one sentence', 'Your two key decisions', 'The measured result and what you learned'],
+    follow_up: 'What would you do differently if you ran that project again?',
+  },
+  'TASK: memory_extract': {
+    facts: [
+      'Led the payments migration at Stripe that cut checkout latency by 40%.',
+      'Mentored four engineers and ran the on-call rotation.',
+    ],
   },
   'TASK: practice_report': {
     overall_score: 72,
@@ -43,7 +54,50 @@ const PRACTICE_REPLIES = {
       structure: { score: 3, evidence: 'Result came early, action was thin', recommendation: 'Use situation, action, result in that order.' },
     },
   },
+  'TASK: tailored_resume': {
+    target: 'Staff Engineer at Acme',
+    summary: 'Leads with the payments migration and on-call work, which match Acme’s reliability focus.',
+    changes: ['Opened with a summary aimed at platform reliability', 'Moved the payments migration to the top', 'Rewrote bullets to lead with results'],
+    keywords: ['payments', 'reliability', 'mentoring'],
+    resume:
+      'E2E CANDIDATE\ncandidate@example.test\n\nSUMMARY\nBackend engineer who led a payments migration that cut checkout latency by 40%.\n\nEXPERIENCE\nStripe, Senior Engineer\n- Led the payments migration, cutting checkout latency by 40%\n- Mentored four engineers and ran the on-call rotation',
+  },
 };
+
+/**
+ * Live answers for coding and system-design questions, as a real model writes
+ * them: a fenced code block (the code panel) and a fenced diagram block (drawn
+ * as boxes and arrows). Picked by words in the question.
+ */
+const CODING_PIECES = [
+  'Reverse it in place with two pointers.\n\n',
+  ['```python', 'def reverse(head):', '    prev = None', '    while head:', '        head.next, prev, head = prev, head, head.next', '    return prev', '```', ''].join('\n'),
+  '\n- O(n) time, O(1) space.',
+];
+const DESIGN_PIECES = [
+  'Put a gateway in front and cache the hot reads.\n\n',
+  [
+    '```diagram',
+    'Client -> API gateway: HTTPS',
+    'API gateway -> Shortener service: REST',
+    'Shortener service -> Redis: cache',
+    'Shortener service -> Postgres: SQL',
+    '```',
+    '',
+  ].join('\n'),
+  '\n- Rate limit at the gateway.',
+];
+
+function livePieces(messages) {
+  const text = JSON.stringify(messages ?? []);
+  const lower = text.toLowerCase();
+  // The prompt carries earlier transcript lines too, so the most specific question wins.
+  if (lower.includes('design a url shortener')) return DESIGN_PIECES;
+  if (lower.includes('linked list')) return CODING_PIECES;
+  // When retrieval sent passages ([S1] …), cite the first one, as the prompt asks a real model to.
+  if (text.includes('[S1] (')) return [`${ANSWER_PIECES[0].trimEnd()} [S1] `, ...ANSWER_PIECES.slice(1)];
+  return ANSWER_PIECES;
+}
 
 let requests = [];
 
@@ -109,7 +163,7 @@ export function startFakeOpenAI(port) {
     // Practice interviews ask for JSON; the system prompt names the task.
     const system = typeof body.messages?.[0]?.content === 'string' ? body.messages[0].content : '';
     const practice = Object.entries(PRACTICE_REPLIES).find(([task]) => system.includes(task));
-    for (const piece of practice ? [JSON.stringify(practice[1])] : ANSWER_PIECES) {
+    for (const piece of practice ? [JSON.stringify(practice[1])] : livePieces(body.messages)) {
       await sleep(120);
       if (res.destroyed) return;
       res.write(chunk({ content: piece }));

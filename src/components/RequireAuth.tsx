@@ -1,13 +1,15 @@
 'use client';
 
-import Link from 'next/link';
+import { Link } from '@/i18n/routing';
 import { createClient } from '@/lib/supabase/browser';
 import { useEffect, useState } from 'react';
 import { User } from '@supabase/supabase-js';
+import { useTranslations } from 'next-intl';
 
 export function RequireAuth(props: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const t = useTranslations('RequireAuth');
 
   useEffect(() => {
     async function checkAuth() {
@@ -23,7 +25,7 @@ export function RequireAuth(props: { children: React.ReactNode }) {
     return (
       <div className="card">
         <div className="cardInner stack">
-          <p className="small">Loading...</p>
+          <p className="small">{t('loading')}</p>
         </div>
       </div>
     );
@@ -33,14 +35,14 @@ export function RequireAuth(props: { children: React.ReactNode }) {
     return (
       <div className="card">
         <div className="cardInner stack">
-          <h2 className="cardTitle">You&apos;re not logged in</h2>
-          <p className="cardDesc">Please login to continue.</p>
+          <h2 className="cardTitle">{t('title')}</h2>
+          <p className="cardDesc">{t('description')}</p>
           <div className="row">
             <Link className="button buttonPrimary" href="/auth">
-              Go to login
+              {t('signIn')}
             </Link>
             <Link className="button" href="/">
-              Back to landing
+              {t('home')}
             </Link>
           </div>
         </div>

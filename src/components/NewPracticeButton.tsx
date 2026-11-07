@@ -1,11 +1,21 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
+import { useRouter } from '@/i18n/routing';
 import { useId, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { useToastHook } from '@/components/Toast';
 
-/** Creates a practice interview and opens it. */
-export function NewPracticeButton({ primary = false, label = 'Practice an interview' }: { primary?: boolean; label?: string }) {
+/** Creates a practice interview and opens it; `query` fills in its setup (e.g. "company=Acme&bank=1"). */
+export function NewPracticeButton({
+  primary = false,
+  label,
+  query,
+}: {
+  primary?: boolean;
+  label?: string;
+  query?: string;
+}) {
+  const t = useTranslations('NewPractice');
   const router = useRouter();
   const toast = useToastHook();
   const [loading, setLoading] = useState(false);
@@ -20,18 +30,18 @@ export function NewPracticeButton({ primary = false, label = 'Practice an interv
       const res = await fetch('/api/interviews', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ title: 'Practice interview', status: 'draft', meta: {} }),
+        body: JSON.stringify({ title: t('defaultTitle'), status: 'draft', meta: {} }),
       });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json?.error ?? 'Could not create a practice interview.');
+      if (!res.ok) throw new Error(t('failed'));
 
-      toast.success('Practice interview created', 'Your new practice session is ready.');
-      router.push(`/interview/${json.session.id}`);
+      const json = await res.json();
+      toast.success(t('createdTitle'), t('createdBody'));
+      router.push(`/interview/${json.session.id}${query ? `?${query}` : ''}`);
       router.refresh();
     } catch (e) {
-      const message = e instanceof Error ? e.message : 'Could not create a practice interview.';
+      const message = e instanceof Error ? e.message : t('failed');
       setError(message);
-      toast.error('Practice interview not created', message);
+      toast.error(t('notCreated'), message);
     } finally {
       setLoading(false);
     }
@@ -46,11 +56,11 @@ export function NewPracticeButton({ primary = false, label = 'Practice an interv
         type="button"
         aria-describedby={loading ? statusId : error ? errorId : undefined}
       >
-        {loading ? 'Creating…' : label}
+        {loading ? t('creating') : (label ?? t('label'))}
       </button>
       {loading ? (
         <span id={statusId} className="srOnly">
-          Creating a practice interview, please wait…
+          {t('creatingStatus')}
         </span>
       ) : null}
       {error ? (

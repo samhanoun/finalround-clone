@@ -10,7 +10,8 @@ const noSubscription = () => () => undefined;
  * the top-right corner). This strip takes its place on every page: it moves
  * the window when dragged, and `html[data-desktop]` pushes the page below it.
  */
-export function DesktopFrame() {
+/** `title`: the app's name, from the locale layout (this renders outside the translations provider). */
+export function DesktopFrame({ title }: { title: string }) {
   const desktop = useSyncExternalStore(noSubscription, isDesktopApp, () => false);
 
   useEffect(() => {
@@ -22,7 +23,7 @@ export function DesktopFrame() {
   if (!desktop) return null;
   return (
     <div className="desktopTitlebar" aria-hidden="true">
-      Apex Round
+      {title}
     </div>
   );
 }

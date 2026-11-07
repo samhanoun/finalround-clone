@@ -124,6 +124,60 @@
   box-shadow: var(--float);
 }
 
+.questionRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 20px;
+}
+
+.questionBody {
+  flex: 1;
+  min-width: 0;
+}
+
+.voiceControls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 14px;
+}
+
+.check {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 14.5px;
+  line-height: 1.5;
+  color: var(--paper-dim);
+}
+
+.check input {
+  margin-top: 4px;
+}
+
+.check strong {
+  color: var(--paper);
+  font-weight: 600;
+}
+
+.followUpNote {
+  margin: 0;
+  color: var(--ice);
+  font-size: 14.5px;
+}
+
+.followUpTag {
+  margin-right: 8px;
+  color: var(--ice);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* A follow-up hangs off the question before it. */
+.step[data-kind='follow-up'] {
+  width: 14px;
+}
+
 .questionMeta {
   display: flex;
   flex-wrap: wrap;
@@ -486,5 +540,9 @@
 
   .overallNumber {
     font-size: 2.4rem;
+  }
+
+  .questionRow {
+    gap: 14px;
   }
 }

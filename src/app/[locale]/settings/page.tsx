@@ -1,4 +1,4 @@
-import Link from 'next/link';
+import { Link } from '@/i18n/routing';
 import { AppShell } from '@/components/AppShell';
 import { RequireAuth } from '@/components/RequireAuth';
 import { SettingsClient } from '@/components/SettingsClient';
@@ -10,7 +10,8 @@ import { VideoConferencingSettings } from '@/components/VideoConferencingSetting
 import { createClient } from '@/lib/supabase/server';
 import { UsageWidget } from '@/components/UsageWidget';
 import { getTranslations } from 'next-intl/server';
-import { getVideoConferencingSettings } from '@/lib/videoConferencing';
+import { meetingSettingsFromRow } from '@/lib/meetingSettings';
+import { loadModelSettings, modelChoices } from '@/lib/answerModels';
 
 export default async function SettingsPage() {
   const t = await getTranslations('settings');
@@ -27,21 +28,21 @@ export default async function SettingsPage() {
     );
   }
 
-  const { data: settings } = await supabase
-    .from('llm_settings')
-    .select('provider,model,temperature,max_tokens')
+  const modelSettings = await loadModelSettings(supabase, userData.user.id);
+  const { options: modelOptionList, defaults: modelDefaults } = modelChoices();
+
+  const { data: meetingRow } = await supabase
+    .from('video_conferencing_settings')
+    .select('*')
     .eq('user_id', userData.user.id)
     .maybeSingle();
-
-  // Fetch video conferencing settings
-  const videoSettings = await getVideoConferencingSettings(supabase, userData.user.id);
 
   return (
     <AppShell
       title={t('title')}
       actions={
         <Link className="button" href="/teams">
-          Teams
+          {t('teams')}
         </Link>
       }
     >
@@ -60,12 +61,11 @@ export default async function SettingsPage() {
             </div>
           </div>
           
-          <NotificationPreferences />
+          <NotificationPreferences email={userData.user.email ?? null} emailConfigured={Boolean(process.env.SENDGRID_API_KEY)} />
 
-          <SettingsClient initial={settings ?? null} />
+          <SettingsClient initial={modelSettings} options={modelOptionList} defaults={modelDefaults} />
 
-          {/* Video Conferencing Settings */}
-          <VideoConferencingSettings initial={videoSettings} />
+          <VideoConferencingSettings initial={meetingSettingsFromRow(meetingRow)} />
 
           <AccountDeletion />
         </div>

@@ -23,7 +23,7 @@ const DEFAULT_FROM_NAME = process.env.EMAIL_FROM_NAME || 'Apex Round';
 
 export async function sendEmail(options: EmailOptions): Promise<boolean> {
   if (!apiKey) {
-    console.warn('SENDGRID_API_KEY not configured - email not sent:', options.subject);
+    console.warn('[email] SENDGRID_API_KEY is not set; not sent:', options.subject);
     return false;
   }
 
@@ -40,10 +40,9 @@ export async function sendEmail(options: EmailOptions): Promise<boolean> {
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await sgMail.send(msg as any);
-    console.log(`Email sent: ${options.subject} to ${options.to}`);
     return true;
   } catch (error) {
-    console.error('Error sending email:', error);
+    console.error('Error sending email:', error instanceof Error ? error.message : error);
     return false;
   }
 }

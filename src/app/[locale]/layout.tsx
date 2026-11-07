@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import { Geist, Geist_Mono, Unbounded } from 'next/font/google';
 import { NextIntlClientProvider } from 'next-intl';
-import { getMessages } from 'next-intl/server';
+import { getMessages, getTranslations } from 'next-intl/server';
 import { notFound } from 'next/navigation';
 import { routing } from '@/i18n/routing';
 import { ClientProviders } from '@/components/ClientProviders';
@@ -29,9 +29,14 @@ export const viewport: Viewport = {
   initialScale: 1,
 };
 
-export const metadata: Metadata = {
+export async function generateMetadata({ params }: { params: Promise<{ locale: string }> }): Promise<Metadata> {
+  const { locale } = await params;
+  const t = await getTranslations({ locale, namespace: 'Meta' });
+  return { ...METADATA, description: t('description') };
+}
+
+const METADATA: Metadata = {
   title: 'Apex Round',
-  description: 'A live interview copilot: it hears the question and puts a short, structured answer on your screen.',
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
@@ -69,6 +74,8 @@ export default async function RootLayout({
   }
 
   const messages = await getMessages();
+  const t = await getTranslations('Meta');
+  const tBrand = await getTranslations('Brand');
 
   // Determine if we should apply RTL layout (for future Arabic/Hebrew support)
   const isRTL = ['ar', 'he', 'fa'].includes(locale);
@@ -82,7 +89,7 @@ export default async function RootLayout({
       <body className={`${geistSans.variable} ${geistMono.variable} ${unbounded.variable}`}>
         {/* Skip to main content link for keyboard users */}
         <a href="#main-content" className="skipLink">
-          Skip to main content
+          {t('skip')}
         </a>
         
         {/* Live region for announcements - screen reader only */}
@@ -93,7 +100,7 @@ export default async function RootLayout({
           aria-atomic="true"
         />
         
-        <DesktopFrame />
+        <DesktopFrame title={tBrand('name')} />
 
         <NextIntlClientProvider messages={messages}>
           {/* Toasts: DashboardClient, JobsClient, ResumeClient and SettingsClient call useToast. */}

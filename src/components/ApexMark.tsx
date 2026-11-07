@@ -1,3 +1,5 @@
+import { useTranslations } from 'next-intl';
+
 /**
  * The Apex Round mark: a summit, with a voice signal crossing its base in
  * Ember. Also the source of the app and desktop icons (public/icon.svg).
@@ -21,6 +23,7 @@ export function ApexMark({ size = 36, title }: { size?: number; title?: string }
 }
 
 export function ApexWordmark({ size = 32 }: { size?: number }) {
+  const t = useTranslations('Brand');
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
       <ApexMark size={size} />
@@ -33,7 +36,7 @@ export function ApexWordmark({ size = 32 }: { size?: number }) {
           color: 'var(--paper)',
         }}
       >
-        Apex Round
+        {t('name')}
       </span>
     </span>
   );

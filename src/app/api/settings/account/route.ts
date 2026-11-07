@@ -37,7 +37,7 @@ export async function DELETE(request: Request) {
 
   if (!profile || profile.email !== confirm_email) {
     return NextResponse.json(
-      { error: 'Email does not match your account' },
+      { error: 'email_mismatch' },
       { status: 400 }
     );
   }

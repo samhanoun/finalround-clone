@@ -1,151 +1,74 @@
 import { NextRequest, NextResponse } from 'next/server';
-import webPush from 'web-push';
+import { z } from 'zod';
+import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
+import { rateLimit } from '@/lib/rateLimit';
+import { isPushConfigured } from '@/lib/notify';
 
-// In-memory store for subscriptions (in production, use a database)
-// This is for demonstration - in production, store in your database
-const subscriptions: Map<string, PushSubscriptionJSON> = new Map();
+/**
+ * Browsers where the signed-in user turned on "Notify me on this device".
+ * Stored with the service role (users can only read their own rows).
+ */
 
-// Generate these keys using: npx web-push generate-vapid-keys
-// Store these in your environment variables in production
-const vapidPublicKey = process.env.VAPID_PUBLIC_KEY || 'BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkvMeAtA3LFgDzkrxZJjSgSnfckjBJuBkr3qBUYIHBQFLXYp5Nksh8U';
-const vapidPrivateKey = process.env.VAPID_PRIVATE_KEY || 'UUxI4O8-FbRouAf7-7OTt9GH4o-4VNgoBFQX6rR3lWE';
-const vapidSubject = process.env.VAPID_SUBJECT || process.env.NEXT_PUBLIC_APP_URL || 'mailto:admin@localhost';
+const SubscriptionSchema = z.object({
+  subscription: z.object({
+    endpoint: z.string().url().startsWith('https://').max(1000),
+    keys: z.object({ p256dh: z.string().min(1).max(200), auth: z.string().min(1).max(100) }),
+  }),
+});
+const RemoveSchema = z.object({ endpoint: z.string().url().max(1000) });
 
-webPush.setVapidDetails(
-  vapidSubject,
-  vapidPublicKey,
-  vapidPrivateKey
-);
-
-interface PushSubscriptionJSON {
-  endpoint: string;
-  keys: {
-    p256dh: string;
-    auth: string;
-  };
-  expirationTime?: number | null;
+async function signedInUser() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  return user;
 }
 
-// GET /api/push/subscriptions - List all subscriptions (admin only in production)
-export async function GET() {
-  // In production, add admin authentication check
-  const allSubscriptions = Array.from(subscriptions.entries()).map(([id, sub]) => ({
-    id,
-    ...sub,
-  }));
-
-  return NextResponse.json({
-    count: subscriptions.size,
-    subscriptions: allSubscriptions,
-  });
-}
-
-// POST /api/push/subscriptions - Register a new subscription
+// POST /api/push/subscriptions - register this browser
 export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json();
-    const subscription = body.subscription as PushSubscriptionJSON;
+  const user = await signedInUser();
+  if (!user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  if (!isPushConfigured()) return NextResponse.json({ error: 'push_not_configured' }, { status: 503 });
 
-    if (!subscription || !subscription.endpoint) {
-      return NextResponse.json(
-        { error: 'Invalid subscription object' },
-        { status: 400 }
-      );
-    }
+  const rl = await rateLimit({ key: `push_subscribe:${user.id}`, limit: 20, windowMs: 60 * 60_000 });
+  if (!rl.ok) return NextResponse.json({ error: 'rate_limited' }, { status: 429 });
 
-    // Generate a unique ID for this subscription
-    const id = Buffer.from(subscription.endpoint).toString('base64').slice(0, 32);
-    
-    subscriptions.set(id, subscription);
+  const parse = SubscriptionSchema.safeParse(await request.json().catch(() => null));
+  if (!parse.success) return NextResponse.json({ error: 'invalid_subscription' }, { status: 400 });
+  const { endpoint, keys } = parse.data.subscription;
 
-    console.log(`Push subscription added: ${id}`);
-
-    return NextResponse.json({
-      success: true,
-      id,
-      message: 'Subscription registered successfully',
-    });
-  } catch (error) {
-    console.error('Error registering subscription:', error);
-    return NextResponse.json(
-      { error: 'Failed to register subscription' },
-      { status: 500 }
+  // One row per browser: signing in with another account on it moves the row.
+  const { error } = await createAdminClient()
+    .from('push_subscriptions')
+    .upsert(
+      {
+        user_id: user.id,
+        endpoint,
+        p256dh: keys.p256dh,
+        auth: keys.auth,
+        user_agent: request.headers.get('user-agent')?.slice(0, 300) ?? null,
+      },
+      { onConflict: 'endpoint' },
     );
-  }
+  if (error) return NextResponse.json({ error: 'db_error' }, { status: 500 });
+  return NextResponse.json({ ok: true }, { status: 201 });
 }
 
-// DELETE /api/push/subscriptions - Remove a subscription
+// DELETE /api/push/subscriptions {endpoint} - stop notifications on this browser
 export async function DELETE(request: NextRequest) {
-  try {
-    const body = await request.json();
-    const { id } = body;
+  const user = await signedInUser();
+  if (!user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
 
-    if (!id) {
-      return NextResponse.json(
-        { error: 'Subscription ID required' },
-        { status: 400 }
-      );
-    }
+  const parse = RemoveSchema.safeParse(await request.json().catch(() => null));
+  if (!parse.success) return NextResponse.json({ error: 'invalid_body' }, { status: 400 });
 
-    const deleted = subscriptions.delete(id);
-
-    return NextResponse.json({
-      success: deleted,
-      message: deleted ? 'Subscription removed' : 'Subscription not found',
-    });
-  } catch (error) {
-    console.error('Error removing subscription:', error);
-    return NextResponse.json(
-      { error: 'Failed to remove subscription' },
-      { status: 500 }
-    );
-  }
-}
-
-// Helper to send push notifications (can be called from other parts of your app)
-export async function sendPushNotification(
-  title: string,
-  body: string,
-  options?: {
-    tag?: string;
-    url?: string;
-    actions?: Array<{ action: string; title: string }>;
-  }
-) {
-  const notificationPayload = {
-    title,
-    body,
-    tag: options?.tag || 'default',
-    url: options?.url || '/',
-    actions: options?.actions || [
-      { action: 'open', title: 'Open' },
-      { action: 'close', title: 'Close' },
-    ],
-    id: Date.now().toString(),
-    renotify: true,
-  };
-
-  const results = await Promise.allSettled(
-    Array.from(subscriptions.entries()).map(async ([id, subscription]) => {
-      try {
-        await webPush.sendNotification(
-          subscription as unknown as PushSubscriptionJSON,
-          JSON.stringify(notificationPayload)
-        );
-        return { id, success: true };
-      } catch (error) {
-        console.error(`Failed to send to ${id}:`, error);
-        // Remove invalid subscriptions
-        subscriptions.delete(id);
-        return { id, success: false };
-      }
-    })
-  );
-
-  return results;
-}
-
-// Export VAPID public key for client
-export async function VAPID_PUBLIC_KEY() {
-  return vapidPublicKey;
+  const { error } = await createAdminClient()
+    .from('push_subscriptions')
+    .delete()
+    .eq('user_id', user.id)
+    .eq('endpoint', parse.data.endpoint);
+  if (error) return NextResponse.json({ error: 'db_error' }, { status: 500 });
+  return NextResponse.json({ ok: true });
 }

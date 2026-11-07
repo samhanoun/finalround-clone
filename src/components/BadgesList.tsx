@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useFormatter, useTranslations } from 'next-intl';
 import { ShareMenu } from './SocialShareButton';
 
 type Badge = {
@@ -42,6 +43,12 @@ const badgeColors: Record<string, string> = {
 };
 
 export function BadgesList() {
+  const t = useTranslations('Badges');
+  const format = useFormatter();
+  // Badges are stored with English names; known kinds are shown in the app's language.
+  const titleOf = (badge: Badge) => (t.has(`kinds.${badge.badge_type}.title`) ? t(`kinds.${badge.badge_type}.title`) : badge.title);
+  const descriptionOf = (badge: Badge) =>
+    t.has(`kinds.${badge.badge_type}.description`) ? t(`kinds.${badge.badge_type}.description`) : badge.description;
   const [badges, setBadges] = useState<Badge[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedBadge, setSelectedBadge] = useState<Badge | null>(null);
@@ -73,7 +80,7 @@ export function BadgesList() {
           share_type: 'badge',
           platform,
           content_id: selectedBadge.id,
-          content_title: `I just earned the "${selectedBadge.title}" badge on Apex Round!`,
+          content_title: t('shareTitle', { badge: titleOf(selectedBadge) }),
         }),
       });
     } catch (error) {
@@ -82,15 +89,15 @@ export function BadgesList() {
   };
 
   if (loading) {
-    return <div className="small">Loading badges…</div>;
+    return <div className="small">{t('loading')}</div>;
   }
 
   if (!badges.length) {
     return (
       <div className="card">
         <div className="cardInner stack">
-          <h3 className="cardTitle">Achievements</h3>
-          <p className="small muted">No badges yet. Finish a practice interview or a live session to earn your first.</p>
+          <h3 className="cardTitle">{t('title')}</h3>
+          <p className="small muted">{t('empty')}</p>
         </div>
       </div>
     );
@@ -99,7 +106,7 @@ export function BadgesList() {
   return (
     <div className="card">
       <div className="cardInner stack">
-        <h3 className="cardTitle">Achievements</h3>
+        <h3 className="cardTitle">{t('title')}</h3>
         <div className="badges-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))', gap: '16px' }}>
           {badges.map((badge) => (
             <button
@@ -117,7 +124,7 @@ export function BadgesList() {
                 cursor: 'pointer',
                 transition: 'all 0.2s ease',
               }}
-              aria-label={`Badge: ${badge.title}`}
+              aria-label={t('badgeLabel', { badge: titleOf(badge) })}
             >
               <div
                 style={{
@@ -134,7 +141,7 @@ export function BadgesList() {
                   <path d={badgeIcons[badge.badge_type] || badgeIcons.share} />
                 </svg>
               </div>
-              <span className="small" style={{ textAlign: 'center' }}>{badge.title}</span>
+              <span className="small" style={{ textAlign: 'center' }}>{titleOf(badge)}</span>
             </button>
           ))}
         </div>
@@ -142,25 +149,25 @@ export function BadgesList() {
         {selectedBadge && (
           <div className="badge-share-modal" style={{ marginTop: '16px', padding: '16px', background: 'rgba(255,255,255,0.04)', borderRadius: '8px' }}>
             <div className="row" style={{ justifyContent: 'space-between', marginBottom: '12px' }}>
-              <h4 style={{ margin: 0 }}>{selectedBadge.title}</h4>
+              <h4 style={{ margin: 0 }}>{titleOf(selectedBadge)}</h4>
               <button 
                 onClick={() => setSelectedBadge(null)}
                 style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px' }}
-                aria-label="Close"
+                aria-label={t('close')}
               >
                 ✕
               </button>
             </div>
-            <p className="small muted" style={{ marginBottom: '12px' }}>{selectedBadge.description}</p>
+            <p className="small muted" style={{ marginBottom: '12px' }}>{descriptionOf(selectedBadge)}</p>
             <p className="small mono muted">
-              Awarded: {new Date(selectedBadge.awarded_at).toLocaleDateString()}
+              {t('awarded', { date: format.dateTime(new Date(selectedBadge.awarded_at), { dateStyle: 'medium' }) })}
             </p>
             <div style={{ marginTop: '12px' }}>
-              <p className="small" style={{ marginBottom: '8px' }}>Share your achievement:</p>
-              <ShareMenu 
+              <p className="small" style={{ marginBottom: '8px' }}>{t('share')}</p>
+              <ShareMenu
                 content={{
-                  title: `I just earned the "${selectedBadge.title}" badge on Apex Round!`,
-                  summary: selectedBadge.description || 'Check out my achievement on Apex Round - the AI-powered interview prep platform!',
+                  title: t('shareTitle', { badge: titleOf(selectedBadge) }),
+                  summary: descriptionOf(selectedBadge) || t('shareSummary'),
                 }}
                 onShare={handleShare}
               />

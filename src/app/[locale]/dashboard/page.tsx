@@ -1,5 +1,5 @@
-import { redirect } from 'next/navigation';
-import Link from 'next/link';
+import { Link, redirect } from '@/i18n/routing';
+import { getFormatter, getLocale, getTranslations } from 'next-intl/server';
 import { AppShell } from '@/components/AppShell';
 import { RequireAuth } from '@/components/RequireAuth';
 import { createClient } from '@/lib/supabase/server';
@@ -12,7 +12,12 @@ import { BadgesList } from '@/components/BadgesList';
 import { ReferralPanel } from '@/components/ReferralPanel';
 import styles from './dashboard.module.css';
 
+const STATUSES = ['draft', 'in_progress', 'completed'];
+
 export default async function DashboardPage() {
+  const t = await getTranslations('Home');
+  const tPractice = await getTranslations('PracticePages');
+  const format = await getFormatter();
   const supabase = await createClient();
   const { data } = await supabase.auth.getUser();
 
@@ -25,7 +30,7 @@ export default async function DashboardPage() {
       .single();
 
     if (!profile?.onboarding_completed) {
-      redirect('/onboarding');
+      redirect({ href: '/onboarding', locale: await getLocale() });
     }
   }
 
@@ -43,10 +48,10 @@ export default async function DashboardPage() {
 
   return (
     <AppShell
-      title="Home"
+      title={t('title')}
       actions={
         <Link className="button buttonPrimary" href="/copilot/live">
-          Start a live session
+          {t('startLive')}
         </Link>
       }
     >
@@ -64,10 +69,10 @@ export default async function DashboardPage() {
                 <div className="cardInner stack">
                   <div className={styles.cardHeader}>
                     <h2 className="cardTitle" id="sessions-heading">
-                      Practice interviews
+                      {t('practiceTitle')}
                     </h2>
                     <Link className="button buttonGhost" href="/interview">
-                      All practice
+                      {t('allPractice')}
                     </Link>
                   </div>
                   <ul className={styles.list}>
@@ -78,13 +83,13 @@ export default async function DashboardPage() {
                             {s.title}
                           </Link>
                           <span className={styles.rowMeta}>
-                            <span className="badge">{({ draft: 'Not started', in_progress: 'In progress', completed: 'Completed' } as Record<string, string>)[s.status] ?? s.status}</span>
-                            <span>{new Date(s.created_at).toLocaleDateString()}</span>
+                            <span className="badge">{STATUSES.includes(s.status) ? tPractice(`status.${s.status}`) : s.status}</span>
+                            <span>{format.dateTime(new Date(s.created_at), { dateStyle: 'medium' })}</span>
                           </span>
                         </li>
                       ))
                     ) : (
-                      <li className={styles.empty}>No practice interviews yet. Start one to get a score and feedback.</li>
+                      <li className={styles.empty}>{tPractice('empty')}</li>
                     )}
                   </ul>
                 </div>
@@ -94,10 +99,10 @@ export default async function DashboardPage() {
                 <div className="cardInner stack">
                   <div className={styles.cardHeader}>
                     <h2 className="cardTitle" id="resumes-heading">
-                      Your résumés
+                      {t('resumesTitle')}
                     </h2>
                     <Link className="button buttonGhost" href="/resume">
-                      Open résumé builder
+                      {t('openResume')}
                     </Link>
                   </div>
                   <ul className={styles.list}>
@@ -105,11 +110,11 @@ export default async function DashboardPage() {
                       (docs ?? []).map((d) => (
                         <li key={d.id} className={styles.listRow}>
                           <span>{d.filename ?? d.id}</span>
-                          <span className={styles.rowMeta}>{new Date(d.created_at).toLocaleDateString()}</span>
+                          <span className={styles.rowMeta}>{format.dateTime(new Date(d.created_at), { dateStyle: 'medium' })}</span>
                         </li>
                       ))
                     ) : (
-                      <li className={styles.empty}>No résumés yet. Upload one so answers can use your experience.</li>
+                      <li className={styles.empty}>{t('resumesEmpty')}</li>
                     )}
                   </ul>
                 </div>

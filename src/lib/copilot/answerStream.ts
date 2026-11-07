@@ -4,11 +4,25 @@ import { streamChat, type StreamChatOptions } from '@/lib/llmRouter';
  * Server-sent events for a streamed answer, shared by the answer and screen routes:
  *
  *   event: token  data: {"text":"…"}                     (repeated)
- *   event: done   data: {"model","ttftMs","totalMs"}      (+ "cached": true for a replay)
+ *   event: done   data: {"model","ttftMs","totalMs","sources"}  (+ "cached": true for a replay)
+ *
+ * `sources` lists the candidate's own passages the answer cited ([S1]…), from retrieval.
  *   event: error  data: {"error":"answer_failed","requestId"}
  */
 
-export type FinishedAnswer = { text: string; model: string; ttftMs: number | null; totalMs: number };
+export type AnswerSource = { tag: string; source: string; kind: string };
+export type FinishedAnswer = {
+  text: string;
+  model: string;
+  ttftMs: number | null;
+  totalMs: number;
+  sources: AnswerSource[];
+};
+
+/** The retrieved passages the answer actually cited, in tag order. */
+export function citedSources(text: string, sources: AnswerSource[]): AnswerSource[] {
+  return sources.filter((source) => new RegExp(`\\[${source.tag}\\]`).test(text));
+}
 
 function sseEvent(event: string, data: unknown): string {
   return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
@@ -36,12 +50,15 @@ export function streamAnswerEvents({
   requestId,
   signal,
   onError,
+  sources = [],
 }: {
   chat: Omit<StreamChatOptions, 'signal'>;
   receivedAt: number;
   requestId: string;
   signal?: AbortSignal | null;
   onError: (error: unknown) => void;
+  /** Passages put in the prompt as [S1]…; the done event lists the ones the answer used. */
+  sources?: AnswerSource[];
 }): { body: ReadableStream<Uint8Array>; result: () => FinishedAnswer | null } {
   const abort = new AbortController();
   signal?.addEventListener('abort', () => abort.abort(), { once: true });
@@ -65,6 +82,7 @@ export function streamAnswerEvents({
           model: chat.model,
           ttftMs: firstTokenAt === null ? null : firstTokenAt - receivedAt,
           totalMs: finishedAt - receivedAt,
+          sources: citedSources(text, sources),
         });
       } catch (e) {
         if (!abort.signal.aborted) {
@@ -94,6 +112,7 @@ export function streamAnswerEvents({
             model: chat.model,
             ttftMs: firstTokenAt === null ? null : firstTokenAt - receivedAt,
             totalMs: finishedAt - receivedAt,
+            sources: citedSources(text, sources),
           },
   };
 }

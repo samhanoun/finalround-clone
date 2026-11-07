@@ -56,7 +56,9 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
     .select('difficulty, response_score')
     .eq('session_id', id)
     .not('response_score', 'is', null)
-    .order('order_index', { ascending: true });
+    .order('order_index', { ascending: true })
+    // A follow-up shares its question's order_index and comes after it.
+    .order('created_at', { ascending: true });
 
   if (error) return jsonError(500, 'db_error', error);
 

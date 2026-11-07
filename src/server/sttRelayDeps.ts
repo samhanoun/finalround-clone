@@ -2,6 +2,7 @@ import { createServerClient, parseCookieHeader } from '@supabase/ssr';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { WebSocket } from 'ws';
 import { buildDeepgramListenUrl } from '../lib/stt/deepgramListenUrl';
+import { sessionStt } from '../lib/stt/sessionStt';
 import type { RelayDeps, RelaySession } from './sttRelay';
 
 const QUOTA_COUNTERS = ['copilot_minutes', 'copilot_daily_minutes', 'copilot_session_minutes'] as const;
@@ -59,10 +60,14 @@ export function relayDepsFromEnv(env: NodeJS.ProcessEnv = process.env): RelayDep
       );
     },
 
-    openUpstream() {
+    openUpstream(session) {
+      // Set at session start from a fixed list (src/lib/stt/sessionStt.ts), never from the browser stream.
+      const stt = sessionStt(session.metadata);
       const url = buildDeepgramListenUrl({
         model: env.DEEPGRAM_MODEL,
-        language: env.DEEPGRAM_LANGUAGE,
+        language: stt.language ?? env.DEEPGRAM_LANGUAGE,
+        channels: stt.singleMic ? 1 : 2,
+        diarize: stt.singleMic,
         // End-to-end tests point this at a local fake.
         endpoint: env.DEEPGRAM_LISTEN_URL || undefined,
       });

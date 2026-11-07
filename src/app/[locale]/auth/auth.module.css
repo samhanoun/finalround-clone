@@ -155,3 +155,47 @@
     display: none;
   }
 }
+
+.or {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: -8px 0;
+  color: var(--mist);
+  font-size: 13px;
+}
+
+.or::before,
+.or::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+
+.textButton {
+  align-self: flex-start;
+  margin-top: -6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ice);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.textButton:hover,
+.textButton:focus-visible {
+  text-decoration: underline;
+}
+
+.notice {
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--live) 40%, transparent);
+  background: color-mix(in srgb, var(--live) 10%, transparent);
+  color: var(--paper);
+  font-size: 14px;
+  line-height: 1.5;
+}

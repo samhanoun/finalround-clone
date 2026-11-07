@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { useToast, Toast as ToastType } from './ToastContext';
 import styles from './Toast.module.css';
 
@@ -13,6 +14,7 @@ const icons: Record<ToastType['type'], string> = {
 };
 
 function ToastItem({ toast, onClose }: { toast: ToastType; onClose: () => void }) {
+  const t = useTranslations('Toast');
   const [isExiting, setIsExiting] = useState(false);
 
   const handleClose = () => {
@@ -40,7 +42,7 @@ function ToastItem({ toast, onClose }: { toast: ToastType; onClose: () => void }
       <button 
         className={styles.closeButton}
         onClick={handleClose}
-        aria-label="Dismiss notification"
+        aria-label={t('dismiss')}
       >
         ✕
       </button>
@@ -49,12 +51,13 @@ function ToastItem({ toast, onClose }: { toast: ToastType; onClose: () => void }
 }
 
 export function ToastContainer() {
+  const t = useTranslations('Toast');
   const { toasts, removeToast } = useToast();
 
   if (toasts.length === 0) return null;
 
   return (
-    <div className={styles.container} aria-label="Notifications">
+    <div className={styles.container} aria-label={t('label')}>
       {toasts.map((toast) => (
         <ToastItem 
           key={toast.id} 

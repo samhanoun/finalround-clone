@@ -128,3 +128,19 @@ export const WindowsIcon = (props: IconProps) => (
     <path d="M4 5.5l7-1v7H4zM13 4.2l7-1.2v8.5h-7zM4 13h7v6.5l-7-1zM13 13h7v8l-7-1.2z" />
   </Icon>
 );
+
+export const HelpIcon = (props: IconProps) => (
+  <Icon {...props}>
+    <circle cx="12" cy="12" r="8.5" />
+    <path d="M9.6 9.4a2.5 2.5 0 0 1 4.8 1c0 1.7-2.4 2.1-2.4 3.6" />
+    <path d="M12 17.2h.01" />
+  </Icon>
+);
+
+export const TargetIcon = (props: IconProps) => (
+  <Icon {...props}>
+    <circle cx="12" cy="12" r="8.5" />
+    <circle cx="12" cy="12" r="4.5" />
+    <path d="M12 12h.01" />
+  </Icon>
+);

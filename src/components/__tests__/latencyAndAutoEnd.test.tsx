@@ -78,6 +78,6 @@ describe('LatencyDrawer', () => {
     expect(row).toHaveTextContent('1.10 s4.00 s2p50 ≤ 1.50 s, p95 ≤ 3.00 s');
     expect(row.className).toMatch(/latencyOver/);
     expect(screen.getAllByRole('row').some((r) => r.textContent?.startsWith('ManualAnswered'))).toBe(true);
-    expect(screen.getAllByRole('row').some((r) => r.textContent?.startsWith('behavioralReplaced'))).toBe(true);
+    expect(screen.getAllByRole('row').some((r) => r.textContent?.startsWith('BehavioralReplaced'))).toBe(true);
   });
 });

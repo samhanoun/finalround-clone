@@ -105,8 +105,8 @@ describe('AnswerView', () => {
 
   it('changes text size within limits and shows errors', () => {
     const onFontPx = jest.fn();
-    render(<AnswerView answers={answers({ status: 'error', error: 'Answers are not set up.' })} variant="window" {...props} onFontPx={onFontPx} fontPx={26} />);
-    expect(screen.getByText('Answers are not set up.')).toBeInTheDocument();
+    render(<AnswerView answers={answers({ status: 'error', error: 'answers_unavailable' })} variant="window" {...props} onFontPx={onFontPx} fontPx={26} />);
+    expect(screen.getByText('Answers are not set up on the server (no API key for the answer model).')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Larger text' })).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: 'Smaller text' }));
     expect(onFontPx).toHaveBeenCalledWith(25);

@@ -6,6 +6,7 @@ import {
   extractJsonObject,
   feedbackRequest,
   parseFeedback,
+  parseFollowUp,
   parseQuestions,
   questionsRequest,
 } from '@/lib/practice/practice';
@@ -84,7 +85,29 @@ describe('prompts', () => {
   it('sends the question and the answer for feedback', () => {
     const request = feedbackRequest({ text: 'Why us?', type: 'general', difficulty: 'easy' }, 'Because of the mission.', setup, null);
     expect(request.system[0]).toContain(TASK_FEEDBACK);
+    expect(request.system[0]).not.toContain('follow_up');
     expect(request.messages[0].content).toEqual(expect.stringContaining('Why us?'));
     expect(request.messages[0].content).toEqual(expect.stringContaining('Because of the mission.'));
+  });
+
+  it('asks for a follow-up only when one may come', () => {
+    const request = feedbackRequest({ text: 'Why us?', type: 'general', difficulty: 'easy' }, 'Because.', setup, null, { followUp: true });
+    expect(request.system[0]).toContain('"follow_up"');
+  });
+
+  it('tells the model which bank questions are already in the interview', () => {
+    const request = questionsRequest({ ...setup, count: 2 }, null, ['Why Acme?']);
+    expect(request.messages[0].content).toEqual(expect.stringContaining('Number of questions: 2'));
+    expect(request.messages[0].content).toEqual(expect.stringContaining('do not repeat'));
+    expect(request.messages[0].content).toEqual(expect.stringContaining('- Why Acme?'));
+  });
+});
+
+describe('parseFollowUp', () => {
+  it('reads the follow-up question, or nothing when there is none', () => {
+    expect(parseFollowUp('{"score":7,"follow_up":"What did the rollback cost you?"}')).toBe('What did the rollback cost you?');
+    expect(parseFollowUp('{"score":7,"follow_up":""}')).toBeNull();
+    expect(parseFollowUp('{"score":7}')).toBeNull();
+    expect(parseFollowUp('no json')).toBeNull();
   });
 });

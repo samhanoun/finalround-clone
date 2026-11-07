@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { useTranslations } from 'next-intl';
 
 /** How long a session waits after meeting audio sharing stops before it ends itself. */
 export const SHARING_GRACE_MS = 120_000;
@@ -26,6 +27,7 @@ export function AutoEndNotice({
   onExpire: () => void;
   onKeepOpen: () => void;
 }) {
+  const t = useTranslations('AutoEndNotice');
   const [remaining, setRemaining] = useState(graceMs);
   const onExpireRef = useRef(onExpire);
 
@@ -51,12 +53,9 @@ export function AutoEndNotice({
 
   return (
     <div className="error row" role="alert" style={{ justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-      <span>
-        Meeting audio sharing stopped. This session ends in <strong>{clock(remaining)}</strong> unless you start listening
-        again.
-      </span>
+      <span>{t.rich('message', { time: clock(remaining), strong: (chunks) => <strong>{chunks}</strong> })}</span>
       <button className="button" type="button" onClick={onKeepOpen}>
-        Keep session open
+        {t('keepOpen')}
       </button>
     </div>
   );

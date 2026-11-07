@@ -17,13 +17,19 @@ let mockRows: typeof resumes = resumes;
 
 jest.mock('@/lib/supabase/browser', () => ({
   createClient: () => ({
-    from: () => ({
-      select: () => ({
-        not: () => ({ order: () => ({ limit: () => Promise.resolve({ data: mockRows, error: null }) }) }),
-      }),
-    }),
+    // Résumés for the picker; no goals or playbooks.
+    from: (table: string) => {
+      const builder: Record<string, unknown> = {};
+      for (const method of ['select', 'not', 'eq', 'order', 'limit']) builder[method] = () => builder;
+      builder.then = (resolve: (value: unknown) => unknown) =>
+        Promise.resolve({ data: table === 'resume_documents' ? mockRows : [], error: null }).then(resolve);
+      return builder;
+    },
   }),
 }));
+
+// The answer model list (Settings → Answer model).
+global.fetch = jest.fn(async () => ({ ok: true, json: async () => ({ options: [{ id: 'gpt-4o', label: 'GPT-4o' }] }) })) as unknown as typeof fetch;
 
 jest.mock('@/i18n/routing', () => ({
   Link: ({ href, children }: { href: string; children: React.ReactNode }) => <a href={href}>{children}</a>,
@@ -79,8 +85,16 @@ describe('SessionSetup', () => {
     render(<Harness />);
     expect(screen.queryByText(/Hints only/)).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Interview type'), { target: { value: 'coding' } });
-    fireEvent.click(screen.getByRole('checkbox'));
-    expect(screen.getByRole('checkbox')).toBeChecked();
+    const hintsOnly = screen.getByRole('checkbox', { name: /Hints only/ });
+    fireEvent.click(hintsOnly);
+    expect(hintsOnly).toBeChecked();
+  });
+
+  it('sends a goal and this session’s choices to the start route', () => {
+    expect(
+      setupStartBody({ ...EMPTY_SETUP, goalId: 'g1', answerModel: 'gpt-4o', language: 'fr', codingLanguage: 'go', singleMic: true, playbookId: 'p1' }, TITLES),
+    ).toMatchObject({ goalId: 'g1', answerModel: 'gpt-4o', language: 'fr', codingLanguage: 'go', singleMic: true, playbookId: 'p1' });
+    expect(setupStartBody(EMPTY_SETUP, TITLES)).not.toHaveProperty('goalId');
   });
 
   it('points to the résumé page when nothing is parsed yet', async () => {
@@ -96,10 +110,13 @@ describe('SessionSetup', () => {
   });
 });
 
+// English title patterns, as the live page passes them from SessionSetup.titleAt / titleDefault.
+const TITLES = { at: (role: string, company: string) => `${role} at ${company}`, fallback: (mode: string) => `Live ${mode} session` };
+
 describe('setupStartBody', () => {
   it('sends only filled fields with a title built from role and company', () => {
     expect(
-      setupStartBody({ ...EMPTY_SETUP, mode: 'coding', noFullCode: true, company: ' Acme ', role: 'Staff Engineer', jobDescription: '\n' }),
+      setupStartBody({ ...EMPTY_SETUP, mode: 'coding', noFullCode: true, company: ' Acme ', role: 'Staff Engineer', jobDescription: '\n' }, TITLES),
     ).toEqual({
       title: 'Staff Engineer at Acme',
       metadata: { mode: 'coding', beta: true, noFullCodeMode: true },
@@ -109,8 +126,8 @@ describe('setupStartBody', () => {
   });
 
   it('only sends the guardrail for coding interviews', () => {
-    expect(setupStartBody({ ...EMPTY_SETUP, mode: 'general', noFullCode: true }).metadata.noFullCodeMode).toBe(false);
-    expect(setupStartBody(EMPTY_SETUP).title).toBe('Live general session');
+    expect(setupStartBody({ ...EMPTY_SETUP, mode: 'general', noFullCode: true }, TITLES).metadata.noFullCodeMode).toBe(false);
+    expect(setupStartBody(EMPTY_SETUP, TITLES).title).toBe('Live general session');
   });
 });
 

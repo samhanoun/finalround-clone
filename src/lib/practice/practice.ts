@@ -1,11 +1,13 @@
 import { z } from 'zod';
-import { env } from '@/lib/env';
+import { LOCALES } from '@/i18n/locales';
 import { streamChat, type StreamChatOptions } from '@/lib/llmRouter';
 import { renderContextPack, type ContextPack } from '@/lib/copilot/contextPack';
 
 /**
  * AI practice interviews: the model plays the interviewer (writes the
- * questions), then a coach (scores each answer). The final report reuses
+ * questions, and a follow-up when an answer leaves something to dig into),
+ * then a coach (scores each answer). Questions can also come from the
+ * company's question bank (src/lib/questionBank.ts). The final report reuses
  * /api/interviews/[id]/report.
  */
 
@@ -25,6 +27,12 @@ export const PracticeSetupSchema = z.object({
   count: z.union([z.literal(3), z.literal(5), z.literal(8)]).default(5),
   resumeDocumentId: z.string().uuid().optional(),
   jobDescription: z.string().max(20_000).optional(),
+  /** Start with questions from the company's question bank. */
+  fromBank: z.boolean().optional(),
+  /** The interviewer may ask one follow-up after each answer. */
+  followUps: z.boolean().default(true),
+  /** The page's language, for the interview's title ("{role} at {company}"). */
+  locale: z.enum(LOCALES).optional(),
 });
 export type PracticeSetup = z.infer<typeof PracticeSetupSchema>;
 
@@ -46,10 +54,6 @@ export type AnswerFeedback = {
 /** Marks the task so the e2e fake model can answer each kind of request. */
 export const TASK_QUESTIONS = 'TASK: practice_questions';
 export const TASK_FEEDBACK = 'TASK: practice_feedback';
-
-export function practiceModel(): string {
-  return env.COPILOT_ANSWER_MODEL ?? 'gpt-4o-mini';
-}
 
 /** Runs a chat request to completion. */
 export async function completeChat(options: StreamChatOptions): Promise<string> {
@@ -87,7 +91,12 @@ function target(setup: Pick<PracticeSetup, 'role' | 'company'>): string {
   return setup.company ? `${setup.role} at ${setup.company}` : setup.role;
 }
 
-export function questionsRequest(setup: PracticeSetup, pack: ContextPack | null): Pick<StreamChatOptions, 'system' | 'messages'> {
+/** `planned` are questions already in the interview (from the bank): the new ones mustn't repeat them. */
+export function questionsRequest(
+  setup: Pick<PracticeSetup, 'role' | 'company' | 'type' | 'difficulty'> & { count: number },
+  pack: ContextPack | null,
+  planned: string[] = [],
+): Pick<StreamChatOptions, 'system' | 'messages'> {
   return {
     system: [
       [
@@ -109,6 +118,7 @@ export function questionsRequest(setup: PracticeSetup, pack: ContextPack | null)
           `Interview type: ${setup.type}. ${TYPE_GUIDE[setup.type]}`,
           `Difficulty: ${setup.difficulty}. ${DIFFICULTY_GUIDE[setup.difficulty]}`,
           `Number of questions: ${setup.count}`,
+          ...(planned.length ? ['Already in this interview (do not repeat or rephrase these):', ...planned.map((q) => `- ${q}`)] : []),
         ].join('\n'),
       },
     ],
@@ -117,7 +127,10 @@ export function questionsRequest(setup: PracticeSetup, pack: ContextPack | null)
 
 const QUESTION_TYPES: QuestionType[] = ['behavioral', 'technical', 'situational', 'general'];
 
-export function parseQuestions(text: string, setup: Pick<PracticeSetup, 'type' | 'difficulty' | 'count'>): GeneratedQuestion[] {
+export function parseQuestions(
+  text: string,
+  setup: Pick<PracticeSetup, 'type' | 'difficulty'> & { count: number },
+): GeneratedQuestion[] {
   const raw = extractJsonObject(text) as { questions?: unknown } | null;
   const list = Array.isArray(raw?.questions) ? raw.questions : [];
   const fallbackType: QuestionType = setup.type === 'mixed' ? 'general' : setup.type;
@@ -145,7 +158,15 @@ export function feedbackRequest(
   answer: string,
   setup: Pick<PracticeSetup, 'role' | 'company'>,
   pack: ContextPack | null,
+  options: { followUp?: boolean } = {},
 ): Pick<StreamChatOptions, 'system' | 'messages'> {
+  const followUp = options.followUp
+    ? [
+        'Also play the interviewer: if a real interviewer would dig deeper into this answer, add "follow_up" with',
+        'one short question (under 30 words) that probes a gap, a claim or a detail the candidate gave. Stay on this',
+        'answer, not a new topic. Use "follow_up":"" when the answer needs no follow-up.',
+      ]
+    : [];
   return {
     system: [
       [
@@ -156,8 +177,11 @@ export function feedbackRequest(
         'the right length to say aloud. Be direct and kind. Quote the candidate where it helps.',
         'Score 1–10: 1–3 misses the question, 4–5 vague, 6–7 solid, 8–9 strong, 10 exceptional.',
         'Only use facts the candidate gave or the candidate context below; never invent experience for them.',
+        ...followUp,
         'Reply with JSON only, in this shape:',
-        '{"score":7,"verdict":"one sentence","strengths":["..."],"improvements":["..."],"stronger_answer":["short point"]}',
+        options.followUp
+          ? '{"score":7,"verdict":"one sentence","strengths":["..."],"improvements":["..."],"stronger_answer":["short point"],"follow_up":"..."}'
+          : '{"score":7,"verdict":"one sentence","strengths":["..."],"improvements":["..."],"stronger_answer":["short point"]}',
       ].join('\n'),
       renderContextPack(pack),
     ],
@@ -182,6 +206,13 @@ function stringList(value: unknown, max = 4): string[] {
     .map((item) => item.trim())
     .filter(Boolean)
     .slice(0, max);
+}
+
+/** The interviewer's follow-up question from a feedback reply, if it asked one. */
+export function parseFollowUp(text: string): string | null {
+  const raw = extractJsonObject(text) as Record<string, unknown> | null;
+  const question = typeof raw?.follow_up === 'string' ? raw.follow_up.trim() : '';
+  return question.length >= 8 ? question.slice(0, 300) : null;
 }
 
 export function parseFeedback(text: string): AnswerFeedback | null {

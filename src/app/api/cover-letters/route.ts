@@ -5,6 +5,7 @@ import { jsonError } from '@/lib/api';
 import { rateLimit } from '@/lib/rateLimit';
 import { generateCoverLetter, saveCoverLetter, getUserCoverLetters } from '@/lib/coverLetter';
 import { LLMUnavailableError } from '@/lib/llmRouter';
+import { userModels } from '@/lib/answerModels';
 
 // Validation schema for generating a cover letter
 const GenerateSchema = z.object({
@@ -80,6 +81,7 @@ export async function POST(req: NextRequest) {
   try {
     // Generate the cover letter
     const result = await generateCoverLetter({
+      model: (await userModels(supabase, userData.user.id)).answer,
       jobTitle: input.jobTitle,
       companyName: input.companyName,
       jobDescription: input.jobDescription,

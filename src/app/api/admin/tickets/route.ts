@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { requireAdmin } from '@/lib/adminAuth';
+import { replyAsAdmin } from '@/lib/support';
 
 export async function GET(request: NextRequest) {
   try {
@@ -16,12 +17,21 @@ export async function GET(request: NextRequest) {
     const category = searchParams.get('category');
     const offset = (page - 1) * limit;
 
+    // One ticket's conversation.
+    const ticketId = searchParams.get('ticket_id');
+    if (ticketId) {
+      const { data: messages, error } = await supabase
+        .from('support_messages')
+        .select('id, is_from_admin, content, created_at')
+        .eq('ticket_id', ticketId)
+        .order('created_at', { ascending: true });
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ messages: messages ?? [] });
+    }
+
     let query = supabase
       .from('support_tickets')
-      .select(`
-        *,
-        profiles!inner(email, full_name)
-      `, { count: 'exact' });
+      .select('*', { count: 'exact' });
 
     if (status) {
       query = query.eq('status', status);
@@ -45,8 +55,8 @@ export async function GET(request: NextRequest) {
     const formattedTickets = tickets?.map(ticket => ({
       id: ticket.id,
       user_id: ticket.user_id,
-      email: ticket.profiles?.email || ticket.email,
-      full_name: ticket.profiles?.full_name || ticket.full_name,
+      email: ticket.email,
+      full_name: ticket.full_name,
       subject: ticket.subject,
       description: ticket.description,
       category: ticket.category,
@@ -142,28 +152,12 @@ export async function PATCH(request: NextRequest) {
       }
 
       case 'reply': {
-        // Add message to ticket
-        const { error: msgError } = await supabase
-          .from('support_messages')
-          .insert({
-            ticket_id,
-            is_from_admin: true,
-            content: data.content,
-            user_id: data.admin_user_id
-          });
-
-        if (msgError) throw msgError;
-
-        // Update ticket status
-        const { error } = await supabase
-          .from('support_tickets')
-          .update({ 
-            status: 'in_progress',
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', ticket_id);
-
-        if (error) throw error;
+        const content = typeof data?.content === 'string' ? data.content.trim().slice(0, 5000) : '';
+        if (!content) return NextResponse.json({ error: 'Empty reply' }, { status: 400 });
+        // Saved as the signed-in admin; the user is notified in the app and by email.
+        if (!(await replyAsAdmin(auth.userId, ticket_id, content))) {
+          return NextResponse.json({ error: 'Ticket not found' }, { status: 404 });
+        }
         return NextResponse.json({ success: true });
       }
 

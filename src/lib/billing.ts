@@ -2,6 +2,7 @@ import type Stripe from 'stripe';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { env } from '@/lib/env';
 import { markReferralConverted } from '@/lib/referrals';
+import { notify } from '@/lib/notify';
 
 /**
  * Pro subscriptions through Stripe (build plan Step 10). Stripe is the source
@@ -166,4 +167,38 @@ export async function syncSubscription(stripe: Stripe, admin: SupabaseClient, su
 
   // The first payment converts the account's referral, if it has one.
   if (access && sub.status === 'active') await markReferralConverted(admin, userId);
+  await notifyPlanChange(userId, sub.id, sub.status, Boolean(access), period.end);
+}
+
+/** Tells the user once per change (each notice has its own key, so repeated webhooks don't repeat it). */
+async function notifyPlanChange(userId: string, subscriptionId: string, status: string, access: boolean, periodEnd: string | null) {
+  if (access && status === 'active') {
+    await notify(userId, {
+      type: 'system',
+      title: 'You’re on Pro',
+      message: 'Your live copilot limits went up. Manage billing any time in Settings.',
+      url: '/settings',
+      dedupeKey: `billing:pro-active:${subscriptionId}`,
+      i18n: { key: 'proActive' },
+    });
+  } else if (access && status === 'past_due') {
+    await notify(userId, {
+      type: 'system',
+      title: 'Your payment didn’t go through',
+      message: 'Pro stays on for 7 days. Update your card in Settings → Manage billing.',
+      url: '/settings',
+      dedupeKey: `billing:past-due:${subscriptionId}:${periodEnd ?? ''}`,
+      i18n: { key: 'paymentFailed' },
+      emailAlways: true,
+    });
+  } else if (!access && (status === 'canceled' || status === 'unpaid')) {
+    await notify(userId, {
+      type: 'system',
+      title: 'Your Pro plan has ended',
+      message: 'You’re back on the free plan. You can upgrade again in Settings.',
+      url: '/settings',
+      dedupeKey: `billing:ended:${subscriptionId}`,
+      i18n: { key: 'proEnded' },
+    });
+  }
 }

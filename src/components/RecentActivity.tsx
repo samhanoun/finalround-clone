@@ -1,4 +1,5 @@
-import Link from 'next/link';
+import { Link } from '@/i18n/routing';
+import { getFormatter, getTranslations } from 'next-intl/server';
 import { createClient } from '@/lib/supabase/server';
 import { ChartIcon, LiveIcon, PracticeIcon, ResumeIcon } from './icons';
 import styles from './RecentActivity.module.css';
@@ -13,6 +14,8 @@ interface Activity {
 }
 
 export async function RecentActivity() {
+  const t = await getTranslations('Home');
+  const format = await getFormatter();
   const supabase = await createClient();
   const { data: userData } = await supabase.auth.getUser();
   
@@ -35,8 +38,8 @@ export async function RecentActivity() {
       activities.push({
         id: session.id,
         type: 'interview',
-        title: session.title || 'Untitled practice interview',
-        description: session.status === 'completed' ? 'Practice interview, finished' : 'Practice interview',
+        title: session.title || t('untitledPractice'),
+        description: session.status === 'completed' ? t('practiceFinished') : t('practiceInterview'),
         timestamp: session.created_at,
         href: `/interview/${session.id}`,
       });
@@ -56,8 +59,8 @@ export async function RecentActivity() {
       activities.push({
         id: `resume-${resume.id}`,
         type: 'resume',
-        title: resume.filename || 'Résumé',
-        description: 'Résumé uploaded',
+        title: resume.filename || t('resume'),
+        description: t('resumeUploaded'),
         timestamp: resume.created_at,
         href: '/resume',
       });
@@ -77,8 +80,8 @@ export async function RecentActivity() {
       activities.push({
         id: `copilot-${session.id}`,
         type: 'copilot',
-        title: session.title || 'Live session',
-        description: session.status === 'active' ? 'Live session, running' : 'Live session',
+        title: session.title || t('liveSession'),
+        description: session.status === 'active' ? t('liveRunning') : t('liveSession'),
         timestamp: session.created_at,
         href: '/copilot/live',
       });
@@ -93,25 +96,20 @@ export async function RecentActivity() {
 
   const ICONS = { interview: PracticeIcon, report: ChartIcon, resume: ResumeIcon, copilot: LiveIcon } as const;
 
+  const now = new Date();
   const formatTimeAgo = (timestamp: string) => {
-    const now = new Date();
     const date = new Date(timestamp);
-    const diff = now.getTime() - date.getTime();
-    const minutes = Math.floor(diff / 60000);
-    const hours = Math.floor(diff / 3600000);
-    const days = Math.floor(diff / 86400000);
-
-    if (minutes < 1) return 'Just now';
-    if (minutes < 60) return `${minutes}m ago`;
-    if (hours < 24) return `${hours}h ago`;
-    if (days < 7) return `${days}d ago`;
-    return date.toLocaleDateString();
+    const minutes = Math.floor((now.getTime() - date.getTime()) / 60000);
+    if (minutes < 1) return t('justNow');
+    // A week or more: the date itself.
+    if (minutes >= 7 * 24 * 60) return format.dateTime(date, { dateStyle: 'medium' });
+    return format.relativeTime(date, now);
   };
 
   return (
     <section id="activity" className="card">
       <div className="cardInner">
-        <h2 className="cardTitle" style={{ marginBottom: 16 }}>Recent activity</h2>
+        <h2 className="cardTitle" style={{ marginBottom: 16 }}>{t('activity')}</h2>
         {recentActivities.length > 0 ? (
           <ul className={styles.activityList}>
             {recentActivities.map((activity) => (
@@ -137,7 +135,7 @@ export async function RecentActivity() {
             ))}
           </ul>
         ) : (
-          <p className="small">Nothing yet. Your live sessions, practice interviews and résumés will show up here.</p>
+          <p className="small">{t('activityEmpty')}</p>
         )}
       </div>
     </section>

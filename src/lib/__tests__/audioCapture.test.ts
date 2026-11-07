@@ -113,6 +113,14 @@ describe('DualAudioCapture', () => {
     expect(capture.getDisplayVideoTrack()).toBe(displayStream.getVideoTracks()[0]);
   });
 
+  it('leaves the microphone alone when the user turned it off (Settings → Meeting apps)', async () => {
+    const capture = new DualAudioCapture({ useMicrophone: false });
+    await capture.start();
+    expect(calls).toEqual(['display']);
+    expect(getUserMedia).not.toHaveBeenCalled();
+    expect(FakeWorkletNode.last?.name).toBe('pcm16-capture');
+  });
+
   it('rejects a share without audio and releases the shared screen', async () => {
     displayStream = new FakeStream([new FakeTrack('video')]);
     await expectCaptureError(new DualAudioCapture().start(), 'no-share-audio');

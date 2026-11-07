@@ -1,99 +1,54 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
-import { 
-  getVideoConferencingSettings, 
-  createVideoConferencingSettings,
-  updateVideoConferencingSettings 
-} from '@/lib/videoConferencing';
+import { meetingSettingsFromRow, meetingSettingsToRow, type MeetingSettings } from '@/lib/meetingSettings';
 
-/**
- * GET /api/settings/video-conferencing
- * Get user's video conferencing settings
- */
-export async function GET(request: NextRequest) {
-  try {
-    const supabase = await createClient();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-    
-    let settings = await getVideoConferencingSettings(supabase, user.id);
-    
-    // Create default settings if none exist
-    if (!settings) {
-      settings = await createVideoConferencingSettings(supabase, user.id);
-    }
-    
-    return NextResponse.json(settings);
-  } catch (error) {
-    console.error('Error fetching video conferencing settings:', error);
-    return NextResponse.json(
-      { error: 'Failed to fetch settings' },
-      { status: 500 }
-    );
-  }
+/** Settings → Meeting apps (src/lib/meetingSettings.ts). */
+
+const SettingsSchema = z.object({
+  platform: z.enum(['auto', 'zoom', 'google_meet', 'ms_teams']),
+  desktopApp: z.boolean(),
+  askForLink: z.boolean(),
+  autoStartListening: z.boolean(),
+  endWhenSharingStops: z.boolean(),
+  useMicrophone: z.boolean(),
+});
+
+async function load(supabase: Awaited<ReturnType<typeof createClient>>, userId: string): Promise<MeetingSettings> {
+  const { data } = await supabase.from('video_conferencing_settings').select('*').eq('user_id', userId).maybeSingle();
+  return meetingSettingsFromRow(data);
 }
 
-/**
- * PATCH /api/settings/video-conferencing
- * Update user's video conferencing settings
- */
+// GET /api/settings/video-conferencing
+export async function GET() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  return NextResponse.json({ settings: await load(supabase, user.id) });
+}
+
+// PATCH /api/settings/video-conferencing - the whole settings object
 export async function PATCH(request: NextRequest) {
-  try {
-    const supabase = await createClient();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-    
-    const body = await request.json();
-    
-    // Validate allowed fields
-    const allowedFields = [
-      'zoom_enabled',
-      'zoom_auto_capture',
-      'zoom_screen_share_detection',
-      'google_meet_enabled',
-      'google_meet_auto_capture',
-      'google_meet_screen_share_detection',
-      'ms_teams_enabled',
-      'ms_teams_auto_capture',
-      'ms_teams_screen_share_detection',
-      'audio_capture_enabled',
-      'audio_input_device_id',
-      'audio_sample_rate',
-      'audio_channels',
-      'screen_share_detection_enabled',
-      'screen_share_callback_url',
-      'preferred_platform',
-      'auto_detect_platform',
-    ];
-    
-    const updates: Record<string, unknown> = {};
-    for (const field of allowedFields) {
-      if (body[field] !== undefined) {
-        updates[field] = body[field];
-      }
-    }
-    
-    // Ensure settings exist
-    let settings = await getVideoConferencingSettings(supabase, user.id);
-    if (!settings) {
-      settings = await createVideoConferencingSettings(supabase, user.id);
-    }
-    
-    // Update settings
-    const updated = await updateVideoConferencingSettings(supabase, user.id, updates);
-    
-    return NextResponse.json(updated);
-  } catch (error) {
-    console.error('Error updating video conferencing settings:', error);
-    return NextResponse.json(
-      { error: 'Failed to update settings' },
-      { status: 500 }
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+
+  const parse = SettingsSchema.safeParse(await request.json().catch(() => null));
+  if (!parse.success) return NextResponse.json({ error: 'invalid_body' }, { status: 400 });
+
+  const { error } = await supabase
+    .from('video_conferencing_settings')
+    .upsert(
+      { user_id: user.id, ...meetingSettingsToRow(parse.data), updated_at: new Date().toISOString() },
+      { onConflict: 'user_id' },
     );
+  if (error) {
+    console.error('[settings] meeting apps not saved', error.message);
+    return NextResponse.json({ error: 'db_error' }, { status: 500 });
   }
+  return NextResponse.json({ settings: await load(supabase, user.id) });
 }

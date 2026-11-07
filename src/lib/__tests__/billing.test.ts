@@ -5,6 +5,7 @@ import type Stripe from 'stripe';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 jest.mock('@/lib/env', () => ({ env: { PRICE_ID_PRO_EUR: 'price_eur', PRICE_ID_PRO_USD: 'price_usd' } }));
+jest.mock('@/lib/notify', () => ({ notify: jest.fn() }));
 
 import { getOrCreateStripeCustomer, proAccessUntil, proPriceId, recordCheckout, syncSubscription } from '@/lib/billing';
 

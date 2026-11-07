@@ -26,9 +26,12 @@ type ResumeRow = { id: string; user_id: string; filename: string | null; parsed_
 
 type OpenSession = { id: string; user_id: string; status: string; started_at: string; metadata: Record<string, unknown> | null };
 
+type ModelRow = { model: string | null; coding_model: string | null; temperature: number | null; answer_length: string | null };
+
 function mockSupabase(
   resume: ResumeRow | null = { id: RESUME_ID, user_id: 'user-1', filename: 'cv.pdf', parsed_text: 'Led the payments migration at Stripe.' },
   openSessions: OpenSession[] = [],
+  modelSettings: ModelRow | null = null,
 ) {
   const inserted: Array<Record<string, unknown>> = [];
   createClient.mockResolvedValue({
@@ -36,6 +39,9 @@ function mockSupabase(
     from: (table: string) => {
       if (table === 'resume_documents') {
         return { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: resume, error: null }) }) }) };
+      }
+      if (table === 'llm_settings') {
+        return { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: modelSettings, error: null }) }) }) };
       }
       // The user's sessions that are still open.
       return { select: () => ({ eq: () => ({ eq: async () => ({ data: openSessions, error: null }) }) }) };
@@ -140,5 +146,108 @@ describe('POST /api/copilot/sessions/start with interview context', () => {
     const inserted = mockSupabase();
     expect((await call({})).status).toBe(201);
     expect((inserted[0].metadata as Record<string, unknown>).context_pack).toBeUndefined();
+  });
+});
+
+describe('POST /api/copilot/sessions/start answer models', () => {
+  beforeEach(() => {
+    process.env.OPENAI_API_KEY = 'test-openai';
+  });
+  afterEach(() => {
+    delete process.env.OPENAI_API_KEY;
+  });
+
+  it("freezes the user's answer model settings into the session", async () => {
+    const inserted = mockSupabase(undefined, [], { model: 'gpt-4o', coding_model: null, temperature: 0.2, answer_length: 'short' });
+    expect((await call({})).status).toBe(201);
+    expect((inserted[0].metadata as Record<string, unknown>).models).toEqual({
+      answer: 'gpt-4o',
+      coding: 'gpt-4o',
+      temperature: 0.2,
+      maxTokens: 450,
+      words: 80,
+    });
+  });
+
+  it('uses the server defaults without saved settings, and ignores models sent by the client', async () => {
+    const inserted = mockSupabase();
+    await call({ metadata: { models: { answer: 'claude-opus-5-5', coding: 'claude-opus-5-5' } } });
+    expect((inserted[0].metadata as Record<string, unknown>).models).toMatchObject({ answer: 'gpt-4o-mini', coding: 'gpt-4o-mini' });
+  });
+});
+
+describe('POST /api/copilot/sessions/start with a goal and per-session choices', () => {
+  const GOAL_ID = '7d1b0c2e-4a5f-4e3b-9c1d-2f6a8e9b0c11';
+
+  /** A Supabase stand-in whose queries resolve to fixed rows per table. */
+  function mockTables(tables: Record<string, unknown>) {
+    const inserted: Array<Record<string, unknown>> = [];
+    createClient.mockResolvedValue({
+      auth: { getUser: async () => ({ data: { user: { id: 'user-1' } }, error: null }) },
+      from: (table: string) => {
+        const rows = tables[table];
+        const builder: Record<string, unknown> = {};
+        for (const method of ['select', 'eq', 'in', 'order', 'limit']) builder[method] = () => builder;
+        builder.maybeSingle = async () => ({ data: Array.isArray(rows) ? rows[0] ?? null : rows ?? null, error: null });
+        builder.then = (resolve: (value: unknown) => unknown) =>
+          Promise.resolve({ data: Array.isArray(rows) ? rows : rows ? [rows] : [], error: null }).then(resolve);
+        return builder;
+      },
+    });
+    createAdminClient.mockReturnValue({
+      from: () => ({
+        insert: (row: Record<string, unknown>) => {
+          inserted.push(row);
+          return { select: () => ({ single: async () => ({ data: { id: 'session-1', ...row }, error: null }) }) };
+        },
+      }),
+    });
+    return inserted;
+  }
+
+  beforeEach(() => {
+    process.env.OPENAI_API_KEY = 'test-openai';
+  });
+  afterEach(() => {
+    delete process.env.OPENAI_API_KEY;
+  });
+
+  it('builds the session from the goal: résumé, job, round, materials, playbook and memories', async () => {
+    const inserted = mockTables({
+      copilot_sessions: [],
+      goals: { id: GOAL_ID, user_id: 'user-1', company: 'Acme', role: 'Staff Engineer', round: 'system_design', job_description: 'Own payments reliability.', resume_document_id: RESUME_ID, playbook_id: 'pb-1' },
+      resume_documents: { id: RESUME_ID, filename: 'cv.pdf', parsed_text: 'Led the payments migration at Stripe.' },
+      goal_materials: [{ material_id: 'm-1' }],
+      materials: [{ id: 'm-1', title: 'Kafka notes', content: 'Built a Kafka pipeline for 2 million events a day.' }],
+      playbooks: { instructions: 'Lead with numbers. Keep it under a minute.' },
+      memories: [{ id: 'mem-1', content: 'Has managed a team of five.', goal_id: null }],
+    });
+    expect((await call({ goalId: GOAL_ID })).status).toBe(201);
+    const metadata = inserted[0].metadata as Record<string, unknown>;
+    const pack = metadata.context_pack as Record<string, unknown>;
+    expect(pack).toMatchObject({ company: 'Acme', role: 'Staff Engineer', round: 'system_design', playbook: 'Lead with numbers. Keep it under a minute.' });
+    const chunks = pack.chunks as Array<{ source: string; kind: string }>;
+    expect(chunks.map((chunk) => chunk.kind)).toEqual(['resume', 'material', 'memory']);
+    expect(chunks[1].source).toBe('Kafka notes');
+    expect(metadata.goal_id).toBe(GOAL_ID);
+  });
+
+  it('refuses a goal that is not the user’s', async () => {
+    mockTables({ copilot_sessions: [], goals: { id: GOAL_ID, user_id: 'user-2' } });
+    expect(await call({ goalId: GOAL_ID })).toMatchObject({ status: 404, body: { error: 'goal_not_found' } });
+  });
+
+  it('stores the per-session answer model, spoken language and coding language', async () => {
+    const inserted = mockTables({ copilot_sessions: [], memories: [] });
+    expect((await call({ answerModel: 'gpt-4o', language: 'fr', codingLanguage: 'go' })).status).toBe(201);
+    const metadata = inserted[0].metadata as Record<string, unknown>;
+    expect((metadata.models as Record<string, unknown>).answer).toBe('gpt-4o');
+    expect(metadata.stt).toEqual({ language: 'fr', singleMic: false });
+    expect(metadata.codingLanguage).toBe('go');
+  });
+
+  it('refuses a model the server cannot call', async () => {
+    mockTables({ copilot_sessions: [], memories: [] });
+    expect(await call({ answerModel: 'claude-opus-5-5' })).toMatchObject({ status: 422, body: { error: 'model_unavailable' } });
   });
 });

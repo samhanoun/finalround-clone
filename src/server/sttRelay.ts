@@ -35,8 +35,8 @@ export type RelayDeps = {
   loadSession: (sessionId: string) => Promise<RelaySession | null>;
   /** Minutes the user's plan has left today/this month/this session (the smallest). */
   remainingMinutes: (userId: string) => Promise<number>;
-  /** Opens the Deepgram live connection with our key and fixed parameters. */
-  openUpstream: () => WebSocket;
+  /** Opens the Deepgram live connection with our key; the session sets only its language and microphone mode. */
+  openUpstream: (session: RelaySession) => WebSocket;
   /** Origins allowed to open a stream, besides the request's own host. */
   allowedOrigins?: string[];
   /** False when the Deepgram key is missing: streams close with notConfigured. */
@@ -132,9 +132,9 @@ export function createSttRelay(deps: RelayDeps) {
     log('stream_closed', { sessionId: stream.session.id, userId: stream.userId, code, reason });
   }
 
-  function openUpstream(): Promise<WebSocket> {
+  function openUpstream(session: RelaySession): Promise<WebSocket> {
     return new Promise((resolve, reject) => {
-      const upstream = deps.openUpstream();
+      const upstream = deps.openUpstream(session);
       const timer = setTimeout(() => {
         upstream.terminate();
         reject(new Error('upstream_timeout'));
@@ -274,7 +274,7 @@ export function createSttRelay(deps: RelayDeps) {
     // Open Deepgram before accepting the browser, so its first frames have somewhere to go.
     let upstream: WebSocket;
     try {
-      upstream = await openUpstream();
+      upstream = await openUpstream(session);
     } catch (error) {
       log('upstream_open_failed', { sessionId, error: String(error) });
       refuse(req, socket, head, RELAY_CLOSE.upstreamFailed, 'upstream_unavailable');

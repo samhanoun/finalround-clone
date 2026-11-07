@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter } from '@/i18n/routing';
+import { useTranslations } from 'next-intl';
 import { createClient } from '@/lib/supabase/browser';
 import { ApexMark } from './ApexMark';
 import { ChartIcon, JobsIcon, LiveIcon, PracticeIcon, ResumeIcon } from './icons';
@@ -10,10 +11,8 @@ import { ChartIcon, JobsIcon, LiveIcon, PracticeIcon, ResumeIcon } from './icons
 type OnboardingStep = 'welcome' | 'plan' | 'profile' | 'tutorial';
 
 interface Plan {
-  id: string;
-  name: string;
-  price: string;
-  features: string[];
+  id: 'free' | 'pro';
+  features: number;
   popular?: boolean;
 }
 
@@ -26,53 +25,25 @@ interface ProfileData {
 
 // The plans as billed (see the plans table and /api/billing/checkout).
 const PLANS: Plan[] = [
-  {
-    id: 'free',
-    name: 'Free',
-    price: '$0',
-    features: [
-      '10 minutes of live copilot a month',
-      'Sessions up to 10 minutes',
-      'Practice interviews with AI feedback',
-      'Résumé check against a job',
-      'Job tracking',
-    ],
-  },
-  {
-    id: 'pro',
-    name: 'Pro',
-    price: '$29 or €29 a month',
-    popular: true,
-    features: [
-      '400 minutes of live copilot a month',
-      'Sessions up to 30 minutes, 45 minutes a day',
-      '80 minutes of Smart mode a month',
-      '10 in-depth résumé reviews a month',
-      'Everything in Free',
-    ],
-  },
+  { id: 'free', features: 5 },
+  { id: 'pro', features: 5, popular: true },
 ];
 
+/** Suggested roles; the chosen names are saved as shown, in the app's language. */
 const ROLE_OPTIONS = [
-  'Software Engineer',
-  'Frontend Developer',
-  'Backend Developer',
-  'Full Stack Developer',
-  'DevOps Engineer',
-  'Data Scientist',
-  'Machine Learning Engineer',
-  'Product Manager',
-  'Technical Lead',
-  'Engineering Manager',
-];
+  'softwareEngineer',
+  'frontend',
+  'backend',
+  'fullStack',
+  'devops',
+  'dataScientist',
+  'mlEngineer',
+  'productManager',
+  'techLead',
+  'engManager',
+] as const;
 
-const EXPERIENCE_LEVELS = [
-  { value: '0-1', label: 'Entry Level (0-1 years)' },
-  { value: '1-3', label: 'Junior (1-3 years)' },
-  { value: '3-5', label: 'Mid-Level (3-5 years)' },
-  { value: '5-10', label: 'Senior (5-10 years)' },
-  { value: '10+', label: 'Staff/Principal (10+ years)' },
-];
+const EXPERIENCE_LEVELS = ['0-1', '1-3', '3-5', '5-10', '10+'] as const;
 
 export default function OnboardingFlow() {
   const router = useRouter();
@@ -263,33 +234,32 @@ export default function OnboardingFlow() {
 
 // Welcome Step Component
 function WelcomeStep({ onNext, loading }: { onNext: () => void; loading: boolean }) {
+  const t = useTranslations('Onboarding.welcome');
   return (
     <div className="onboarding-container">
       <div className="onboarding-card">
         <div className="onboarding-icon">
           <ApexMark size={52} />
         </div>
-        <h1>Welcome to Apex Round</h1>
-        <p className="onboarding-description">
-          Help in the interview, and practice before it. Setup takes about two minutes.
-        </p>
+        <h1>{t('title')}</h1>
+        <p className="onboarding-description">{t('desc')}</p>
 
         <div className="onboarding-features">
           <div className="feature-item">
             <span className="feature-icon"><PracticeIcon size={20} /></span>
-            <span>Practice interviews with a score and feedback</span>
+            <span>{t('practice')}</span>
           </div>
           <div className="feature-item">
             <span className="feature-icon"><ResumeIcon size={20} /></span>
-            <span>Your résumé, checked against each job</span>
+            <span>{t('resume')}</span>
           </div>
           <div className="feature-item">
             <span className="feature-icon"><JobsIcon size={20} /></span>
-            <span>Every application, tracked by stage</span>
+            <span>{t('jobs')}</span>
           </div>
           <div className="feature-item">
             <span className="feature-icon"><LiveIcon size={20} /></span>
-            <span>A live copilot during real interviews</span>
+            <span>{t('live')}</span>
           </div>
         </div>
 
@@ -298,7 +268,7 @@ function WelcomeStep({ onNext, loading }: { onNext: () => void; loading: boolean
           onClick={onNext}
           disabled={loading}
         >
-          Get started
+          {t('start')}
         </button>
       </div>
     </div>
@@ -321,14 +291,13 @@ function PlanStep({
   onBack: () => void;
   loading: boolean;
 }) {
+  const t = useTranslations('Onboarding');
   return (
     <div className="onboarding-container">
       <div className="onboarding-card">
-        <button className="back-button" onClick={onBack}>Back</button>
-        <h1>Choose a plan</h1>
-        <p className="onboarding-description">
-          Start free and upgrade whenever you need more minutes. Pro opens checkout when you finish.
-        </p>
+        <button className="back-button" onClick={onBack}>{t('back')}</button>
+        <h1>{t('plan.title')}</h1>
+        <p className="onboarding-description">{t('plan.desc')}</p>
 
         <div className="plans-grid">
           {plans.map((plan) => (
@@ -337,16 +306,16 @@ function PlanStep({
               className={`plan-card ${selectedPlan === plan.id ? 'selected' : ''} ${plan.popular ? 'popular' : ''}`}
               onClick={() => onSelect(plan.id)}
             >
-              {plan.popular && <span className="popular-badge">Most popular</span>}
-              <h3>{plan.name}</h3>
-              <div className="plan-price">{plan.price}</div>
+              {plan.popular && <span className="popular-badge">{t('plan.popular')}</span>}
+              <h3>{t(`plan.${plan.id}.name`)}</h3>
+              <div className="plan-price">{t(`plan.${plan.id}.price`)}</div>
               <ul className="plan-features">
-                {plan.features.map((feature, idx) => (
-                  <li key={idx}>✓ {feature}</li>
+                {Array.from({ length: plan.features }, (_, idx) => (
+                  <li key={idx}>✓ {t(`plan.${plan.id}.feature${idx + 1}`)}</li>
                 ))}
               </ul>
               <div className={`plan-select ${selectedPlan === plan.id ? 'selected' : ''}`}>
-                {selectedPlan === plan.id ? '✓ Selected' : 'Select'}
+                {selectedPlan === plan.id ? `✓ ${t('plan.selected')}` : t('plan.select')}
               </div>
             </div>
           ))}
@@ -357,7 +326,7 @@ function PlanStep({
           onClick={onNext}
           disabled={loading || !selectedPlan}
         >
-          Continue
+          {t('continue')}
         </button>
       </div>
     </div>
@@ -380,6 +349,7 @@ function ProfileStep({
   onBack: () => void;
   loading: boolean;
 }) {
+  const t = useTranslations('Onboarding');
   const isValid = profileData.fullName.trim() !== '' &&
                    profileData.targetRoles.length > 0 &&
                    profileData.yearsExperience !== '';
@@ -387,64 +357,67 @@ function ProfileStep({
   return (
     <div className="onboarding-container">
       <div className="onboarding-card">
-        <button className="back-button" onClick={onBack}>Back</button>
-        <h1>About you</h1>
-        <p className="onboarding-description">
-          Answers and practice questions are tuned to the roles you pick here.
-        </p>
+        <button className="back-button" onClick={onBack}>{t('back')}</button>
+        <h1>{t('profile.title')}</h1>
+        <p className="onboarding-description">{t('profile.desc')}</p>
 
         <div className="profile-form">
           <div className="form-group">
-            <label className="label">Full name</label>
+            <label className="label">{t('profile.name')}</label>
             <input
               className="input"
               type="text"
               value={profileData.fullName}
               onChange={(e) => onUpdate({ ...profileData, fullName: e.target.value })}
-              placeholder="Your name"
+              placeholder={t('profile.namePlaceholder')}
             />
           </div>
 
           <div className="form-group">
-            <label className="label">Roles you are aiming for (pick at least one)</label>
+            <label className="label">{t('profile.roles')}</label>
             <div className="role-tags">
-              {ROLE_OPTIONS.map((role) => (
-                <button
-                  key={role}
-                  className={`role-tag ${profileData.targetRoles.includes(role) ? 'selected' : ''}`}
-                  onClick={() => onRoleToggle(role)}
-                  type="button"
-                >
-                  {role}
-                </button>
-              ))}
+              {ROLE_OPTIONS.map((key) => {
+                const role = t(`roles.${key}`);
+                const selected = profileData.targetRoles.includes(role);
+                return (
+                  <button
+                    key={key}
+                    className={`role-tag ${selected ? 'selected' : ''}`}
+                    onClick={() => onRoleToggle(role)}
+                    aria-pressed={selected}
+                    type="button"
+                  >
+                    {role}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
           <div className="form-group">
-            <label className="label">Years of experience</label>
+            <label className="label">{t('profile.experience')}</label>
             <select
               className="input"
               value={profileData.yearsExperience}
               onChange={(e) => onUpdate({ ...profileData, yearsExperience: e.target.value })}
             >
-              <option value="">Select experience level</option>
+              <option value="">{t('profile.experiencePick')}</option>
               {EXPERIENCE_LEVELS.map((level) => (
-                <option key={level.value} value={level.value}>
-                  {level.label}
+                <option key={level} value={level}>
+                  {t(`levels.${level}`)}
                 </option>
               ))}
             </select>
           </div>
 
           <div className="form-group">
-            <label className="label">Industry (optional)</label>
+            <label className="label">{t('profile.industry')}</label>
             <input
               className="input"
               type="text"
               value={profileData.industry}
               onChange={(e) => onUpdate({ ...profileData, industry: e.target.value })}
-              placeholder="e.g. Tech, finance, healthcare"
+              placeholder={t('profile.industryPlaceholder')}
             />
           </div>
         </div>
@@ -454,7 +427,7 @@ function ProfileStep({
           onClick={onNext}
           disabled={loading || !isValid}
         >
-          Continue
+          {t('continue')}
         </button>
       </div>
     </div>
@@ -471,39 +444,22 @@ function TutorialStep({
   onBack: () => void;
   loading: boolean;
 }) {
+  const t = useTranslations('Onboarding');
   const [tutorialStep, setTutorialStep] = useState(0);
 
   const tutorialSteps = [
-    {
-      title: 'Practice an interview',
-      description: 'Answer behavioral or technical questions out loud, then read a score and notes on each answer.',
-      Icon: PracticeIcon,
-    },
-    {
-      title: 'See where you improve',
-      description: 'Scores and session history build up on Home and in Analytics.',
-      Icon: ChartIcon,
-    },
-    {
-      title: 'Use the live copilot',
-      description: 'Share your meeting with audio. When the interviewer asks a question, a short structured answer appears on your screen.',
-      Icon: LiveIcon,
-    },
-    {
-      title: 'Tune your résumé',
-      description: 'Upload it once, then check it against any job description for missing keywords.',
-      Icon: ResumeIcon,
-    },
-  ];
+    { key: 'practice', Icon: PracticeIcon },
+    { key: 'progress', Icon: ChartIcon },
+    { key: 'live', Icon: LiveIcon },
+    { key: 'resume', Icon: ResumeIcon },
+  ] as const;
 
   return (
     <div className="onboarding-container">
       <div className="onboarding-card">
-        <button className="back-button" onClick={onBack}>Back</button>
-        <h1>How it works</h1>
-        <p className="onboarding-description">
-          Four things you can do with Apex Round.
-        </p>
+        <button className="back-button" onClick={onBack}>{t('back')}</button>
+        <h1>{t('tutorial.title')}</h1>
+        <p className="onboarding-description">{t('tutorial.desc')}</p>
 
         <div className="tutorial-content">
           <div className="tutorial-progress">
@@ -523,8 +479,8 @@ function TutorialStep({
                 return <StepIcon size={36} />;
               })()}
             </div>
-            <h3>{tutorialSteps[tutorialStep].title}</h3>
-            <p>{tutorialSteps[tutorialStep].description}</p>
+            <h3>{t(`tutorial.${tutorialSteps[tutorialStep].key}.title`)}</h3>
+            <p>{t(`tutorial.${tutorialSteps[tutorialStep].key}.desc`)}</p>
           </div>
 
           <div className="tutorial-nav">
@@ -533,7 +489,7 @@ function TutorialStep({
               onClick={() => setTutorialStep(Math.max(0, tutorialStep - 1))}
               disabled={tutorialStep === 0}
             >
-              Previous
+              {t('previous')}
             </button>
             <span className="tutorial-count">{tutorialStep + 1} / {tutorialSteps.length}</span>
             <button
@@ -541,7 +497,7 @@ function TutorialStep({
               onClick={() => setTutorialStep(Math.min(tutorialSteps.length - 1, tutorialStep + 1))}
               disabled={tutorialStep === tutorialSteps.length - 1}
             >
-              Next
+              {t('next')}
             </button>
           </div>
         </div>
@@ -551,7 +507,7 @@ function TutorialStep({
           onClick={onComplete}
           disabled={loading}
         >
-          {loading ? 'Setting up…' : 'Start using Apex Round'}
+          {loading ? t('finishing') : t('finish')}
         </button>
       </div>
     </div>
