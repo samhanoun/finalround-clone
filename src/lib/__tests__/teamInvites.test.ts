@@ -2,7 +2,7 @@ jest.mock('@/lib/supabase/admin', () => ({ createAdminClient: jest.fn() }));
 jest.mock('@/lib/notify', () => ({ notify: jest.fn() }));
 jest.mock('@/lib/email', () => ({ sendEmail: jest.fn(async () => true) }));
 
-import { invitePath, isExpired, normalizeEmail, respondToInvitation } from '@/lib/teamInvites';
+import { invitationsForUser, invitePath, isExpired, normalizeEmail, respondToInvitation, type Invitee } from '@/lib/teamInvites';
 import { safeNextPath } from '@/lib/safeRedirect';
 
 const { createAdminClient } = jest.requireMock('@/lib/supabase/admin') as { createAdminClient: jest.Mock };
@@ -27,18 +27,34 @@ function invitation(overrides: Row = {}): Row {
   };
 }
 
-function mockAdmin(found: Row | null, { stillPending = true } = {}) {
+/** A confirmed email-and-password account. */
+function account(email: string, overrides: Partial<Invitee> = {}): Invitee {
+  return { id: 'user-2', email, email_confirmed_at: '2026-01-01T00:00:00Z', app_metadata: { provider: 'email' }, identities: [], ...overrides };
+}
+
+/** An account that signed in through a team's SAML provider. */
+function ssoAccount(email: string): Invitee {
+  return account(email, { app_metadata: { provider: 'sso:prov-1' }, identities: [{ provider: 'sso:prov-1' } as never] });
+}
+
+function mockAdmin(found: Row | null, { stillPending = true, ssoDomains = ['example.com'], pending = [] as Row[] } = {}) {
   const writes: Array<{ table: string; op: string; row: Row }> = [];
   createAdminClient.mockReturnValue({
     from: (table: string) => {
       const single = async () => {
         if (table === 'organization_invitations') return { data: found };
-        if (table === 'organizations') return { data: { name: 'Acme' } };
+        if (table === 'organizations') return { data: { name: 'Acme', sso_config: { provider_id: 'prov-1', domains: ssoDomains } } };
         if (table === 'profiles') return { data: { full_name: 'Sam Lee', email: 'sam@example.com' } };
         return { data: null };
       };
+      const query: Record<string, unknown> = {
+        maybeSingle: single,
+        then: (resolve: (value: unknown) => void) =>
+          resolve({ data: table === 'organizations' ? [{ id: 'org-1', name: 'Acme' }] : pending }),
+      };
+      for (const step of ['eq', 'gt', 'in', 'order']) query[step] = () => query;
       return {
-        select: () => ({ eq: () => ({ maybeSingle: single }) }),
+        select: () => query,
         upsert: async (row: Row) => {
           writes.push({ table, op: 'upsert', row });
           return { error: null };
@@ -58,7 +74,7 @@ beforeEach(() => jest.clearAllMocks());
 describe('respondToInvitation', () => {
   it('adds the member, marks the invitation used and tells the inviter', async () => {
     const writes = mockAdmin(invitation());
-    const result = await respondToInvitation(TOKEN, { id: 'user-2', email: 'Sam@Example.com' }, 'accept');
+    const result = await respondToInvitation(TOKEN, account('Sam@Example.com'), 'accept');
     expect(result).toEqual({ ok: true, outcome: 'joined', organizationId: 'org-1', teamName: 'Acme' });
     expect(writes).toEqual([
       expect.objectContaining({ table: 'organization_members', op: 'upsert', row: expect.objectContaining({ user_id: 'user-2', role: 'member', status: 'active' }) }),
@@ -69,22 +85,39 @@ describe('respondToInvitation', () => {
 
   it('only lets the invited address accept', async () => {
     const writes = mockAdmin(invitation());
-    expect(await respondToInvitation(TOKEN, { id: 'user-3', email: 'someone@else.com' }, 'accept')).toEqual({ ok: false, error: 'wrong_account' });
+    expect(await respondToInvitation(TOKEN, account('someone@else.com'), 'accept')).toEqual({ ok: false, error: 'wrong_account' });
+    expect(writes).toEqual([]);
+  });
+
+  it('needs the address to be confirmed', async () => {
+    const writes = mockAdmin(invitation());
+    const unconfirmed = account('sam@example.com', { email_confirmed_at: undefined });
+    expect(await respondToInvitation(TOKEN, unconfirmed, 'accept')).toEqual({ ok: false, error: 'wrong_account' });
+    expect(writes).toEqual([]);
+  });
+
+  it('accepts an address from a team identity provider only on a domain that team proved it owns', async () => {
+    mockAdmin(invitation());
+    expect(await respondToInvitation(TOKEN, ssoAccount('sam@example.com'), 'accept')).toMatchObject({ ok: true, outcome: 'joined' });
+
+    // Another team's provider asserting this address proves nothing.
+    const writes = mockAdmin(invitation(), { ssoDomains: ['acme-corp.com'] });
+    expect(await respondToInvitation(TOKEN, ssoAccount('sam@example.com'), 'accept')).toEqual({ ok: false, error: 'wrong_account' });
     expect(writes).toEqual([]);
   });
 
   it('refuses used, cancelled, expired and unknown invitations', async () => {
     mockAdmin(invitation({ status: 'accepted' }));
-    expect(await respondToInvitation(TOKEN, { id: 'u', email: 'sam@example.com' }, 'accept')).toEqual({ ok: false, error: 'not_pending' });
+    expect(await respondToInvitation(TOKEN, account('sam@example.com'), 'accept')).toEqual({ ok: false, error: 'not_pending' });
     mockAdmin(invitation({ expires_at: '2020-01-01T00:00:00Z' }));
-    expect(await respondToInvitation(TOKEN, { id: 'u', email: 'sam@example.com' }, 'accept')).toEqual({ ok: false, error: 'expired' });
+    expect(await respondToInvitation(TOKEN, account('sam@example.com'), 'accept')).toEqual({ ok: false, error: 'expired' });
     mockAdmin(null);
-    expect(await respondToInvitation(TOKEN, { id: 'u', email: 'sam@example.com' }, 'accept')).toEqual({ ok: false, error: 'not_found' });
+    expect(await respondToInvitation(TOKEN, account('sam@example.com'), 'accept')).toEqual({ ok: false, error: 'not_found' });
   });
 
   it('declines without adding a member', async () => {
     const writes = mockAdmin(invitation());
-    const result = await respondToInvitation(TOKEN, { id: 'user-2', email: 'sam@example.com' }, 'decline');
+    const result = await respondToInvitation(TOKEN, account('sam@example.com'), 'decline');
     expect(result).toMatchObject({ ok: true, outcome: 'declined' });
     expect(writes).toEqual([{ table: 'organization_invitations', op: 'update', row: { status: 'cancelled' } }]);
     expect(notify).not.toHaveBeenCalled();
@@ -92,8 +125,19 @@ describe('respondToInvitation', () => {
 
   it('does not notify twice when the invitation was used in the meantime', async () => {
     mockAdmin(invitation(), { stillPending: false });
-    await respondToInvitation(TOKEN, { id: 'user-2', email: 'sam@example.com' }, 'accept');
+    await respondToInvitation(TOKEN, account('sam@example.com'), 'accept');
     expect(notify).not.toHaveBeenCalled();
+  });
+});
+
+describe('invitationsForUser', () => {
+  it('lists pending invitations only to an account that holds the address', async () => {
+    mockAdmin(null, { pending: [invitation()], ssoDomains: ['acme-corp.com'] });
+    expect(await invitationsForUser(account('sam@example.com'))).toEqual([
+      expect.objectContaining({ token: TOKEN, teamName: 'Acme', role: 'member' }),
+    ]);
+    expect(await invitationsForUser(account('sam@example.com', { email_confirmed_at: undefined }))).toEqual([]);
+    expect(await invitationsForUser(ssoAccount('sam@example.com'))).toEqual([]);
   });
 });
 

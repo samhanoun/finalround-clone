@@ -12,7 +12,7 @@ jest.mock('@/lib/env', () => ({ env: {} }));
 jest.mock('@/lib/rateLimit', () => ({ rateLimit: jest.fn(async () => ({ ok: true })) }));
 jest.mock('@/lib/supabase/server', () => ({ createClient: jest.fn() }));
 jest.mock('@/lib/supabase/admin', () => ({ createAdminClient: jest.fn() }));
-jest.mock('@/lib/quota', () => ({ checkQuota: jest.fn(), recordUsage: jest.fn() }));
+jest.mock('@/lib/quota', () => ({ reserveQuota: jest.fn(), releaseQuota: jest.fn() }));
 jest.mock('@/lib/notify', () => ({ notify: jest.fn() }));
 jest.mock('@/lib/practice/practice', () => ({
   ...jest.requireActual('@/lib/practice/practice'),
@@ -21,7 +21,8 @@ jest.mock('@/lib/practice/practice', () => ({
 
 const { createClient } = jest.requireMock('@/lib/supabase/server') as { createClient: jest.Mock };
 const { createAdminClient } = jest.requireMock('@/lib/supabase/admin') as { createAdminClient: jest.Mock };
-const { checkQuota, recordUsage } = jest.requireMock('@/lib/quota') as { checkQuota: jest.Mock; recordUsage: jest.Mock };
+const { reserveQuota, releaseQuota } = jest.requireMock('@/lib/quota') as { reserveQuota: jest.Mock; releaseQuota: jest.Mock };
+const RESERVED_AT = new Date('2026-11-07T10:00:00Z');
 const { notify } = jest.requireMock('@/lib/notify') as { notify: jest.Mock };
 const { completeChat } = jest.requireMock('@/lib/practice/practice') as { completeChat: jest.Mock };
 
@@ -74,7 +75,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   afterCallbacks.length = 0;
   process.env.OPENAI_API_KEY = 'test-openai';
-  checkQuota.mockResolvedValue({ allowed: true, used: 0, limit: 10 });
+  reserveQuota.mockResolvedValue({ ok: true, reservedAt: RESERVED_AT });
 });
 
 afterAll(() => {
@@ -97,9 +98,12 @@ describe('POST /api/resume/generate', () => {
     setup({ doc: { id: DOC_ID, user_id: 'user-1', filename: 'x.pdf', parsed_text: null } });
     expect(await call({ documentId: DOC_ID, jobDescription: JOB })).toMatchObject({ status: 422 });
 
-    setup();
-    checkQuota.mockResolvedValue({ allowed: false, used: 10, limit: 10 });
+    const { inserts } = setup();
+    reserveQuota.mockResolvedValue({ ok: false, error: 'quota_exceeded', used: 10, limit: 10 });
     expect(await call({ documentId: DOC_ID, jobDescription: JOB })).toMatchObject({ status: 403, body: { error: 'quota_exceeded' } });
+    reserveQuota.mockResolvedValue({ ok: false, error: 'quota_unavailable', used: 0, limit: 0 });
+    expect(await call({ documentId: DOC_ID, jobDescription: JOB })).toMatchObject({ status: 503, body: { error: 'quota_unavailable' } });
+    expect(inserts).toEqual([]);
   });
 
   it('says so when no model can be called', async () => {
@@ -108,7 +112,7 @@ describe('POST /api/resume/generate', () => {
     expect(await call({ documentId: DOC_ID, jobDescription: JOB })).toMatchObject({ status: 503, body: { error: 'llm_unavailable' } });
   });
 
-  it('answers at once, then writes the résumé, counts it and notifies the user', async () => {
+  it('takes the quota before answering, so it is counted even while the résumé is being written', async () => {
     const { inserts, updates } = setup();
     completeChat.mockResolvedValue(
       JSON.stringify({ target: 'Staff Engineer at Acme', summary: 'Leads with payments.', changes: ['Moved payments up'], keywords: ['payments'], resume: RESUME }),
@@ -116,17 +120,18 @@ describe('POST /api/resume/generate', () => {
 
     const res = await call({ documentId: DOC_ID, jobDescription: JOB });
     expect(res.status).toBe(202);
+    expect(reserveQuota).toHaveBeenCalledWith('user-1', 'resume_deep_reviews');
     expect(inserts[0]).toMatchObject({ user_id: 'user-1', document_id: DOC_ID, status: 'processing', job_description: JOB });
     expect(completeChat).not.toHaveBeenCalled();
 
     await runAfter();
     expect(completeChat.mock.calls[0][0]).toMatchObject({ model: 'gpt-4o-mini' });
     expect(updates[0]).toMatchObject({ status: 'completed', output: { target: 'Staff Engineer at Acme', resume: RESUME } });
-    expect(recordUsage).toHaveBeenCalledWith('user-1', 'resume_deep_reviews', 1, 'gen-1');
+    expect(releaseQuota).not.toHaveBeenCalled();
     expect(notify).toHaveBeenCalledWith('user-1', expect.objectContaining({ type: 'ai_suggestion', url: '/resume' }));
   });
 
-  it('marks a failed attempt and does not count it', async () => {
+  it('marks a failed attempt and hands its quota back', async () => {
     const { updates } = setup();
     completeChat.mockRejectedValue(new Error('timeout'));
     jest.spyOn(console, 'error').mockImplementation(() => {});
@@ -134,7 +139,7 @@ describe('POST /api/resume/generate', () => {
     expect((await call({ documentId: DOC_ID, jobDescription: JOB })).status).toBe(202);
     await runAfter();
     expect(updates[0]).toMatchObject({ status: 'failed' });
-    expect(recordUsage).not.toHaveBeenCalled();
+    expect(releaseQuota).toHaveBeenCalledWith('user-1', 'resume_deep_reviews', RESERVED_AT);
     expect(notify).not.toHaveBeenCalled();
   });
 });

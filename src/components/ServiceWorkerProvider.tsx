@@ -70,14 +70,21 @@ export function usePushNotifications() {
       if (permission !== 'granted') return setState(permission === 'denied' ? 'blocked' : 'off');
       const registration = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
       await navigator.serviceWorker.ready;
-      const subscription =
-        (await registration.pushManager.getSubscription()) ??
-        (await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(key) }));
-      const res = await fetch('/api/push/subscriptions', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ subscription: subscription.toJSON() }),
-      });
+      const subscribe = () =>
+        registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(key) });
+      const save = (subscription: PushSubscription) =>
+        fetch('/api/push/subscriptions', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ subscription: subscription.toJSON() }),
+        });
+      const current = (await registration.pushManager.getSubscription()) ?? (await subscribe());
+      let res = await save(current);
+      if (res.status === 409) {
+        // The server already has this address under keys this browser doesn't hold: start a fresh subscription.
+        await current.unsubscribe();
+        res = await save(await subscribe());
+      }
       if (!res.ok) throw new Error('not saved');
       setState('on');
     } catch (error) {

@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { jsonError } from '@/lib/api';
 import { rateLimit } from '@/lib/rateLimit';
-import { checkQuota, recordUsage } from '@/lib/quota';
+import { releaseQuota, reserveQuota } from '@/lib/quota';
 import { isProviderConfigured, providerForModel } from '@/lib/llmRouter';
 import { completeChat } from '@/lib/practice/practice';
 import { userModels } from '@/lib/answerModels';
@@ -15,7 +15,8 @@ import { notify } from '@/lib/notify';
  * Résumé → "Write a tailored version". Creates a generation row, answers 202
  * straight away, and writes the résumé in the background; the row goes from
  * "processing" to "completed" (or "failed"), and the user gets a notification.
- * Each tailored version counts as one résumé review.
+ * Each tailored version counts as one résumé review: taken before the 202 (so
+ * parallel requests can't all pass the same check) and handed back if writing fails.
  */
 
 const BodySchema = z.object({
@@ -50,10 +51,12 @@ export async function POST(req: NextRequest) {
   const provider = providerForModel(model);
   if (!provider || !isProviderConfigured(provider)) return jsonError(503, 'llm_unavailable');
 
-  const quota = await checkQuota(userId, 'resume_deep_reviews');
-  if (!quota.allowed) {
-    return jsonError(403, 'quota_exceeded', { type: 'resume_deep_reviews', used: quota.used, limit: quota.limit });
+  const reservation = await reserveQuota(userId, 'resume_deep_reviews');
+  if (!reservation.ok) {
+    if (reservation.error === 'quota_unavailable') return jsonError(503, 'quota_unavailable');
+    return jsonError(403, 'quota_exceeded', { type: 'resume_deep_reviews', used: reservation.used, limit: reservation.limit });
   }
+  const { reservedAt } = reservation;
 
   const admin = createAdminClient();
   const { data: generation, error } = await admin
@@ -68,9 +71,13 @@ export async function POST(req: NextRequest) {
     })
     .select('id, status, created_at, input, output, document_id')
     .single();
-  if (error || !generation) return jsonError(500, 'db_error', error);
+  if (error || !generation) {
+    await releaseQuota(userId, 'resume_deep_reviews', reservedAt);
+    return jsonError(500, 'db_error', error);
+  }
 
   after(async () => {
+    let saved = false;
     try {
       const reply = await completeChat({
         model,
@@ -91,7 +98,7 @@ export async function POST(req: NextRequest) {
           updated_at: new Date().toISOString(),
         })
         .eq('id', generation.id);
-      await recordUsage(userId, 'resume_deep_reviews', 1, generation.id);
+      saved = true;
       await notify(userId, {
         type: 'ai_suggestion',
         title: 'Your tailored résumé is ready',
@@ -106,6 +113,9 @@ export async function POST(req: NextRequest) {
       });
     } catch (e) {
       console.error('[resume] tailored version failed', { generationId: generation.id, error: e instanceof Error ? e.message : e });
+      // Written and saved: it counts, even if the notification didn't go out.
+      if (saved) return;
+      await releaseQuota(userId, 'resume_deep_reviews', reservedAt);
       await admin
         .from('resume_generations')
         .update({ status: 'failed', output: { error: 'generation_failed' }, updated_at: new Date().toISOString() })

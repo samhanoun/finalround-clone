@@ -4,6 +4,8 @@ import { sendEmail } from '@/lib/email';
 import { absoluteUrl, renderEmail } from '@/lib/emailTemplates';
 import { notify } from '@/lib/notify';
 import { kitFor, userLocaleAndZone } from '@/lib/localizedEmail';
+import { ssoProviderIdOf } from '@/lib/sso';
+import { domainFromEmail } from '@/lib/ssoDomain';
 import type { Locale } from '@/i18n/locales';
 
 /**
@@ -153,13 +155,39 @@ export type RespondResult =
   | { ok: true; outcome: 'joined' | 'declined'; organizationId: string; teamName: string }
   | { ok: false; error: 'not_found' | 'not_pending' | 'expired' | 'wrong_account' };
 
-export async function respondToInvitation(token: string, user: Pick<User, 'id' | 'email'>, action: 'accept' | 'decline'): Promise<RespondResult> {
+export type Invitee = Pick<User, 'id' | 'email' | 'email_confirmed_at' | 'app_metadata' | 'identities'>;
+
+/**
+ * Whether this account has shown it holds the invited address. The address
+ * must match and be confirmed. An address that came from a team's own
+ * identity provider (SAML) counts only for the domains that team proved it
+ * owns: any team can point its provider at any address, so an asserted
+ * address on another domain proves nothing.
+ */
+export async function holdsInvitedAddress(user: Invitee, invitedEmail: string): Promise<boolean> {
+  if (!user.email || normalizeEmail(user.email) !== normalizeEmail(invitedEmail)) return false;
+  if (!user.email_confirmed_at) return false;
+  const providerId = ssoProviderIdOf(user);
+  if (!providerId) return true;
+  const domain = domainFromEmail(user.email);
+  if (!domain) return false;
+  const { data: org } = await createAdminClient()
+    .from('organizations')
+    .select('sso_config')
+    .eq('sso_enabled', true)
+    .eq('sso_config->>provider_id', providerId)
+    .maybeSingle<{ sso_config: { domains?: unknown } | null }>();
+  const domains = org?.sso_config?.domains;
+  return Array.isArray(domains) && domains.includes(domain);
+}
+
+export async function respondToInvitation(token: string, user: Invitee, action: 'accept' | 'decline'): Promise<RespondResult> {
   const found = await loadByToken(token);
   if (!found) return { ok: false, error: 'not_found' };
   const { invitation, teamName } = found;
   if (invitation.status !== 'pending') return { ok: false, error: 'not_pending' };
   if (isExpired(invitation)) return { ok: false, error: 'expired' };
-  if (!user.email || normalizeEmail(user.email) !== normalizeEmail(invitation.email)) return { ok: false, error: 'wrong_account' };
+  if (!(await holdsInvitedAddress(user, invitation.email))) return { ok: false, error: 'wrong_account' };
 
   const admin = createAdminClient();
   if (action === 'accept') {
@@ -187,7 +215,7 @@ export async function respondToInvitation(token: string, user: Pick<User, 'id' |
   if (updateError) throw new Error(`Could not update the invitation: ${updateError.message}`);
 
   if (action === 'accept' && updated?.length) {
-    const who = (await displayName(user.id)) ?? user.email;
+    const who = (await displayName(user.id)) ?? invitation.email;
     await notify(invitation.invited_by, {
       type: 'system',
       title: `${who} joined ${teamName}`,
@@ -199,9 +227,10 @@ export async function respondToInvitation(token: string, user: Pick<User, 'id' |
   return { ok: true, outcome: action === 'accept' ? 'joined' : 'declined', organizationId: invitation.organization_id, teamName };
 }
 
-/** Pending invitations sent to this user's address (shown on their Teams page). */
-export async function invitationsForUser(email: string | undefined) {
-  if (!email) return [];
+/** Pending invitations sent to this user's address (shown on their Teams page), once they've shown they hold it. */
+export async function invitationsForUser(user: Invitee) {
+  const email = user.email;
+  if (!email || !(await holdsInvitedAddress(user, email))) return [];
   const admin = createAdminClient();
   const { data } = await admin
     .from('organization_invitations')

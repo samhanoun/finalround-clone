@@ -10,7 +10,7 @@ export async function GET() {
   } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
 
-  const invitations = await invitationsForUser(user.email);
+  const invitations = await invitationsForUser(user);
   return NextResponse.json({
     invitations: invitations.map(({ token, ...rest }) => ({ ...rest, invitePath: invitePath(token) })),
   });
