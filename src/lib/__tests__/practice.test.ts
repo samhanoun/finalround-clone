@@ -8,6 +8,7 @@ import {
   parseFeedback,
   parseFollowUp,
   parseQuestions,
+  practiceTypeForRound,
   questionsRequest,
 } from '@/lib/practice/practice';
 
@@ -109,5 +110,17 @@ describe('parseFollowUp', () => {
     expect(parseFollowUp('{"score":7,"follow_up":""}')).toBeNull();
     expect(parseFollowUp('{"score":7}')).toBeNull();
     expect(parseFollowUp('no json')).toBeNull();
+  });
+});
+
+describe('practiceTypeForRound', () => {
+  it('picks the interview type that fits a goal’s round', () => {
+    expect(practiceTypeForRound('technical')).toBe('technical');
+    expect(practiceTypeForRound('system_design')).toBe('technical');
+    expect(practiceTypeForRound('screen')).toBe('mixed');
+    expect(practiceTypeForRound('final')).toBe('mixed');
+    expect(practiceTypeForRound('behavioral')).toBe('behavioral');
+    expect(practiceTypeForRound('other')).toBe('behavioral');
+    expect(practiceTypeForRound(null)).toBe('behavioral');
   });
 });

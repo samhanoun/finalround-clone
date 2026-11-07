@@ -721,6 +721,7 @@
     "setup": {
       "title": "Richte dein Übungsinterview ein",
       "desc": "Ein KI-Interviewer stellt laut Fragen zur Stelle, hakt bei deinen Antworten nach, bewertet dann jede einzelne und sagt dir, was du ändern kannst. Fragen aus echten Interviews kommen in die <bank>Fragensammlung</bank>.",
+      "fromGoal": "Aus deinem Ziel „{name}“ übernommen. Ändere vor dem Start, was du möchtest.",
       "role": "Rolle",
       "rolePlaceholder": "z. B. Senior Product Manager",
       "company": "Unternehmen (optional)",

@@ -32,7 +32,11 @@ const RESUME = 'Jane Doe\nStripe, Senior Engineer\n- Led the payments migration 
 
 type Doc = { id: string; user_id: string; filename: string; parsed_text: string | null };
 
-function setup({ user = 'user-1', doc = { id: DOC_ID, user_id: 'user-1', filename: 'cv.pdf', parsed_text: RESUME } as Doc | null } = {}) {
+function setup({
+  user = 'user-1',
+  doc = { id: DOC_ID, user_id: 'user-1', filename: 'cv.pdf', parsed_text: RESUME } as Doc | null,
+  failCompletedSave = false,
+} = {}) {
   createClient.mockResolvedValue({
     auth: { getUser: async () => ({ data: { user: user ? { id: user } : null } }) },
     from: (table: string) => ({
@@ -53,7 +57,8 @@ function setup({ user = 'user-1', doc = { id: DOC_ID, user_id: 'user-1', filenam
       },
       update: (row: Record<string, unknown>) => {
         updates.push(row);
-        return { eq: async () => ({ error: null }) };
+        const failed = failCompletedSave && row.status === 'completed';
+        return { eq: async () => ({ error: failed ? { message: 'connection reset' } : null }) };
       },
     }),
   });
@@ -139,6 +144,20 @@ describe('POST /api/resume/generate', () => {
     expect((await call({ documentId: DOC_ID, jobDescription: JOB })).status).toBe(202);
     await runAfter();
     expect(updates[0]).toMatchObject({ status: 'failed' });
+    expect(releaseQuota).toHaveBeenCalledWith('user-1', 'resume_deep_reviews', RESERVED_AT);
+    expect(notify).not.toHaveBeenCalled();
+  });
+
+  it('treats a résumé that could not be saved as failed: not counted, not announced', async () => {
+    const { updates } = setup({ failCompletedSave: true });
+    completeChat.mockResolvedValue(
+      JSON.stringify({ target: 'Staff Engineer at Acme', summary: 'Leads with payments.', changes: ['Moved payments up'], keywords: ['payments'], resume: RESUME }),
+    );
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+
+    expect((await call({ documentId: DOC_ID, jobDescription: JOB })).status).toBe(202);
+    await runAfter();
+    expect(updates.map((row) => row.status)).toEqual(['completed', 'failed']);
     expect(releaseQuota).toHaveBeenCalledWith('user-1', 'resume_deep_reviews', RESERVED_AT);
     expect(notify).not.toHaveBeenCalled();
   });

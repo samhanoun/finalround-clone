@@ -721,6 +721,7 @@
     "setup": {
       "title": "Prepare sua entrevista de treino",
       "desc": "Um entrevistador de IA faz perguntas em voz alta para a vaga, aprofunda suas respostas e depois avalia cada uma e diz o que mudar. As perguntas que fizeram a você em entrevistas reais vão para o <bank>banco de perguntas</bank>.",
+      "fromGoal": "Preenchido com a sua meta “{name}”. Mude o que quiser antes de começar.",
       "role": "Cargo",
       "rolePlaceholder": "ex.: Product Manager sênior",
       "company": "Empresa (opcional)",

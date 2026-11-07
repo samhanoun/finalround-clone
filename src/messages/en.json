@@ -721,6 +721,7 @@
     "setup": {
       "title": "Set up your practice interview",
       "desc": "An AI interviewer asks questions for the role out loud, follows up on your answers, then scores each one and tells you what to change. Questions you were asked in real interviews go in the <bank>question bank</bank>.",
+      "fromGoal": "Filled in from your goal “{name}”. Change anything before you start.",
       "role": "Role",
       "rolePlaceholder": "e.g. Senior Product Manager",
       "company": "Company (optional)",

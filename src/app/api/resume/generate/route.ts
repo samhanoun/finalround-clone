@@ -89,7 +89,7 @@ export async function POST(req: NextRequest) {
       const tailored = parseTailoredResume(reply);
       if (!tailored) throw new Error('The model returned no résumé');
 
-      await admin
+      const { error: saveError } = await admin
         .from('resume_generations')
         .update({
           status: 'completed',
@@ -98,6 +98,8 @@ export async function POST(req: NextRequest) {
           updated_at: new Date().toISOString(),
         })
         .eq('id', generation.id);
+      // Not saved: fall through to "failed", which also hands the quota back.
+      if (saveError) throw new Error(`Could not save the résumé: ${saveError.message}`);
       saved = true;
       await notify(userId, {
         type: 'ai_suggestion',

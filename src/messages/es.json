@@ -721,6 +721,7 @@
     "setup": {
       "title": "Prepara tu entrevista de práctica",
       "desc": "Un entrevistador con IA hace en voz alta preguntas para el puesto, repregunta sobre tus respuestas y luego puntúa cada una y te dice qué cambiar. Las preguntas que te hicieron en entrevistas reales van al <bank>banco de preguntas</bank>.",
+      "fromGoal": "Rellenado con tu objetivo «{name}». Cambia lo que quieras antes de empezar.",
       "role": "Puesto",
       "rolePlaceholder": "p. ej. Product Manager sénior",
       "company": "Empresa (opcional)",

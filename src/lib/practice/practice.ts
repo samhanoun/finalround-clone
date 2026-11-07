@@ -16,6 +16,13 @@ export const PRACTICE_DIFFICULTIES = ['easy', 'medium', 'hard'] as const;
 export const PRACTICE_LENGTHS = [3, 5, 8] as const;
 
 export type PracticeType = (typeof PRACTICE_TYPES)[number];
+
+/** The practice interview type that fits a goal's round. */
+export function practiceTypeForRound(round: string | null | undefined): PracticeType {
+  if (round === 'technical' || round === 'system_design') return 'technical';
+  if (round === 'screen' || round === 'final') return 'mixed';
+  return 'behavioral';
+}
 export type PracticeDifficulty = (typeof PRACTICE_DIFFICULTIES)[number];
 export type QuestionType = 'behavioral' | 'technical' | 'situational' | 'general';
 

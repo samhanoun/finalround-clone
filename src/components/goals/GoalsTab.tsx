@@ -4,6 +4,7 @@ import { useId, useState } from 'react';
 import { Link } from '@/i18n/routing';
 import { useTranslations } from 'next-intl';
 import { createClient } from '@/lib/supabase/browser';
+import { NewPracticeButton } from '@/components/NewPracticeButton';
 import { GOAL_ROUNDS, type Goal, type GoalRound } from '@/lib/goalTypes';
 import type { WorkspaceData } from './GoalsWorkspace';
 import styles from './Goals.module.css';
@@ -191,9 +192,8 @@ export function GoalsTab({ data, reload, fromJob }: { data: WorkspaceData; reloa
                     <Link className="button buttonPrimary" href={`/copilot/live?goal=${goal.id}`}>
                       {t('startLive')}
                     </Link>
-                    <Link className="button" href={`/interview?goal=${goal.id}`}>
-                      {t('practice')}
-                    </Link>
+                    {/* Creates the practice interview with this goal's role, company, résumé and job filled in. */}
+                    <NewPracticeButton label={t('practice')} query={`goal=${goal.id}`} />
                     <button type="button" className="button buttonGhost" onClick={() => setDraft(draftFrom(goal))}>
                       {t('edit')}
                     </button>

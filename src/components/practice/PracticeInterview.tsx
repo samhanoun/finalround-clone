@@ -37,10 +37,19 @@ export type PracticeReport = {
 
 export type ResumeOption = { id: string; filename: string | null };
 
-/** Setup fields filled in from a link, e.g. "Practice these" in the question bank. */
-export type PracticePrefill = { company?: string; fromBank?: boolean };
-
 const TYPES = ['behavioral', 'technical', 'situational', 'mixed'] as const;
+
+/** Setup filled in from elsewhere: the question bank (company), or a goal (everything it knows). */
+export type PracticePrefill = {
+  company?: string;
+  fromBank?: boolean;
+  goalName?: string;
+  role?: string;
+  type?: (typeof TYPES)[number];
+  resumeDocumentId?: string;
+  jobDescription?: string;
+};
+
 const DIFFICULTIES = ['easy', 'medium', 'hard'] as const;
 const LENGTHS = [3, 5, 8] as const;
 const DIMENSIONS = ['relevance', 'structure', 'clarity', 'confidence'] as const;
@@ -166,13 +175,13 @@ function SetupForm(props: {
   const t = useTranslations('Practice');
   const locale = useLocale();
   const router = useRouter();
-  const [role, setRole] = useState('');
+  const [role, setRole] = useState(props.prefill?.role ?? '');
   const [company, setCompany] = useState(props.prefill?.company ?? '');
-  const [type, setType] = useState<(typeof TYPES)[number]>('behavioral');
+  const [type, setType] = useState<(typeof TYPES)[number]>(props.prefill?.type ?? 'behavioral');
   const [difficulty, setDifficulty] = useState<(typeof DIFFICULTIES)[number]>('medium');
   const [count, setCount] = useState<(typeof LENGTHS)[number]>(5);
-  const [resumeId, setResumeId] = useState('');
-  const [job, setJob] = useState('');
+  const [resumeId, setResumeId] = useState(props.prefill?.resumeDocumentId ?? '');
+  const [job, setJob] = useState(props.prefill?.jobDescription ?? '');
   const [useBank, setUseBank] = useState(props.prefill?.fromBank ?? true);
   const [followUps, setFollowUps] = useState(true);
   const [bank, setBank] = useState<{ company: string; count: number } | null>(null);
@@ -242,6 +251,7 @@ function SetupForm(props: {
           <p className="cardDesc">
             {t.rich('setup.desc', { bank: (chunks) => <Link href="/interview/bank">{chunks}</Link> })}
           </p>
+          {props.prefill?.goalName ? <p className="help">{t('setup.fromGoal', { name: props.prefill.goalName })}</p> : null}
         </div>
 
         <div className={styles.twoCol}>

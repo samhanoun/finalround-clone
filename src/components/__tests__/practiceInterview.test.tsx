@@ -104,6 +104,62 @@ describe('PracticeInterview', () => {
   });
 });
 
+describe('PracticeInterview setup from a goal', () => {
+  const RESUME_ID = '0b5c8c4e-7d1f-4c8e-9a43-2f6d1a7e9b10';
+  const realFetch = global.fetch;
+  afterEach(() => {
+    global.fetch = realFetch;
+  });
+
+  it('fills in the goal’s role, company, round, résumé and job, and starts with them', async () => {
+    const calls: Array<{ url: string; body?: Record<string, unknown> }> = [];
+    global.fetch = jest.fn(async (url: string, init?: RequestInit) => {
+      calls.push({ url, body: init?.body ? JSON.parse(String(init.body)) : undefined });
+      if (url.startsWith('/api/question-bank')) return { ok: true, json: async () => ({ mine: [], shared: [] }) };
+      return {
+        ok: true,
+        json: async () => ({
+          questions: [question('q1', 'Walk me through a payments outage.')],
+          setup: { role: 'Staff Engineer', type: 'technical', difficulty: 'medium', count: 5, followUps: true, hasResume: true, hasJob: true },
+        }),
+      };
+    }) as unknown as typeof fetch;
+
+    render(
+      <PracticeInterview
+        sessionId="s1"
+        setup={null}
+        questions={[]}
+        report={null}
+        resumes={[{ id: RESUME_ID, filename: 'cv.pdf' }]}
+        prefill={{
+          goalName: 'Acme staff role',
+          role: 'Staff Engineer',
+          company: 'Acme',
+          type: 'technical',
+          resumeDocumentId: RESUME_ID,
+          jobDescription: 'Own payments reliability.',
+        }}
+      />,
+    );
+    expect(screen.getByText('Filled in from your goal “Acme staff role”. Change anything before you start.')).toBeInTheDocument();
+    expect(screen.getByLabelText('Role')).toHaveValue('Staff Engineer');
+    expect(screen.getByLabelText('Company (optional)')).toHaveValue('Acme');
+    expect(screen.getByLabelText(/Résumé \(optional\)/)).toHaveValue(RESUME_ID);
+    expect(screen.getByLabelText(/Job description \(optional\)/)).toHaveValue('Own payments reliability.');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Start the interview' }));
+    await waitFor(() => expect(spoken).toEqual(['Walk me through a payments outage.']));
+    expect(calls.find((call) => call.url === '/api/interviews/s1/practice/start')?.body).toMatchObject({
+      role: 'Staff Engineer',
+      company: 'Acme',
+      type: 'technical',
+      resumeDocumentId: RESUME_ID,
+      jobDescription: 'Own payments reliability.',
+    });
+  });
+});
+
 describe('pickVoice', () => {
   const voice = (lang: string, localService = false) => ({ lang, localService, name: lang }) as SpeechSynthesisVoice;
 

@@ -721,6 +721,7 @@
     "setup": {
       "title": "Préparez votre entretien d’entraînement",
       "desc": "Un recruteur IA pose à voix haute des questions adaptées au poste, rebondit sur vos réponses, puis note chacune et vous dit quoi améliorer. Les questions qu’on vous a posées en vrai vont dans la <bank>banque de questions</bank>.",
+      "fromGoal": "Rempli à partir de votre objectif « {name} ». Modifiez ce que vous voulez avant de commencer.",
       "role": "Poste",
       "rolePlaceholder": "ex. Product Manager senior",
       "company": "Entreprise (facultatif)",
