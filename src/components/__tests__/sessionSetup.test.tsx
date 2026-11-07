@@ -14,15 +14,17 @@ const resumes = [
   { id: 'r2', filename: null, created_at: '2026-09-01T00:00:00Z' },
 ];
 let mockRows: typeof resumes = resumes;
+// Goals, their materials and playbooks: none unless a test adds them.
+let mockTables: Record<string, unknown[]> = {};
 
 jest.mock('@/lib/supabase/browser', () => ({
   createClient: () => ({
-    // Résumés for the picker; no goals or playbooks.
+    // Résumés for the picker, plus whatever a test puts in mockTables.
     from: (table: string) => {
       const builder: Record<string, unknown> = {};
       for (const method of ['select', 'not', 'eq', 'order', 'limit']) builder[method] = () => builder;
       builder.then = (resolve: (value: unknown) => unknown) =>
-        Promise.resolve({ data: table === 'resume_documents' ? mockRows : [], error: null }).then(resolve);
+        Promise.resolve({ data: table === 'resume_documents' ? mockRows : (mockTables[table] ?? []), error: null }).then(resolve);
       return builder;
     },
   }),
@@ -56,6 +58,7 @@ function Harness({ initial = EMPTY_SETUP, onChange = jest.fn(), onStart = jest.f
 
 beforeEach(() => {
   mockRows = resumes;
+  mockTables = {};
   window.localStorage.clear();
 });
 
@@ -95,6 +98,58 @@ describe('SessionSetup', () => {
       setupStartBody({ ...EMPTY_SETUP, goalId: 'g1', answerModel: 'gpt-4o', language: 'fr', codingLanguage: 'go', singleMic: true, playbookId: 'p1' }, TITLES),
     ).toMatchObject({ goalId: 'g1', answerModel: 'gpt-4o', language: 'fr', codingLanguage: 'go', singleMic: true, playbookId: 'p1' });
     expect(setupStartBody(EMPTY_SETUP, TITLES)).not.toHaveProperty('goalId');
+  });
+
+  it('sums up a picked goal and keeps its fields behind Edit for this session', async () => {
+    mockTables = {
+      goals: [
+        {
+          id: 'g1',
+          name: 'Acme staff role',
+          company: 'Acme',
+          role: 'Staff Engineer',
+          round: 'technical',
+          resume_document_id: 'r1',
+          job_description: 'Own the payments API.',
+          playbook_id: 'p1',
+        },
+      ],
+      goal_materials: [{ goal_id: 'g1' }, { goal_id: 'g1' }, { goal_id: 'other' }],
+      playbooks: [{ id: 'p1', name: 'STAR stories' }],
+    };
+    const onChange = jest.fn();
+    render(<Harness onChange={onChange} />);
+    expect(await screen.findByRole('option', { name: 'Acme staff role' })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Goal'), { target: { value: 'g1' } });
+    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ goalId: 'g1', company: 'Acme', mode: 'coding', resumeDocumentId: 'r1' }));
+
+    const summary = screen.getByLabelText('Goal details');
+    expect(summary).toHaveTextContent('CompanyAcme');
+    expect(summary).toHaveTextContent('RoleStaff Engineer');
+    expect(summary).toHaveTextContent('RoundTechnical');
+    expect(summary).toHaveTextContent('Résumécv-2026.pdf');
+    expect(summary).toHaveTextContent('Materials2');
+    expect(summary).toHaveTextContent('PlaybookSTAR stories');
+    expect(screen.getByRole('option', { name: 'STAR stories (from the goal)' })).toBeInTheDocument();
+
+    // The by-hand fields stay out of the way until asked for.
+    expect(screen.queryByLabelText('Company')).not.toBeInTheDocument();
+    const edit = screen.getByRole('button', { name: 'Edit for this session' });
+    expect(edit).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(edit);
+    expect(edit).toHaveAttribute('aria-expanded', 'true');
+    fireEvent.change(screen.getByLabelText('Company'), { target: { value: 'Acme Payments' } });
+    expect(screen.getByLabelText('Goal details')).toHaveTextContent('CompanyAcme Payments');
+  });
+
+  it('keeps phone or in-person mode and the meeting link next to Start session', async () => {
+    const failed = 'The session did not start.';
+    render(<SessionSetup value={EMPTY_SETUP} onChange={jest.fn()} onStart={jest.fn()} starting={false} askForLink error={failed} />);
+    expect(await screen.findByRole('option', { name: /cv-2026\.pdf/ })).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: 'Phone or in person' })).toHaveAccessibleDescription(/One microphone/);
+    expect(screen.getByLabelText('Meeting link')).toHaveAccessibleDescription(/Optional/);
+    expect(screen.getByRole('status')).toHaveTextContent(failed);
+    expect(screen.getAllByRole('button').filter((button) => button.className.includes('buttonPrimary'))).toHaveLength(1);
   });
 
   it('points to the résumé page when nothing is parsed yet', async () => {

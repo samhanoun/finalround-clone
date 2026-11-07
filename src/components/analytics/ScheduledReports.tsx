@@ -25,7 +25,7 @@ export function ScheduledReports() {
   const format = useFormatter();
   const when = (iso: string | null) =>
     iso
-      ? format.dateTime(new Date(iso), { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+      ? format.dateTime(new Date(iso), { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })
       : t('notYet');
   const [reports, setReports] = useState<Report[] | null>(null);
   const [email, setEmail] = useState<string | null>(null);
@@ -34,7 +34,7 @@ export function ScheduledReports() {
   const [frequency, setFrequency] = useState<ReportFrequency>('weekly');
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
-  const ids = { type: useId(), frequency: useId() };
+  const ids = { type: useId(), typeHelp: useId(), frequency: useId() };
 
   useEffect(() => {
     let cancelled = false;
@@ -111,79 +111,102 @@ export function ScheduledReports() {
   }
 
   return (
-    <section className="card" aria-labelledby="reports-title">
-      <div className="cardInner stack">
-        <div>
-          <h2 className="cardTitle" id="reports-title">
-            {t('title')}
-          </h2>
-          <p className="help">
-            {emailConfigured ? (email ? t('sentAt', { email }) : t('sentAtAccount')) : t('emailUnconfigured')}
-          </p>
-        </div>
+    <section className={styles.section} aria-labelledby="reports-title">
+      <div className={styles.head}>
+        <h2 className={styles.title} id="reports-title">
+          {t('title')}
+        </h2>
+        <p className={styles.desc}>
+          {emailConfigured ? (email ? t('sentAt', { email }) : t('sentAtAccount')) : t('emailUnconfigured')}
+        </p>
+      </div>
 
-        <form className={styles.form} onSubmit={create}>
+      <form className={`card ${styles.form}`} onSubmit={create}>
+        <div className={styles.field}>
           <label className="label" htmlFor={ids.type}>
             {t('report')}
-            <select id={ids.type} className="select" value={type} onChange={(e) => setType(e.target.value as ReportType)}>
-              {REPORT_TYPES.map((value) => (
-                <option key={value} value={value}>
-                  {t(`types.${value}.label`)}
-                </option>
-              ))}
-            </select>
-            <span className="help">{t(`types.${type}.help`)}</span>
           </label>
+          <select
+            id={ids.type}
+            className="select"
+            value={type}
+            onChange={(e) => setType(e.target.value as ReportType)}
+            aria-describedby={ids.typeHelp}
+          >
+            {REPORT_TYPES.map((value) => (
+              <option key={value} value={value}>
+                {t(`types.${value}.label`)}
+              </option>
+            ))}
+          </select>
+          <span className="help" id={ids.typeHelp}>
+            {t(`types.${type}.help`)}
+          </span>
+        </div>
+        <div className={styles.field}>
           <label className="label" htmlFor={ids.frequency}>
             {t('howOften')}
-            <select
-              id={ids.frequency}
-              className="select"
-              value={frequency}
-              onChange={(e) => setFrequency(e.target.value as ReportFrequency)}
-            >
-              {REPORT_FREQUENCIES.map((value) => (
-                <option key={value} value={value}>
-                  {t(`frequencies.${value}`)}
-                </option>
-              ))}
-            </select>
           </label>
-          <button type="submit" className="button buttonPrimary" disabled={busy !== null || reports === null}>
-            {busy === 'create' ? t('scheduling') : t('schedule')}
-          </button>
-        </form>
+          <select
+            id={ids.frequency}
+            className="select"
+            value={frequency}
+            onChange={(e) => setFrequency(e.target.value as ReportFrequency)}
+          >
+            {REPORT_FREQUENCIES.map((value) => (
+              <option key={value} value={value}>
+                {t(`frequencies.${value}`)}
+              </option>
+            ))}
+          </select>
+        </div>
+        <button type="submit" className={`button buttonPrimary ${styles.submit}`} disabled={busy !== null || reports === null}>
+          {busy === 'create' ? t('scheduling') : t('schedule')}
+        </button>
+      </form>
 
-        {message ? (
-          <p className="help" role={message.kind === 'error' ? 'alert' : 'status'} style={{ margin: 0 }}>
-            {message.text}
-          </p>
-        ) : null}
+      {message ? (
+        <p className={styles.message} data-kind={message.kind} role={message.kind === 'error' ? 'alert' : 'status'}>
+          {message.text}
+        </p>
+      ) : null}
 
+      <div className={styles.listBlock}>
+        <h3 className={styles.listTitle}>{t('scheduledTitle')}</h3>
         {reports === null ? (
-          <p className="help">{t('loading')}</p>
+          <p className={styles.note}>{t('loading')}</p>
         ) : reports.length === 0 ? (
-          <p className="help">{t('empty')}</p>
+          <div className="emptyState">
+            <p className={styles.emptyText}>{t('empty')}</p>
+          </div>
         ) : (
-          <ul className={styles.list}>
+          <ul className={`card ${styles.list}`}>
             {reports.map((report) => (
               <li key={report.id} className={styles.item}>
-                <div>
-                  <strong>{t(`types.${report.report_type}.label`)}</strong>
-                  <span className="help" style={{ display: 'block' }}>
-                    {t(`frequencies.${report.frequency}`)} ·{' '}
-                    {report.enabled ? t('next', { when: when(report.next_send_at) }) : t('pausedState')} ·{' '}
-                    {t('lastSent', { when: when(report.last_sent_at) })}
+                <div className={styles.itemText}>
+                  <span className={styles.itemTitle}>{t(`types.${report.report_type}.label`)}</span>
+                  <span className={styles.itemMeta}>
+                    <span className={styles.state} data-enabled={report.enabled}>
+                      <span className="dot" aria-hidden="true" />
+                      {t(`frequencies.${report.frequency}`)}
+                    </span>
+                    <span>{report.enabled ? t('next', { when: when(report.next_send_at) }) : t('pausedState')}</span>
+                    <span>{t('lastSent', { when: when(report.last_sent_at) })}</span>
                   </span>
                 </div>
                 <div className={styles.actions}>
-                  <button type="button" className="button" disabled={busy !== null || !emailConfigured} onClick={() => void sendNow(report)}>
+                  <button
+                    type="button"
+                    className="button buttonSmall"
+                    disabled={busy !== null || !emailConfigured}
+                    onClick={() => void sendNow(report)}
+                  >
                     {t('sendNow')}
                   </button>
-                  <button type="button" className="button" disabled={busy !== null} onClick={() => void toggle(report)}>
+                  <button type="button" className="button buttonGhost buttonSmall" disabled={busy !== null} onClick={() => void toggle(report)}>
                     {report.enabled ? t('pause') : t('resume')}
                   </button>
-                  <button type="button" className="button buttonGhost" disabled={busy !== null} onClick={() => void remove(report)}>
+                  <button type="button" className="button buttonGhost buttonSmall" disabled={busy !== null} onClick={() => void remove(report)}>
                     {t('delete')}
                   </button>
                 </div>

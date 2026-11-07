@@ -3,6 +3,8 @@
 import { useId, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { createClient } from '@/lib/supabase/browser';
+import { ChevronDownIcon } from '@/components/icons';
+import { Segmented } from '@/components/practice/Controls';
 import { MATERIAL_KINDS, type Material, type MaterialKind } from '@/lib/goalTypes';
 import type { WorkspaceData } from './GoalsWorkspace';
 import styles from './Goals.module.css';
@@ -20,7 +22,7 @@ export function MaterialsTab({ data, reload }: { data: WorkspaceData; reload: ()
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
   const [open, setOpen] = useState<string | null>(null);
-  const ids = { file: useId(), title: useId(), kind: useId(), content: useId() };
+  const ids = { file: useId(), fileHelp: useId(), title: useId(), kind: useId(), content: useId(), heading: useId(), list: useId() };
 
   async function add(event: React.FormEvent) {
     event.preventDefault();
@@ -71,93 +73,107 @@ export function MaterialsTab({ data, reload }: { data: WorkspaceData; reload: ()
 
   return (
     <div className={styles.split}>
-      <form className="card" onSubmit={add}>
-        <div className="cardInner stack">
-          <div>
-            <h2 className="cardTitle">{t('addMaterial')}</h2>
-            <p className="help">{t('materialsHelp')}</p>
-          </div>
-          <div className="row" role="radiogroup" aria-label={t('addMaterial')} style={{ gap: 16 }}>
-            <label className="checkbox-label">
-              <input type="radio" checked={mode === 'upload'} onChange={() => setMode('upload')} />
-              <span>{t('uploadFile')}</span>
-            </label>
-            <label className="checkbox-label">
-              <input type="radio" checked={mode === 'paste'} onChange={() => setMode('paste')} />
-              <span>{t('pasteText')}</span>
-            </label>
-          </div>
-          <label className="label" htmlFor={ids.title}>
-            {t('materialTitle')}
-            <input id={ids.title} className="input" value={title} onChange={(e) => setTitle(e.target.value)} maxLength={200} />
-          </label>
-          <label className="label" htmlFor={ids.kind}>
-            {t('materialKind')}
-            <select id={ids.kind} className="select" value={kind} onChange={(e) => setKind(e.target.value as MaterialKind)}>
-              {MATERIAL_KINDS.map((value) => (
-                <option key={value} value={value}>
-                  {t(`kinds.${value}`)}
-                </option>
-              ))}
-            </select>
-          </label>
-          {mode === 'upload' ? (
-            <label className="label" htmlFor={ids.file}>
-              {t('file')}
-              <input
-                id={ids.file}
-                className="input"
-                type="file"
-                accept=".pdf,.docx,.txt,.md,.markdown"
-                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-              />
-              <span className="help">{t('fileHelp')}</span>
-            </label>
-          ) : (
-            <label className="label" htmlFor={ids.content}>
-              {t('content')}
-              <textarea id={ids.content} className="textarea" rows={8} value={content} onChange={(e) => setContent(e.target.value)} maxLength={60_000} />
-            </label>
-          )}
-          {message ? (
-            <p className="help" role={message.kind === 'error' ? 'alert' : 'status'} style={{ margin: 0 }}>
-              {message.text}
-            </p>
-          ) : null}
-          <button className="button buttonPrimary" type="submit" disabled={busy || (mode === 'upload' ? !file : !content.trim())}>
-            {busy ? t('saving') : t('addMaterial')}
-          </button>
-        </div>
-      </form>
-
-      <section className="card">
-        <div className="cardInner stack">
-          <h2 className="cardTitle">{t('yourMaterials')}</h2>
-          {data.materials.length === 0 ? (
-            <p className="help">{t('noMaterialsYet')}</p>
-          ) : (
-            <ul className={styles.list}>
-              {data.materials.map((material) => (
-                <li key={material.id} className={styles.listItem}>
-                  <button type="button" className={styles.listHead} onClick={() => setOpen(open === material.id ? null : material.id)} aria-expanded={open === material.id}>
-                    <span>
-                      <strong>{material.title}</strong>
-                      <span className={styles.meta}>
-                        {t(`kinds.${material.kind}`)} · {t('words', { count: material.content.split(/\s+/).length })} ·{' '}
-                        {t('usedBy', { count: usedBy(material.id) })}
-                      </span>
+      <section className={styles.listPane} aria-labelledby={ids.list}>
+        <h2 className={styles.paneTitle} id={ids.list}>
+          {t('yourMaterials')}
+          <span className={styles.paneCount}>{data.materials.length}</span>
+        </h2>
+        {data.materials.length === 0 ? (
+          <p className={`emptyState ${styles.empty}`}>{t('noMaterialsYet')}</p>
+        ) : (
+          <ul className={styles.rows}>
+            {data.materials.map((material) => {
+              const expanded = open === material.id;
+              return (
+                <li key={material.id} className={styles.row}>
+                  <button
+                    type="button"
+                    className={styles.rowHead}
+                    onClick={() => setOpen(expanded ? null : material.id)}
+                    aria-expanded={expanded}
+                  >
+                    <span className={styles.rowTitle}>{material.title}</span>
+                    <span className={styles.rowMeta}>
+                      <span>{t(`kinds.${material.kind}`)}</span>
+                      <span>{t('words', { count: material.content.split(/\s+/).filter(Boolean).length })}</span>
+                      <span>{t('usedBy', { count: usedBy(material.id) })}</span>
                     </span>
+                    <ChevronDownIcon size={16} className={styles.rowChevron} />
                   </button>
-                  {open === material.id ? <p className={styles.preview}>{material.content.slice(0, 1500)}</p> : null}
-                  <button type="button" className="button buttonGhost" onClick={() => void remove(material)}>
-                    {t('delete')}
-                  </button>
+                  <div className={styles.rowActions}>
+                    <button type="button" className="button buttonGhost buttonSmall" onClick={() => void remove(material)}>
+                      {t('delete')}
+                    </button>
+                  </div>
+                  {expanded ? <p className={styles.preview}>{material.content.slice(0, 1500)}</p> : null}
                 </li>
-              ))}
-            </ul>
-          )}
-        </div>
+              );
+            })}
+          </ul>
+        )}
       </section>
+
+      <form className={styles.sidePanel} onSubmit={add} aria-labelledby={ids.heading}>
+        <div className={styles.panelHead}>
+          <h2 className={styles.panelTitle} id={ids.heading}>
+            {t('addMaterial')}
+          </h2>
+          <p className={styles.help}>{t('materialsHelp')}</p>
+        </div>
+        <Segmented
+          label={t('addMaterial')}
+          hideLabel
+          options={[
+            { value: 'upload' as const, label: t('uploadFile') },
+            { value: 'paste' as const, label: t('pasteText') },
+          ]}
+          value={mode}
+          onChange={setMode}
+        />
+        <label className="label" htmlFor={ids.title}>
+          {t('materialTitle')}
+          <input id={ids.title} className="input" value={title} onChange={(e) => setTitle(e.target.value)} maxLength={200} />
+        </label>
+        <label className="label" htmlFor={ids.kind}>
+          {t('materialKind')}
+          <select id={ids.kind} className="select" value={kind} onChange={(e) => setKind(e.target.value as MaterialKind)}>
+            {MATERIAL_KINDS.map((value) => (
+              <option key={value} value={value}>
+                {t(`kinds.${value}`)}
+              </option>
+            ))}
+          </select>
+        </label>
+        {mode === 'upload' ? (
+          <label className="label" htmlFor={ids.file}>
+            {t('file')}
+            <input
+              id={ids.file}
+              className={styles.file}
+              type="file"
+              accept=".pdf,.docx,.txt,.md,.markdown"
+              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+              aria-describedby={ids.fileHelp}
+            />
+            <span id={ids.fileHelp} className="help">
+              {t('fileHelp')}
+            </span>
+          </label>
+        ) : (
+          <label className="label" htmlFor={ids.content}>
+            {t('content')}
+            <textarea id={ids.content} className="textarea" rows={8} value={content} onChange={(e) => setContent(e.target.value)} maxLength={60_000} />
+          </label>
+        )}
+        {message ? (
+          <p className={message.kind === 'error' ? styles.formError : styles.notice} role={message.kind === 'error' ? 'alert' : 'status'}>
+            {message.text}
+          </p>
+        ) : null}
+        <button className="button buttonPrimary" type="submit" disabled={busy || (mode === 'upload' ? !file : !content.trim())}>
+          {busy ? t('saving') : t('addMaterial')}
+        </button>
+      </form>
     </div>
   );
 }

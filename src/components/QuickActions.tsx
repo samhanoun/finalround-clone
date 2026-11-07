@@ -1,16 +1,16 @@
 import { Link } from '@/i18n/routing';
 import type { ComponentType } from 'react';
 import { useTranslations } from 'next-intl';
-import { ChartIcon, JobsIcon, PracticeIcon, ResumeIcon } from './icons';
+import { ChartIcon, ChevronRightIcon, JobsIcon, PracticeIcon, ResumeIcon, type IconProps } from './icons';
 import styles from './QuickActions.module.css';
 
 interface QuickAction {
   id: 'practice' | 'resume' | 'jobs' | 'analytics';
   href: string;
-  Icon: ComponentType<{ size?: number }>;
+  Icon: ComponentType<IconProps>;
 }
 
-/** The live copilot has its own panel above; these are the other places to go. */
+/** Next up covers the live copilot; these are the other places to go, as a quiet list. */
 const quickActions: QuickAction[] = [
   { id: 'practice', href: '/interview', Icon: PracticeIcon },
   { id: 'resume', href: '/resume', Icon: ResumeIcon },
@@ -21,18 +21,24 @@ const quickActions: QuickAction[] = [
 export function QuickActions() {
   const t = useTranslations('Home.quick');
   return (
-    <nav id="quick-actions" className={styles.quickActionsGrid} aria-label={t('label')}>
-      {quickActions.map(({ id, href, Icon }) => (
-        <Link key={id} href={href} className={styles.quickActionCard}>
-          <span className={styles.quickActionIcon}>
-            <Icon size={20} />
-          </span>
-          <span className={styles.quickActionContent}>
-            <span className={styles.quickActionTitle}>{t(`${id}.title`)}</span>
-            <span className={styles.quickActionDesc}>{t(`${id}.desc`)}</span>
-          </span>
-        </Link>
-      ))}
+    <nav id="quick-actions" className={styles.nav} aria-labelledby="quick-actions-heading">
+      <h2 className={styles.heading} id="quick-actions-heading">
+        {t('label')}
+      </h2>
+      <ul className={styles.list}>
+        {quickActions.map(({ id, href, Icon }) => (
+          <li key={id}>
+            <Link href={href} className={styles.rowLink}>
+              <Icon size={16} className={styles.icon} />
+              <span className={styles.text}>
+                <span className={styles.title}>{t(`${id}.title`)}</span>
+                <span className={styles.desc}>{t(`${id}.desc`)}</span>
+              </span>
+              <ChevronRightIcon size={16} className={styles.chevron} />
+            </Link>
+          </li>
+        ))}
+      </ul>
     </nav>
   );
 }

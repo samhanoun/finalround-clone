@@ -1,32 +1,36 @@
-.dash {
+/* Home: Next up, the figures, then a wide column (score trend, short lists,
+   links) beside a narrow one (activity, usage); achievements and invites last.
+   Below 1200px everything stacks in that reading order. */
+.home {
   display: grid;
-  gap: 20px;
+  gap: 32px;
 }
 
 .columns {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 20px;
+  gap: 24px;
   align-items: start;
 }
 
-@media (min-width: 1100px) {
+@media (min-width: 1200px) {
   .columns {
-    grid-template-columns: minmax(0, 1.7fr) minmax(320px, 1fr);
+    grid-template-columns: minmax(0, 2fr) minmax(300px, 1fr);
   }
 }
 
 .main,
 .side {
   display: grid;
-  gap: 20px;
+  gap: 24px;
+  align-content: start;
   min-width: 0;
 }
 
 .social {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 20px;
+  gap: 24px;
   align-items: start;
 }
 
@@ -36,12 +40,68 @@
   }
 }
 
-.cardHeader {
+@media (max-width: 767px) {
+  .home {
+    gap: 24px;
+  }
+
+  .columns,
+  .main,
+  .side,
+  .social {
+    gap: 16px;
+  }
+}
+
+/* Practice interviews and résumés: two short lists in one card */
+.lists {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@media (min-width: 768px) {
+  .lists {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .listBlock + .listBlock {
+    border-left: 1px solid var(--hairline);
+  }
+}
+
+@media (max-width: 767px) {
+  .listBlock + .listBlock {
+    border-top: 1px solid var(--hairline);
+  }
+}
+
+.listBlock {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  min-width: 0;
+  padding: 20px;
+}
+
+@media (min-width: 900px) {
+  .listBlock {
+    padding: 20px 24px 24px;
+  }
+}
+
+@media (max-width: 767px) {
+  .listBlock {
+    padding: 16px;
+  }
+}
+
+.listHead {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: 8px;
+  min-height: 32px;
+  margin-right: -8px;
 }
 
 .list {
@@ -51,41 +111,184 @@
   display: grid;
 }
 
-.listRow {
+.row {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 8px 16px;
-  padding: 12px 0;
-  border-top: 1px solid var(--line);
+  gap: 12px;
+  min-height: 40px;
+  padding: 8px 0;
+  border-top: 1px solid var(--hairline);
 }
 
-.listRow:first-child {
-  border-top: 0;
-  padding-top: 4px;
+.rowLink,
+.rowName {
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .rowLink {
-  color: var(--paper);
-  font-weight: 500;
-  text-decoration: none;
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  text-underline-offset: 3px;
+  transition: text-decoration-color var(--dur-fast) var(--ease);
 }
 
 .rowLink:hover {
-  color: var(--ember-text);
+  text-decoration-color: var(--hairline-hover);
 }
 
 .rowMeta {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
-  color: var(--mist);
-  font-size: 14px;
+  gap: 12px;
+  flex-shrink: 0;
+  font-size: 13px;
+  color: var(--text-3);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-2);
+}
+
+.status[data-status='completed'] :global(.dot) {
+  background: var(--positive);
 }
 
 .empty {
-  color: var(--mist);
-  font-size: 14.5px;
+  margin: 0;
+  padding: 16px;
+  border-radius: var(--radius-row);
+  background: var(--sunken);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+
+@media (max-width: 420px) {
+  .row {
+    flex-wrap: wrap;
+    gap: 2px 12px;
+  }
+
+  .rowMeta {
+    width: 100%;
+  }
+}
+
+/* Practice score trend */
+.trendInner {
+  display: grid;
+  gap: 20px;
+}
+
+.trendHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px 24px;
+}
+
+.trendFigure {
+  display: grid;
+  justify-items: end;
+  gap: 2px;
+  text-align: right;
+}
+
+.trendValue {
+  font-size: 32px;
+  font-weight: 500;
+  line-height: 36px;
+  letter-spacing: -0.01em;
+  color: var(--text-1);
+  font-variant-numeric: tabular-nums;
+}
+
+.trendUnit {
+  margin-left: 2px;
+  font-size: 14px;
+  font-weight: 400;
+  letter-spacing: 0;
+  color: var(--text-3);
+}
+
+.trendChange {
+  font-size: 13px;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.chart {
+  height: 260px;
+  margin: 0 -4px 0 -8px;
+}
+
+.trendEmpty {
+  display: grid;
+  justify-items: start;
+  align-content: center;
+  gap: 12px;
+  min-height: 160px;
+  padding: 24px;
+  border-radius: var(--radius-row);
+  background: var(--sunken);
+}
+
+.trendEmpty p {
+  margin: 0;
+  max-width: 32rem;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+
+.tip {
+  display: grid;
+  gap: 2px;
+  padding: 8px 10px;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--hairline-strong);
+  background: var(--raised);
+  box-shadow: var(--float);
+}
+
+.tipValue {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text-1);
+  font-variant-numeric: tabular-nums;
+}
+
+.tipLabel {
+  font-family: var(--font-code);
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+@media (max-width: 767px) {
+  .chart {
+    height: 200px;
+  }
+
+  .trendFigure {
+    justify-items: start;
+    text-align: left;
+  }
+
+  .trendValue {
+    font-size: 28px;
+    line-height: 32px;
+  }
 }

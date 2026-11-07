@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import React from 'react';
 import { AutoEndNotice } from '@/components/copilot/AutoEndNotice';
+import { MeetingEndedNotice, MeetingStartedNotice } from '@/components/copilot/MeetingNotices';
 import { LatencyDrawer } from '@/components/copilot/LatencyDrawer';
 import type { TurnTiming } from '@/lib/copilot/latency';
 
@@ -31,6 +32,58 @@ describe('AutoEndNotice', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('ends in 2:00');
     fireEvent.click(screen.getByRole('button', { name: 'Keep session open' }));
     expect(onKeepOpen).toHaveBeenCalled();
+  });
+
+  it('reads the alert once: the ticking time is a timer, not a live region', () => {
+    render(<AutoEndNotice startedAt={Date.now()} onExpire={jest.fn()} onKeepOpen={jest.fn()} />);
+    const timer = screen.getByRole('timer');
+    expect(timer).toHaveTextContent('2:00');
+    expect(timer).toHaveAttribute('aria-live', 'off');
+  });
+});
+
+describe('MeetingEndedNotice (desktop app)', () => {
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => jest.useRealTimers());
+
+  it('counts down 30 seconds after the meeting app lets go of the microphone, then ends the session once', () => {
+    const onExpire = jest.fn();
+    render(<MeetingEndedNotice app="Zoom" startedAt={Date.now()} onExpire={onExpire} onKeepGoing={jest.fn()} onEndNow={jest.fn()} />);
+    expect(screen.getByRole('alert')).toHaveTextContent('Zoom stopped using the microphone. The session ends in 30 s');
+
+    act(() => {
+      jest.advanceTimersByTime(10_000);
+    });
+    expect(screen.getByRole('timer')).toHaveTextContent('20 s');
+    expect(onExpire).not.toHaveBeenCalled();
+
+    act(() => {
+      jest.advanceTimersByTime(25_000);
+    });
+    expect(onExpire).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps going or ends now on request', () => {
+    const onKeepGoing = jest.fn();
+    const onEndNow = jest.fn();
+    render(<MeetingEndedNotice app="Teams" startedAt={Date.now()} onExpire={jest.fn()} onKeepGoing={onKeepGoing} onEndNow={onEndNow} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Keep going' }));
+    fireEvent.click(screen.getByRole('button', { name: 'End now' }));
+    expect(onKeepGoing).toHaveBeenCalledTimes(1);
+    expect(onEndNow).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('MeetingStartedNotice (desktop app)', () => {
+  it('offers to start a session for the meeting, or to be dismissed', () => {
+    const onStart = jest.fn();
+    const onDismiss = jest.fn();
+    render(<MeetingStartedNotice app="Zoom" onStart={onStart} onDismiss={onDismiss} />);
+    expect(screen.getByRole('status')).toHaveTextContent('Zoom is in a meeting');
+    fireEvent.click(screen.getByRole('button', { name: 'Start now' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
+    expect(onStart).toHaveBeenCalledTimes(1);
+    expect(onDismiss).toHaveBeenCalledTimes(1);
   });
 });
 

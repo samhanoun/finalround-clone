@@ -22,9 +22,10 @@ test.describe('Resume Upload → ATS Score Flow', () => {
   });
 
   test('should have action buttons', async ({ page }) => {
-    // Look for action buttons - may be disabled if not logged in
-    const buttons = page.locator('button');
-    await expect(buttons.first()).toBeVisible();
+    // Signed in, the résumé tools; signed out, the guard's Sign in. Either way an action in the page itself
+    // (not the phone tab bar, which is hidden on desktop).
+    const action = page.getByRole('main').locator('button:visible, a.button:visible').first();
+    await expect(action).toBeVisible();
   });
 
   test('should display main content', async ({ page }) => {

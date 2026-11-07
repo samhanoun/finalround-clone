@@ -1,13 +1,17 @@
 'use client';
 
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
+import { settingsStyles } from '@/app/[locale]/settings/SettingsUI';
 
 const RETURNS = ['success', 'cancelled'];
 
-/** Upgrade (Stripe Checkout) or manage billing (Stripe's portal); both leave the app and come back here. */
-export function BillingActions({ isPro }: { isPro: boolean }) {
+/**
+ * Upgrade (Stripe Checkout) or manage billing (Stripe's portal); both leave the app and come back here.
+ * `compact`: inside a Settings row, whose help already says what the button does.
+ */
+export function BillingActions({ isPro, compact = false }: { isPro: boolean; compact?: boolean }) {
   const t = useTranslations('Billing');
   // The page's [locale] segment; Stripe sends the user back to the same language.
   const locale = useParams<{ locale?: string }>()?.locale ?? 'en';
@@ -15,6 +19,7 @@ export function BillingActions({ isPro }: { isPro: boolean }) {
   const [currency, setCurrency] = useState<'usd' | 'eur'>('usd');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const currencyId = useId();
 
   async function go(path: '/api/billing/checkout' | '/api/billing/portal', body: Record<string, string>) {
     setBusy(true);
@@ -41,50 +46,54 @@ export function BillingActions({ isPro }: { isPro: boolean }) {
   return (
     <div className="stack" style={{ gap: 8 }}>
       {RETURNS.includes(returned) ? (
-        <p className="small" role="status">
+        <p className="small" role="status" style={{ margin: 0 }}>
           {t(`returned.${returned}`)}
         </p>
       ) : null}
 
       {isPro ? (
-        <div className="row" style={{ gap: 8 }}>
+        <div className="row">
           <button className="button" type="button" disabled={busy} onClick={() => void go('/api/billing/portal', {})}>
             {busy ? t('opening') : t('manage')}
           </button>
-          <span className="small help">{t('manageHelp')}</span>
+          {compact ? null : <span className="small help">{t('manageHelp')}</span>}
         </div>
       ) : (
-        <div className="row" style={{ gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-          <label className="small" htmlFor="billing-currency">
-            {t('payIn')}
-          </label>
-          <select
-            id="billing-currency"
-            className="input"
-            value={currency}
-            onChange={(event) => setCurrency(event.target.value as 'usd' | 'eur')}
-            disabled={busy}
-            style={{ width: 'auto' }}
-          >
-            <option value="usd">{t('currencies.usd')}</option>
-            <option value="eur">{t('currencies.eur')}</option>
-          </select>
-          <button
-            className="button buttonPrimary"
-            type="button"
-            disabled={busy}
-            onClick={() => void go('/api/billing/checkout', { currency })}
-          >
-            {busy ? t('openingCheckout') : t('upgrade')}
-          </button>
-          <span className="small help">{t('checkoutHelp')}</span>
-        </div>
+        <>
+          <div className="row" style={{ flexWrap: compact ? 'nowrap' : 'wrap' }}>
+            <label className={compact ? 'srOnly' : 'small'} htmlFor={currencyId}>
+              {t('payIn')}
+            </label>
+            <select
+              id={currencyId}
+              className="select"
+              value={currency}
+              onChange={(event) => setCurrency(event.target.value as 'usd' | 'eur')}
+              disabled={busy}
+              style={{ width: 'auto', minWidth: 0, flex: compact ? '1 1 auto' : '0 1 auto' }}
+            >
+              <option value="usd">{t('currencies.usd')}</option>
+              <option value="eur">{t('currencies.eur')}</option>
+            </select>
+            <button
+              className="button buttonPrimary"
+              type="button"
+              disabled={busy}
+              style={{ flexShrink: 0 }}
+              onClick={() => void go('/api/billing/checkout', { currency })}
+            >
+              {busy ? t('openingCheckout') : t('upgrade')}
+            </button>
+            {compact ? null : <span className="small help">{t('checkoutHelp')}</span>}
+          </div>
+          {compact ? <span className="help">{t('checkoutHelp')}</span> : null}
+        </>
       )}
 
       {error ? (
-        <div className="error" role="alert">
+        <p className={compact ? settingsStyles.inlineError : 'error'} role="alert" style={{ margin: 0 }}>
           {error}
-        </div>
+        </p>
       ) : null}
     </div>
   );

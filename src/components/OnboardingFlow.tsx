@@ -1,19 +1,20 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { useRouter } from '@/i18n/routing';
 import { useTranslations } from 'next-intl';
 import { createClient } from '@/lib/supabase/browser';
 import { ApexMark } from './ApexMark';
-import { ChartIcon, JobsIcon, LiveIcon, PracticeIcon, ResumeIcon } from './icons';
+import { ChartIcon, ChevronLeftIcon, JobsIcon, LiveIcon, PracticeIcon, ResumeIcon } from './icons';
+import styles from './OnboardingFlow.module.css';
 
-// Step types
 type OnboardingStep = 'welcome' | 'plan' | 'profile' | 'tutorial';
+
+const STEPS: OnboardingStep[] = ['welcome', 'plan', 'profile', 'tutorial'];
 
 interface Plan {
   id: 'free' | 'pro';
   features: number;
-  popular?: boolean;
 }
 
 interface ProfileData {
@@ -26,7 +27,7 @@ interface ProfileData {
 // The plans as billed (see the plans table and /api/billing/checkout).
 const PLANS: Plan[] = [
   { id: 'free', features: 5 },
-  { id: 'pro', features: 5, popular: true },
+  { id: 'pro', features: 5 },
 ];
 
 /** Suggested roles; the chosen names are saved as shown, in the app's language. */
@@ -45,9 +46,24 @@ const ROLE_OPTIONS = [
 
 const EXPERIENCE_LEVELS = ['0-1', '1-3', '3-5', '5-10', '10+'] as const;
 
+/** What Apex Round does, in the order the welcome text gives it: in the interview, then before it. */
+const FEATURES = [
+  { key: 'live', Icon: LiveIcon },
+  { key: 'practice', Icon: PracticeIcon },
+  { key: 'resume', Icon: ResumeIcon },
+  { key: 'jobs', Icon: JobsIcon },
+] as const;
+
+const TIPS = [
+  { key: 'practice', Icon: PracticeIcon },
+  { key: 'progress', Icon: ChartIcon },
+  { key: 'live', Icon: LiveIcon },
+  { key: 'resume', Icon: ResumeIcon },
+] as const;
+
 export default function OnboardingFlow() {
   const router = useRouter();
-  const supabase = createClient();
+  const [supabase] = useState(() => createClient());
   const [currentStep, setCurrentStep] = useState<OnboardingStep>('welcome');
   const [loading, setLoading] = useState(false);
   const [plan, setPlan] = useState<string>('');
@@ -151,27 +167,19 @@ export default function OnboardingFlow() {
   }
 
   function nextStep() {
-    const steps: OnboardingStep[] = ['welcome', 'plan', 'profile', 'tutorial'];
-    const currentIndex = steps.indexOf(currentStep);
-    const nextStep = steps[currentIndex + 1];
-    if (nextStep) {
-      setCurrentStep(nextStep);
-      saveState(nextStep);
+    const next = STEPS[STEPS.indexOf(currentStep) + 1];
+    if (next) {
+      setCurrentStep(next);
+      saveState(next);
     }
   }
 
   function prevStep() {
-    const steps: OnboardingStep[] = ['welcome', 'plan', 'profile', 'tutorial'];
-    const currentIndex = steps.indexOf(currentStep);
-    const prevStep = steps[currentIndex - 1];
-    if (prevStep) {
-      setCurrentStep(prevStep);
-      saveState(prevStep);
+    const previous = STEPS[STEPS.indexOf(currentStep) - 1];
+    if (previous) {
+      setCurrentStep(previous);
+      saveState(previous);
     }
-  }
-
-  function handlePlanSelect(planId: string) {
-    setPlan(planId);
   }
 
   function handleRoleToggle(role: string) {
@@ -183,14 +191,8 @@ export default function OnboardingFlow() {
     });
   }
 
-  // Render steps
   if (currentStep === 'welcome') {
-    return (
-      <WelcomeStep
-        onNext={nextStep}
-        loading={loading}
-      />
-    );
+    return <WelcomeStep onNext={nextStep} loading={loading} />;
   }
 
   if (currentStep === 'plan') {
@@ -198,7 +200,7 @@ export default function OnboardingFlow() {
       <PlanStep
         plans={PLANS}
         selectedPlan={plan}
-        onSelect={handlePlanSelect}
+        onSelect={setPlan}
         onNext={nextStep}
         onBack={prevStep}
         loading={loading}
@@ -220,69 +222,98 @@ export default function OnboardingFlow() {
   }
 
   if (currentStep === 'tutorial') {
-    return (
-      <TutorialStep
-        onComplete={completeOnboarding}
-        onBack={prevStep}
-        loading={loading}
-      />
-    );
+    return <TutorialStep onComplete={completeOnboarding} onBack={prevStep} loading={loading} />;
   }
 
   return null;
 }
 
-// Welcome Step Component
-function WelcomeStep({ onNext, loading }: { onNext: () => void; loading: boolean }) {
-  const t = useTranslations('Onboarding.welcome');
+/** One step: where you are, the title, the content, and Back beside the one primary action. */
+function StepFrame({
+  step,
+  title,
+  description,
+  onBack,
+  primary,
+  children,
+}: {
+  step: OnboardingStep;
+  title: string;
+  description: string;
+  onBack?: () => void;
+  primary: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  const t = useTranslations('Onboarding');
+  const titleId = useId();
+  const index = STEPS.indexOf(step);
   return (
-    <div className="onboarding-container">
-      <div className="onboarding-card">
-        <div className="onboarding-icon">
-          <ApexMark size={52} />
+    <div className={styles.page}>
+      <main id="main-content" className={styles.panel} tabIndex={-1} aria-labelledby={titleId}>
+        <div className={styles.top}>
+          <ApexMark size={28} />
+          <span className={styles.stepCount}>{t('stepOf', { current: index + 1, total: STEPS.length })}</span>
         </div>
-        <h1>{t('title')}</h1>
-        <p className="onboarding-description">{t('desc')}</p>
-
-        <div className="onboarding-features">
-          <div className="feature-item">
-            <span className="feature-icon"><PracticeIcon size={20} /></span>
-            <span>{t('practice')}</span>
-          </div>
-          <div className="feature-item">
-            <span className="feature-icon"><ResumeIcon size={20} /></span>
-            <span>{t('resume')}</span>
-          </div>
-          <div className="feature-item">
-            <span className="feature-icon"><JobsIcon size={20} /></span>
-            <span>{t('jobs')}</span>
-          </div>
-          <div className="feature-item">
-            <span className="feature-icon"><LiveIcon size={20} /></span>
-            <span>{t('live')}</span>
-          </div>
+        <div className={styles.progress} aria-hidden="true">
+          {STEPS.map((name, i) => (
+            <span key={name} className={styles.segment} data-done={i <= index ? '' : undefined} />
+          ))}
         </div>
-
-        <button
-          className="button buttonPrimary onboarding-button"
-          onClick={onNext}
-          disabled={loading}
-        >
-          {t('start')}
-        </button>
-      </div>
+        <div className={styles.heading}>
+          <h1 id={titleId} className={styles.title}>
+            {title}
+          </h1>
+          <p className={styles.description}>{description}</p>
+        </div>
+        <div className={styles.body}>{children}</div>
+        <div className={styles.actions}>
+          {onBack ? (
+            <button type="button" className={`button buttonGhost ${styles.back}`} onClick={onBack}>
+              <ChevronLeftIcon size={16} />
+              {t('back')}
+            </button>
+          ) : null}
+          {primary}
+        </div>
+      </main>
     </div>
   );
 }
 
-// Plan Step Component
+function WelcomeStep({ onNext, loading }: { onNext: () => void; loading: boolean }) {
+  const t = useTranslations('Onboarding.welcome');
+  return (
+    <StepFrame
+      step="welcome"
+      title={t('title')}
+      description={t('desc')}
+      primary={
+        <button type="button" className="button buttonPrimary buttonLarge" onClick={onNext} disabled={loading}>
+          {t('start')}
+        </button>
+      }
+    >
+      <ul className={styles.features}>
+        {FEATURES.map(({ key, Icon }) => (
+          <li key={key} className={styles.feature}>
+            <span className={styles.featureIcon}>
+              <Icon size={18} />
+            </span>
+            {t(key)}
+          </li>
+        ))}
+      </ul>
+    </StepFrame>
+  );
+}
+
 function PlanStep({
   plans,
   selectedPlan,
   onSelect,
   onNext,
   onBack,
-  loading
+  loading,
 }: {
   plans: Plan[];
   selectedPlan: string;
@@ -292,55 +323,68 @@ function PlanStep({
   loading: boolean;
 }) {
   const t = useTranslations('Onboarding');
+  const baseId = useId();
   return (
-    <div className="onboarding-container">
-      <div className="onboarding-card">
-        <button className="back-button" onClick={onBack}>{t('back')}</button>
-        <h1>{t('plan.title')}</h1>
-        <p className="onboarding-description">{t('plan.desc')}</p>
-
-        <div className="plans-grid">
-          {plans.map((plan) => (
-            <div
-              key={plan.id}
-              className={`plan-card ${selectedPlan === plan.id ? 'selected' : ''} ${plan.popular ? 'popular' : ''}`}
-              onClick={() => onSelect(plan.id)}
-            >
-              {plan.popular && <span className="popular-badge">{t('plan.popular')}</span>}
-              <h3>{t(`plan.${plan.id}.name`)}</h3>
-              <div className="plan-price">{t(`plan.${plan.id}.price`)}</div>
-              <ul className="plan-features">
-                {Array.from({ length: plan.features }, (_, idx) => (
-                  <li key={idx}>✓ {t(`plan.${plan.id}.feature${idx + 1}`)}</li>
-                ))}
-              </ul>
-              <div className={`plan-select ${selectedPlan === plan.id ? 'selected' : ''}`}>
-                {selectedPlan === plan.id ? `✓ ${t('plan.selected')}` : t('plan.select')}
-              </div>
-            </div>
-          ))}
-        </div>
-
+    <StepFrame
+      step="plan"
+      title={t('plan.title')}
+      description={t('plan.desc')}
+      onBack={onBack}
+      primary={
         <button
-          className="button buttonPrimary onboarding-button"
+          type="button"
+          className="button buttonPrimary buttonLarge"
           onClick={onNext}
           disabled={loading || !selectedPlan}
         >
           {t('continue')}
         </button>
-      </div>
-    </div>
+      }
+    >
+      <fieldset className={styles.plans}>
+        <legend className="srOnly">{t('plan.title')}</legend>
+        {plans.map((plan) => {
+          const selected = selectedPlan === plan.id;
+          const id = `${baseId}-${plan.id}`;
+          return (
+            <div key={plan.id} className={styles.plan} data-selected={selected ? '' : undefined}>
+              <input
+                id={id}
+                className={styles.radio}
+                type="radio"
+                name={`${baseId}-plan`}
+                value={plan.id}
+                checked={selected}
+                onChange={() => onSelect(plan.id)}
+                aria-describedby={`${id}-price ${id}-features`}
+              />
+              <label htmlFor={id} className={styles.planLabel}>
+                <span className={styles.planName}>{t(`plan.${plan.id}.name`)}</span>
+                <span className={styles.radioMark} aria-hidden="true" />
+              </label>
+              <p id={`${id}-price`} className={styles.planPrice}>
+                {t(`plan.${plan.id}.price`)}
+              </p>
+              <ul id={`${id}-features`} className={styles.planFeatures}>
+                {Array.from({ length: plan.features }, (_, idx) => (
+                  <li key={idx}>{t(`plan.${plan.id}.feature${idx + 1}`)}</li>
+                ))}
+              </ul>
+            </div>
+          );
+        })}
+      </fieldset>
+    </StepFrame>
   );
 }
 
-// Profile Step Component
 function ProfileStep({
   profileData,
   onUpdate,
   onRoleToggle,
   onNext,
   onBack,
-  loading
+  loading,
 }: {
   profileData: ProfileData;
   onUpdate: (data: ProfileData) => void;
@@ -350,54 +394,65 @@ function ProfileStep({
   loading: boolean;
 }) {
   const t = useTranslations('Onboarding');
-  const isValid = profileData.fullName.trim() !== '' &&
-                   profileData.targetRoles.length > 0 &&
-                   profileData.yearsExperience !== '';
+  const isValid =
+    profileData.fullName.trim() !== '' && profileData.targetRoles.length > 0 && profileData.yearsExperience !== '';
 
   return (
-    <div className="onboarding-container">
-      <div className="onboarding-card">
-        <button className="back-button" onClick={onBack}>{t('back')}</button>
-        <h1>{t('profile.title')}</h1>
-        <p className="onboarding-description">{t('profile.desc')}</p>
+    <StepFrame
+      step="profile"
+      title={t('profile.title')}
+      description={t('profile.desc')}
+      onBack={onBack}
+      primary={
+        <button
+          type="button"
+          className="button buttonPrimary buttonLarge"
+          onClick={onNext}
+          disabled={loading || !isValid}
+        >
+          {t('continue')}
+        </button>
+      }
+    >
+      <div className={styles.form}>
+        <label className="label">
+          {t('profile.name')}
+          <input
+            className="input"
+            type="text"
+            autoComplete="name"
+            value={profileData.fullName}
+            onChange={(e) => onUpdate({ ...profileData, fullName: e.target.value })}
+            placeholder={t('profile.namePlaceholder')}
+          />
+        </label>
 
-        <div className="profile-form">
-          <div className="form-group">
-            <label className="label">{t('profile.name')}</label>
-            <input
-              className="input"
-              type="text"
-              value={profileData.fullName}
-              onChange={(e) => onUpdate({ ...profileData, fullName: e.target.value })}
-              placeholder={t('profile.namePlaceholder')}
-            />
+        <fieldset className={styles.group}>
+          <legend className={styles.groupLabel}>{t('profile.roles')}</legend>
+          <div className={styles.roles}>
+            {ROLE_OPTIONS.map((key) => {
+              const role = t(`roles.${key}`);
+              const selected = profileData.targetRoles.includes(role);
+              return (
+                <button
+                  key={key}
+                  className={styles.role}
+                  onClick={() => onRoleToggle(role)}
+                  aria-pressed={selected}
+                  type="button"
+                >
+                  {role}
+                </button>
+              );
+            })}
           </div>
+        </fieldset>
 
-          <div className="form-group">
-            <label className="label">{t('profile.roles')}</label>
-            <div className="role-tags">
-              {ROLE_OPTIONS.map((key) => {
-                const role = t(`roles.${key}`);
-                const selected = profileData.targetRoles.includes(role);
-                return (
-                  <button
-                    key={key}
-                    className={`role-tag ${selected ? 'selected' : ''}`}
-                    onClick={() => onRoleToggle(role)}
-                    aria-pressed={selected}
-                    type="button"
-                  >
-                    {role}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          <div className="form-group">
-            <label className="label">{t('profile.experience')}</label>
+        <div className={styles.twoUp}>
+          <label className="label">
+            {t('profile.experience')}
             <select
-              className="input"
+              className="select"
               value={profileData.yearsExperience}
               onChange={(e) => onUpdate({ ...profileData, yearsExperience: e.target.value })}
             >
@@ -408,10 +463,10 @@ function ProfileStep({
                 </option>
               ))}
             </select>
-          </div>
+          </label>
 
-          <div className="form-group">
-            <label className="label">{t('profile.industry')}</label>
+          <label className="label">
+            {t('profile.industry')}
             <input
               className="input"
               type="text"
@@ -419,97 +474,46 @@ function ProfileStep({
               onChange={(e) => onUpdate({ ...profileData, industry: e.target.value })}
               placeholder={t('profile.industryPlaceholder')}
             />
-          </div>
+          </label>
         </div>
-
-        <button
-          className="button buttonPrimary onboarding-button"
-          onClick={onNext}
-          disabled={loading || !isValid}
-        >
-          {t('continue')}
-        </button>
       </div>
-    </div>
+    </StepFrame>
   );
 }
 
-// Tutorial Step Component
 function TutorialStep({
   onComplete,
   onBack,
-  loading
+  loading,
 }: {
   onComplete: () => void;
   onBack: () => void;
   loading: boolean;
 }) {
   const t = useTranslations('Onboarding');
-  const [tutorialStep, setTutorialStep] = useState(0);
-
-  const tutorialSteps = [
-    { key: 'practice', Icon: PracticeIcon },
-    { key: 'progress', Icon: ChartIcon },
-    { key: 'live', Icon: LiveIcon },
-    { key: 'resume', Icon: ResumeIcon },
-  ] as const;
-
   return (
-    <div className="onboarding-container">
-      <div className="onboarding-card">
-        <button className="back-button" onClick={onBack}>{t('back')}</button>
-        <h1>{t('tutorial.title')}</h1>
-        <p className="onboarding-description">{t('tutorial.desc')}</p>
-
-        <div className="tutorial-content">
-          <div className="tutorial-progress">
-            {tutorialSteps.map((_, idx) => (
-              <div
-                key={idx}
-                className={`progress-dot ${idx <= tutorialStep ? 'active' : ''}`}
-                onClick={() => setTutorialStep(idx)}
-              />
-            ))}
-          </div>
-
-          <div className="tutorial-step">
-            <div className="tutorial-icon">
-              {(() => {
-                const StepIcon = tutorialSteps[tutorialStep].Icon;
-                return <StepIcon size={36} />;
-              })()}
-            </div>
-            <h3>{t(`tutorial.${tutorialSteps[tutorialStep].key}.title`)}</h3>
-            <p>{t(`tutorial.${tutorialSteps[tutorialStep].key}.desc`)}</p>
-          </div>
-
-          <div className="tutorial-nav">
-            <button
-              className="button"
-              onClick={() => setTutorialStep(Math.max(0, tutorialStep - 1))}
-              disabled={tutorialStep === 0}
-            >
-              {t('previous')}
-            </button>
-            <span className="tutorial-count">{tutorialStep + 1} / {tutorialSteps.length}</span>
-            <button
-              className="button"
-              onClick={() => setTutorialStep(Math.min(tutorialSteps.length - 1, tutorialStep + 1))}
-              disabled={tutorialStep === tutorialSteps.length - 1}
-            >
-              {t('next')}
-            </button>
-          </div>
-        </div>
-
-        <button
-          className="button buttonPrimary onboarding-button"
-          onClick={onComplete}
-          disabled={loading}
-        >
+    <StepFrame
+      step="tutorial"
+      title={t('tutorial.title')}
+      description={t('tutorial.desc')}
+      onBack={onBack}
+      primary={
+        <button type="button" className="button buttonPrimary buttonLarge" onClick={onComplete} disabled={loading}>
           {loading ? t('finishing') : t('finish')}
         </button>
-      </div>
-    </div>
+      }
+    >
+      <ul className={styles.tips}>
+        {TIPS.map(({ key, Icon }) => (
+          <li key={key} className={styles.tip}>
+            <span className={styles.tipIcon} aria-hidden="true">
+              <Icon size={18} />
+            </span>
+            <h2 className={styles.tipTitle}>{t(`tutorial.${key}.title`)}</h2>
+            <p className={styles.tipBody}>{t(`tutorial.${key}.desc`)}</p>
+          </li>
+        ))}
+      </ul>
+    </StepFrame>
   );
 }

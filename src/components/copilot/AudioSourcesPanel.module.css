@@ -1,171 +1,289 @@
+/* The talk track: one thin live trace per voice, Ice for the interviewer and
+   Ember for you, then what each is saying right now. */
 .panel {
   display: grid;
-  gap: 16px;
+  gap: 20px;
+  min-width: 0;
   padding: 20px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--deck);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-card);
+  background: var(--surface);
 }
 
 .header {
   display: flex;
-  align-items: center;
+  flex-wrap: wrap;
+  align-items: baseline;
   justify-content: space-between;
-  gap: 12px;
+  gap: 4px 12px;
 }
 
 .title {
   margin: 0;
-  font-size: 16px;
-  font-weight: 600;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.35;
 }
 
-.badges {
+.state {
   display: flex;
   flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 6px;
+  gap: 4px 8px;
+  margin: 0;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--text-3);
 }
 
-.meters {
+.state > * + *::before {
+  content: '·';
+  margin-right: 8px;
+}
+
+.stateOn {
+  color: var(--text-2);
+}
+
+/* Labels in one column, traces in the other */
+.traces {
   display: grid;
-  gap: 14px;
+  grid-template-columns: max-content minmax(0, 1fr);
+  align-items: center;
+  gap: 8px 16px;
 }
 
-/* One trace per voice: the interviewer in Ice, you in Ember. */
+.trace {
+  --voice: var(--voice-them);
+  display: contents;
+}
+
+.trace[data-voice='you'] {
+  --voice: var(--voice-you);
+}
+
+/* One microphone hears both of you: a neutral trace. */
+.trace[data-voice='room'] {
+  --voice: var(--text-2);
+}
+
+.traceLabel {
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--text-2);
+  transition: color var(--dur-fast) var(--ease);
+}
+
+.trace:has([data-signal]) .traceLabel {
+  color: var(--text-1);
+}
+
 .meter {
-  --voice: var(--ice);
-  display: grid;
-  gap: 8px;
+  height: 24px;
+  min-width: 0;
+  border-bottom: 1px solid var(--hairline);
 }
 
-.meter[data-voice='you'] {
-  --voice: var(--ember);
-}
-
-.meterLabel {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  font-size: 13.5px;
-  color: var(--voice);
-}
-
-.signalOn {
-  color: var(--paper);
-}
-
-.signalOff {
-  color: var(--mist);
-}
-
-.track {
-  position: relative;
-  height: 6px;
-  border-radius: 999px;
-  background: var(--well);
-  box-shadow: inset 0 0 0 1px var(--line);
-  overflow: hidden;
-}
-
-.fill {
+.line {
+  display: block;
+  width: 100%;
   height: 100%;
-  border-radius: inherit;
-  background: var(--voice);
-  box-shadow: 0 0 12px var(--voice);
-  transition: width 60ms linear;
+  overflow: visible;
 }
 
+.line path {
+  fill: none;
+  stroke: var(--voice);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.5;
+  transition: opacity var(--dur-fast) var(--ease);
+}
+
+.meter[data-signal] .line path {
+  opacity: 1;
+}
+
+/* What each voice is saying right now */
 .captions {
   display: grid;
   gap: 8px;
-  padding: 14px;
-  border-radius: 12px;
-  background: var(--well);
-  border: 1px solid var(--line);
+  padding-top: 16px;
+  border-top: 1px solid var(--hairline);
 }
 
 .caption {
   display: grid;
-  grid-template-columns: 5.5rem 1fr;
-  gap: 8px;
+  grid-template-columns: 88px minmax(0, 1fr);
+  gap: 12px;
   margin: 0;
-  font-size: 14.5px;
+  font-size: 14px;
   line-height: 1.5;
-  color: var(--paper-dim);
+  color: var(--text-1);
 }
 
 .captionSpeaker {
-  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 21px;
+  font-size: 12px;
+  color: var(--text-3);
 }
 
-.caption[data-voice='interviewer'] .captionSpeaker {
-  color: var(--ice);
+.captionSpeaker::before {
+  content: '';
+  flex-shrink: 0;
+  width: 3px;
+  height: 12px;
+  border-radius: 2px;
+  background: var(--voice-them);
 }
 
-.caption[data-voice='you'] .captionSpeaker {
-  color: var(--ember);
+.caption[data-voice='you'] .captionSpeaker::before {
+  background: var(--voice-you);
 }
 
 .captionIdle {
-  color: var(--mist);
+  color: var(--text-3);
 }
 
 .actions {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 8px;
 }
 
-.actions :global(.button) {
-  flex: 1 1 auto;
+.listenIcon {
+  flex-shrink: 0;
+  color: var(--text-2);
 }
 
+/* Share steps: one line that opens */
 .help {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+
+.helpSummary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  border-radius: var(--radius-control);
+  color: var(--text-2);
+  font-weight: 500;
+  list-style: none;
+  cursor: pointer;
+  transition: color var(--dur-fast) var(--ease);
+}
+
+.helpSummary::-webkit-details-marker {
+  display: none;
+}
+
+.helpSummary:hover {
+  color: var(--text-1);
+}
+
+.chevron {
+  flex-shrink: 0;
+  color: var(--text-3);
+  transform: rotate(-90deg);
+  transition: transform var(--dur-fast) var(--ease);
+}
+
+.help[open] .chevron {
+  transform: none;
+}
+
+.helpBody {
+  padding: 4px 0 0 24px;
+}
+
+.helpBody p {
   margin: 0;
 }
 
-.voiceSample {
+.steps {
   display: grid;
-  gap: 10px;
-  padding: 14px;
-  border-radius: 12px;
-  background: var(--well);
-  border: 1px solid var(--line);
-  --voice: var(--ember);
+  gap: 4px;
+  margin: 0;
+  padding-left: 16px;
 }
 
-.voiceSample[data-state='none'] {
-  border-color: var(--ember);
+/* Phone / in-person mode: the voice sample */
+.voiceSample {
+  display: grid;
+  gap: 8px;
+  padding-top: 16px;
+  border-top: 1px solid var(--hairline);
 }
 
 .voiceTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   margin: 0;
-  font-weight: 600;
-  color: var(--ember);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
 }
 
-.voiceSample :global(.small),
+.voiceTitle::before {
+  content: '';
+  flex-shrink: 0;
+  width: 3px;
+  height: 12px;
+  border-radius: 2px;
+  background: var(--voice-you);
+}
+
+.voiceText {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+
 .voiceSample :global(.error) {
   margin: 0;
 }
 
 .readAloud {
   margin: 0;
-  font-size: 15.5px;
+  font-size: 16px;
   line-height: 1.55;
-  color: var(--paper);
+  color: var(--text-1);
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .fill {
-    transition: none;
+.progress {
+  height: 4px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: var(--raised);
+}
+
+.progressFill {
+  height: 100%;
+  background: var(--voice-you);
+  transform-origin: left center;
+  transition: transform 120ms linear;
+}
+
+@media (max-width: 767px) {
+  .panel {
+    padding: 16px;
   }
-}
 
-.steps {
-  margin: 0 0 8px;
-  padding-left: 18px;
-  display: grid;
-  gap: 2px;
+  /* The listen toggle is in the bottom bar on phones. */
+  .withMobileBar .listen {
+    display: none;
+  }
+
+  .withMobileBar .listenRow:not(:has(a)) {
+    display: none;
+  }
 }

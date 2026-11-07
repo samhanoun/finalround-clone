@@ -1,161 +1,160 @@
-/* The answer card: the one element that floats. */
+/* The answer card, set like a prompter: the question in the interviewer's Ice,
+   the opening line large, the points below, the controls in one toolbar. */
 .view {
   --answer-font: 16px;
+  --pad: 24px;
   display: grid;
-  gap: 16px;
-  color: var(--paper);
+  gap: 20px;
+  min-width: 0;
+  color: var(--text-1);
 }
 
 .inline {
-  padding: 22px 26px 18px;
-  border: 1px solid var(--line-glow);
-  border-radius: var(--radius);
-  background: var(--deck);
-  box-shadow: var(--float);
+  padding: var(--pad) var(--pad) 0;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-panel);
+  background: var(--surface);
 }
 
 /* Fills the floating window, which holds nothing else. */
 .window {
+  --pad: 16px;
+  grid-template-rows: auto minmax(0, 1fr) auto;
   min-height: 100vh;
-  box-sizing: border-box;
-  padding: 14px 16px 12px;
-  align-content: start;
-  background: var(--midnight);
+  padding: var(--pad) var(--pad) 0;
+  background: var(--bg);
 }
 
-.header {
+/* Status: whether audio is coming in, and where the answer is */
+.status {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: 4px 8px;
+  min-height: 20px;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--text-3);
 }
 
-.headerActions {
-  display: flex;
-  gap: 6px;
-  margin-left: auto;
+.status > * + *::before {
+  content: '·';
+  margin-right: 8px;
+  color: var(--text-3);
 }
 
-.pill {
+.connection {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 3px 10px;
-  border-radius: 999px;
-  font-size: 13px;
-  line-height: 1.5;
-  background: var(--deck-2);
+  gap: 8px;
+  color: var(--text-2);
 }
 
-.pill::before {
+.connection::before {
   content: '';
-  width: 7px;
-  height: 7px;
+  flex-shrink: 0;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
-  background: currentColor;
+  background: var(--text-3);
 }
 
-.live {
-  color: var(--live-text);
-  background: var(--live-soft);
+.connection[data-tone='live']::before {
+  background: var(--positive);
 }
 
-.live::before {
-  background: var(--live);
-  box-shadow: 0 0 0 0 rgba(69, 212, 155, 0.6);
-  animation: pulse 2.4s ease-out infinite;
+.connection[data-tone='warn']::before {
+  background: var(--caution);
 }
 
-.warn {
-  color: var(--caution);
-  background: rgba(247, 195, 95, 0.12);
+.answerStatus {
+  font-variant-numeric: tabular-nums;
 }
 
-.off {
-  color: var(--mist);
+/* Between the status and the toolbar: the prompter's text. It keeps its room
+   in the page while waiting, so the answer arrives without a jump. */
+.body {
+  display: grid;
+  align-content: start;
+  gap: 20px;
+  min-width: 0;
 }
 
-@keyframes pulse {
-  0% {
-    box-shadow: 0 0 0 0 rgba(69, 212, 155, 0.55);
+@media (min-width: 768px) {
+  .inline .body {
+    min-height: 200px;
   }
-  70% {
-    box-shadow: 0 0 0 6px rgba(69, 212, 155, 0);
-  }
-  100% {
-    box-shadow: 0 0 0 0 rgba(69, 212, 155, 0);
-  }
+}
+
+/* Who is speaking: a short tick in the voice's colour */
+.kicker {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+  color: var(--text-3);
+}
+
+.kicker::before {
+  content: '';
+  flex-shrink: 0;
+  width: 3px;
+  height: 12px;
+  border-radius: 2px;
+  background: var(--voice-them);
+}
+
+.kicker[data-voice='you']::before {
+  background: var(--voice-you);
 }
 
 .question {
   display: grid;
   gap: 8px;
-  justify-items: start;
-}
-
-.question :global(.badge) {
-  background: var(--ice-soft);
-  color: var(--ice-text);
 }
 
 .questionText {
   margin: 0;
-  font-size: calc(var(--answer-font) * 1.08);
-  line-height: 1.4;
-  font-weight: 600;
-  color: var(--ice);
+  max-width: 72ch;
+  font-size: calc(var(--answer-font) * 1.0625);
+  line-height: 1.45;
+  color: var(--voice-them-text);
+  text-wrap: pretty;
+}
+
+.superseded {
+  margin: 0;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--text-3);
 }
 
 .empty {
   margin: 0;
+  max-width: 48ch;
+  font-size: 17px;
   line-height: 1.5;
+  color: var(--text-2);
+  text-wrap: pretty;
+}
+
+.answerBlock {
+  display: grid;
+  gap: 8px;
 }
 
 .answer {
-  margin: 0;
-  font-size: calc(var(--answer-font) * 1.06);
-  line-height: 1.6;
+  max-width: 72ch;
+  font-size: var(--answer-font);
+  line-height: 1.55;
   overflow-wrap: anywhere;
 }
 
-.line {
-  margin: 0;
-  white-space: pre-wrap;
-}
-
-.line + .line,
-.line + .points,
-.points + .line {
-  margin-top: 8px;
-}
-
-.points {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  display: grid;
-  gap: 6px;
-  color: #d7deec;
-}
-
-.points li {
-  position: relative;
-  padding-left: 18px;
-}
-
-.points li::before {
-  content: '';
-  position: absolute;
-  left: 3px;
-  top: 0.68em;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--ember);
-}
-
 .waiting {
-  color: var(--mist);
+  color: var(--text-3);
 }
 
 .prose {
@@ -164,152 +163,315 @@
 
 .prose + .prose,
 .prose + .code,
-.code + .prose {
-  margin-top: 10px;
+.code + .prose,
+.code + .code {
+  margin-top: 12px;
+}
+
+.line {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+/* The opening line: what to say first */
+.opening {
+  font-size: calc(var(--answer-font) * 1.375);
+  font-weight: 500;
+  line-height: 1.3;
+  letter-spacing: -0.005em;
+  text-wrap: pretty;
+}
+
+.line + .line,
+.line + .points,
+.points + .line {
+  margin-top: 8px;
+}
+
+.opening + .points,
+.opening + .line {
+  margin-top: 16px;
+}
+
+.points {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.points li {
+  position: relative;
+  padding-left: 20px;
+}
+
+.points li::before {
+  content: '';
+  position: absolute;
+  left: 6px;
+  top: calc(0.775em - 2px);
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--text-3);
 }
 
 .code {
   margin: 0;
-  padding: 12px 14px;
-  border-radius: var(--radius-sm);
-  background: var(--ink);
-  border: 1px solid #1e2a44;
+  padding: 12px 16px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-row);
+  background: var(--sunken);
   font-family: var(--font-code);
   font-size: calc(var(--answer-font) * 0.84);
-  line-height: 1.5;
-  color: #d7deec;
+  line-height: 1.55;
+  color: var(--text-1);
   white-space: pre;
   overflow-x: auto;
   overflow-wrap: normal;
 }
 
-.tail {
-  display: grid;
-  gap: 4px;
-  margin: 0;
-  padding: 10px 12px;
-  list-style: none;
-  border-radius: var(--radius-sm);
-  background: var(--well);
-  font-size: 13.5px;
-  color: var(--paper-dim);
-}
-
-.tail li {
-  display: grid;
-  grid-template-columns: 5.5rem 1fr;
-  gap: 8px;
-}
-
-.speaker {
-  font-weight: 600;
-}
-
-.tail li[data-voice='interviewer'] .speaker {
-  color: var(--ice);
-}
-
-.tail li[data-voice='you'] .speaker {
-  color: var(--ember);
-}
-
-.liveLine {
-  opacity: 0.75;
-}
-
-.controls {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  padding-top: 14px;
-  border-top: 1px solid var(--line);
-}
-
-.fontControls {
-  display: inline-flex;
-  gap: 4px;
-  margin-left: auto;
-}
-
-.fontControls :global(.button) {
-  min-width: 44px;
-  padding: 0 10px;
-  background: transparent;
-  color: var(--mist);
-}
-
-.hint {
-  margin: 0;
-  color: var(--mist);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .live::before {
-    animation: none;
-  }
-}
-
-@media (max-width: 560px) {
-  .inline {
-    padding: 18px 16px 14px;
-  }
-}
-
-.viewTabs {
-  display: flex;
-  gap: 4px;
-  padding: 3px;
-  width: fit-content;
-  border-radius: 10px;
-  background: var(--well);
-  border: 1px solid var(--line);
-}
-
-.viewTab {
-  min-height: 30px;
-  padding: 0 12px;
-  border: 0;
-  border-radius: 8px;
-  background: transparent;
-  color: var(--mist);
-  font: inherit;
-  font-size: 13.5px;
-  cursor: pointer;
-}
-
-.viewTab[aria-selected='true'] {
-  background: var(--deck);
-  color: var(--paper);
-}
-
+/* Where the facts came from */
 .sources {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
+  gap: 4px 12px;
   margin: 0;
-  font-size: 13px;
-  color: var(--mist);
+  font-size: 12px;
+  line-height: 20px;
+  color: var(--text-3);
 }
 
 .source {
-  padding: 2px 8px;
-  border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--ice) 35%, transparent);
-  color: var(--paper);
-}
-
-.source b {
-  color: var(--ice);
-  font-weight: 600;
-}
-
-.autoScreen {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 13.5px;
-  color: var(--mist);
+  color: var(--text-2);
+}
+
+.sourceTag {
+  min-width: 18px;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: var(--raised);
+  color: var(--text-2);
+  font-family: var(--font-code);
+  font-size: 11px;
+  line-height: 16px;
+  text-align: center;
+}
+
+/* The floating window's last lines of conversation */
+.tail {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 12px 0 0;
+  border-top: 1px solid var(--hairline);
+  list-style: none;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-2);
+}
+
+.tail li {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  gap: 8px;
+}
+
+.speaker {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 19px;
+  color: var(--text-3);
+}
+
+.speaker::before {
+  content: '';
+  flex-shrink: 0;
+  width: 3px;
+  height: 12px;
+  border-radius: 2px;
+  background: var(--voice-them);
+}
+
+.tail li[data-voice='you'] .speaker::before {
+  background: var(--voice-you);
+}
+
+.liveLine {
+  color: var(--text-3);
+}
+
+/* Answer or code */
+.viewTabs {
+  display: flex;
+  gap: 24px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.viewTab {
+  position: relative;
+  min-height: 36px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-2);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
   cursor: pointer;
+  transition: color var(--dur-fast) var(--ease);
+}
+
+.viewTab:hover {
+  color: var(--text-1);
+}
+
+.viewTab[aria-selected='true'] {
+  color: var(--text-1);
+}
+
+.viewTab[aria-selected='true']::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  bottom: -1px;
+  left: 0;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--text-1);
+}
+
+/* The toolbar stays in view at the bottom while a long answer scrolls. */
+.toolbar {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0 calc(var(--pad) * -1);
+  padding: 12px var(--pad) 16px;
+  border-top: 1px solid var(--hairline);
+  border-radius: 0 0 var(--radius-panel) var(--radius-panel);
+  background: var(--surface);
+}
+
+.window .toolbar {
+  border-radius: 0;
+  background: var(--bg);
+}
+
+.primaryControls {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.buttonIcon {
+  flex-shrink: 0;
+  color: var(--text-2);
+}
+
+.auto {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 8px;
+  font-size: 14px;
+  color: var(--text-2);
+  cursor: pointer;
+}
+
+.auto input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.toolbarEnd {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.fontControls {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.fontButton {
+  min-width: 36px;
+  height: 36px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--text-2);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition:
+    background-color var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease);
+}
+
+.fontButton:hover:not(:disabled) {
+  background: var(--raised);
+  color: var(--text-1);
+}
+
+.fontButton:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.hint {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--text-3);
+}
+
+@media (pointer: coarse) {
+  .fontButton {
+    min-width: 44px;
+    height: 44px;
+  }
+}
+
+/* Phones: the card fills the width; Answer now and Solve screen move to the
+   page's bottom bar, so the toolbar keeps Auto, Stop and text size. */
+@media (max-width: 767px) {
+  .inline {
+    --pad: 16px;
+    border-radius: var(--radius-card);
+  }
+
+  .inline .toolbar {
+    position: static;
+    padding: 8px var(--pad) 12px;
+    border-radius: 0 0 var(--radius-card) var(--radius-card);
+  }
+
+  .withMobileBar .primaryControls {
+    display: none;
+  }
+
+  .opening {
+    font-size: calc(var(--answer-font) * 1.25);
+  }
 }

@@ -1,12 +1,13 @@
 'use client';
 
-import { useState, useEffect, useId } from 'react';
+import { useState, useEffect, useId, useSyncExternalStore } from 'react';
 import { useFormatter, useTranslations } from 'next-intl';
 import { createClient } from '@/lib/supabase/browser';
 import { Link } from '@/i18n/routing';
 import { useToastHook } from '@/components/Toast';
 import { LoadingSpinner } from '@/components/Skeleton';
-import { SearchIcon } from '@/components/icons';
+import { CalendarIcon, ClockIcon, CloseIcon, MoreIcon, PencilIcon, SearchIcon, TargetIcon, TrashIcon } from '@/components/icons';
+import styles from './JobsClient.module.css';
 
 type ApplicationStage = 'saved' | 'applied' | 'oa' | 'interview' | 'offer' | 'rejected';
 
@@ -57,16 +58,33 @@ function toLocalInput(iso: string | null): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
+/** Phones get one list, filtered by stage, instead of six columns. */
+const PHONE = '(max-width: 767px)';
+function subscribeToPhone(onChange: () => void) {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return () => {};
+  const query = window.matchMedia(PHONE);
+  query.addEventListener('change', onChange);
+  return () => query.removeEventListener('change', onChange);
+}
+function usePhone(): boolean {
+  return useSyncExternalStore(
+    subscribeToPhone,
+    () => typeof window.matchMedia === 'function' && window.matchMedia(PHONE).matches,
+    () => false,
+  );
+}
+
 export function JobsClient() {
   const t = useTranslations('Jobs');
   const format = useFormatter();
+  const isPhone = usePhone();
   const stageLabel = (stage: ApplicationStage) => t(`stages.${stage}`);
   const shortDate = (iso: string, withTime = false) =>
     format.dateTime(new Date(iso), {
       weekday: 'short',
       day: 'numeric',
       month: 'short',
-      ...(withTime ? { hour: '2-digit', minute: '2-digit' } : {}),
+      ...(withTime ? { hour: 'numeric', minute: '2-digit' } : {}),
     });
   const supabase = createClient();
   const toast = useToastHook();
@@ -77,10 +95,14 @@ export function JobsClient() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [editing, setEditing] = useState<JobWithApplication | null>(null);
   const [draggedItem, setDraggedItem] = useState<JobWithApplication | null>(null);
+  const [dragOver, setDragOver] = useState<ApplicationStage | null>(null);
+  const [menuFor, setMenuFor] = useState<string | null>(null);
   const [announcement, setAnnouncement] = useState('');
+  // When the board was opened: what counts as upcoming or overdue on the cards.
+  const [now] = useState(() => Date.now());
 
   const searchId = useId();
-  const filterGroupId = useId();
+  const searchHelpId = useId();
 
   useEffect(() => {
     let mounted = true;
@@ -107,6 +129,28 @@ export function JobsClient() {
       mounted = false;
     };
   }, [supabase]);
+
+  // An open card menu closes on Escape (focus goes back to its button) or a click anywhere else.
+  useEffect(() => {
+    if (!menuFor) return;
+    const onPointer = (event: PointerEvent) => {
+      const target = event.target as Element | null;
+      if (target?.closest(`[data-menu="${menuFor}"]`)) return;
+      setMenuFor(null);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      const trigger = document.querySelector<HTMLElement>(`[data-menu-trigger="${menuFor}"]`);
+      setMenuFor(null);
+      trigger?.focus();
+    };
+    document.addEventListener('pointerdown', onPointer);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('pointerdown', onPointer);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [menuFor]);
 
   const announce = (message: string) => {
     setAnnouncement(message);
@@ -144,12 +188,18 @@ export function JobsClient() {
           app.id === appId ? { ...app, ...updates, updated_at: new Date().toISOString() } : app
         )
       );
-      toast.success(t('moved'), t('movedBody', { title: app?.title ?? '', stage: stageLabel(newStage) }));
+      const body = t('movedBody', { title: app?.title ?? '', stage: stageLabel(newStage) });
+      toast.success(t('moved'), body);
+      announce(body);
+    } else {
+      toast.error(t('notSaved'), t('tryAgain'));
     }
   };
 
   const deleteApplication = async (appId: string) => {
     const app = applications.find(a => a.id === appId);
+    // Deleting a job also drops its notes and dates, so it asks first.
+    if (app && !window.confirm(t('confirmDelete', { title: app.title, company: app.company }))) return;
     const { error } = await supabase
       .from('job_applications')
       .delete()
@@ -217,11 +267,12 @@ export function JobsClient() {
     );
   };
 
+  const query = searchQuery.trim().toLowerCase();
   const filteredApps = applications.filter(app => {
-    const matchesSearch = !searchQuery ||
-      app.company.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      app.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (app.notes && app.notes.toLowerCase().includes(searchQuery.toLowerCase()));
+    const matchesSearch = !query ||
+      app.company.toLowerCase().includes(query) ||
+      app.title.toLowerCase().includes(query) ||
+      (app.notes && app.notes.toLowerCase().includes(query));
 
     const matchesStage = filterStage === 'all' || app.stage === filterStage;
 
@@ -231,19 +282,12 @@ export function JobsClient() {
   const getAppsByStage = (stage: ApplicationStage) =>
     filteredApps.filter(app => app.stage === stage);
 
-  const handleDragStart = (app: JobWithApplication) => {
-    setDraggedItem(app);
-  };
-
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-  };
-
   const handleDrop = (stage: ApplicationStage) => {
     if (draggedItem && draggedItem.stage !== stage) {
       updateStage(draggedItem.id, stage);
     }
     setDraggedItem(null);
+    setDragOver(null);
   };
 
   const getStageCount = (stage: ApplicationStage) => applications.filter(a => a.stage === stage).length;
@@ -255,169 +299,8 @@ export function JobsClient() {
     );
   }
 
-  return (
-    <div className="jobsContainer">
-      {/* Screen reader announcements */}
-      <div
-        role="status"
-        aria-live="polite"
-        aria-atomic="true"
-        className="srOnly"
-      >
-        {announcement}
-      </div>
-
-      {/* Header Stats */}
-      <div className="jobsStats" role="region" aria-label={t('statsLabel')}>
-        <div className="statItem">
-          <span className="statValue">{totalApps}</span>
-          <span className="statLabel">{t('statApplications')}</span>
-        </div>
-        <div className="statItem">
-          <span className="statValue">{getStageCount('interview') + getStageCount('offer')}</span>
-          <span className="statLabel">{t('statInterviewing')}</span>
-        </div>
-        <div className="statItem">
-          <span className="statValue">{getStageCount('offer')}</span>
-          <span className="statLabel">{t('statOffers')}</span>
-        </div>
-      </div>
-
-      {/* Search and Filter Bar */}
-      <div className="jobsToolbar" role="search" aria-label={t('searchLabel')}>
-        <div className="searchBox">
-          <SearchIcon size={18} className="searchIcon" />
-          <input
-            type="text"
-            placeholder={t('searchPlaceholder')}
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="searchInput"
-            id={searchId}
-            aria-describedby="search-description"
-          />
-          <span id="search-description" className="srOnly">
-            {t('searchHelp')}
-          </span>
-        </div>
-
-        <div
-          className="filterButtons"
-          role="group"
-          aria-label={t('filterLabel')}
-          id={filterGroupId}
-        >
-          <button
-            className={`filterBtn ${filterStage === 'all' ? 'active' : ''}`}
-            onClick={() => setFilterStage('all')}
-            aria-pressed={filterStage === 'all'}
-          >
-            {t('all', { count: totalApps })}
-          </button>
-          {STAGE_ORDER.slice(0, 5).map(stage => (
-            <button
-              key={stage}
-              className={`filterBtn ${filterStage === stage ? 'active' : ''}`}
-              onClick={() => setFilterStage(stage)}
-              aria-pressed={filterStage === stage}
-            >
-              {stageLabel(stage)} ({getStageCount(stage)})
-            </button>
-          ))}
-        </div>
-
-        <button className="button buttonPrimary" onClick={() => setShowAddModal(true)}>
-          {t('add')}
-        </button>
-      </div>
-
-      {/* Kanban Board */}
-      <div
-        className="kanbanBoard"
-        role="region"
-        aria-label={t('boardLabel')}
-      >
-        {STAGE_ORDER.map(stage => (
-          <div
-            key={stage}
-            className={`kanbanColumn ${filterStage !== 'all' && filterStage !== stage ? 'dimmed' : ''}`}
-            onDragOver={handleDragOver}
-            onDrop={() => handleDrop(stage)}
-            role="listbox"
-            aria-label={t('columnLabel', { stage: stageLabel(stage), count: getAppsByStage(stage).length })}
-            aria-readonly="true"
-            tabIndex={0}
-          >
-            <div className="columnHeader">
-              <span className="columnTitle">{stageLabel(stage)}</span>
-              <span className="columnCount" aria-hidden="true">
-                {getAppsByStage(stage).length}
-              </span>
-            </div>
-            <div className="columnContent">
-              {getAppsByStage(stage).map(app => (
-                <div
-                  key={app.id}
-                  className="jobCard"
-                  draggable
-                  onDragStart={() => handleDragStart(app)}
-                  role="option"
-                  aria-selected="false"
-                  aria-label={t('cardLabel', { title: app.title, company: app.company })}
-                >
-                  <div className="jobCardHeader">
-                    <span className="jobCompany">{app.company}</span>
-                    <span className="jobCardActions">
-                      <Link className="editBtn" href={`/goals?fromJob=${app.id}`} title={t('goalHelp')}>
-                        {t('goal')}
-                      </Link>
-                      <button
-                        className="editBtn"
-                        onClick={() => setEditing(app)}
-                        aria-label={t('editLabel', { title: app.title, company: app.company })}
-                      >
-                        {t('edit')}
-                      </button>
-                      <button
-                        className="deleteBtn"
-                        onClick={() => deleteApplication(app.id)}
-                        title={t('delete')}
-                        aria-label={t('deleteLabel', { title: app.title, company: app.company })}
-                      >
-                        ×
-                      </button>
-                    </span>
-                  </div>
-                  <div className="jobTitle">{app.title}</div>
-                  {app.notes && <div className="jobNotes">{app.notes}</div>}
-                  {app.interview_at && new Date(app.interview_at).getTime() > Date.now() ? (
-                    <div className="jobDue interview">{t('interviewOn', { when: shortDate(app.interview_at, true) })}</div>
-                  ) : null}
-                  {app.next_followup_at && app.stage !== 'offer' && app.stage !== 'rejected' ? (
-                    <div className={`jobDue ${new Date(app.next_followup_at).getTime() <= Date.now() ? 'overdue' : ''}`}>
-                      {t('followUpOn', { when: shortDate(app.next_followup_at) })}
-                    </div>
-                  ) : null}
-                  <div className="jobMeta">
-                    <span className="jobDate">
-                      {app.applied_at
-                        ? t('appliedOn', { date: format.dateTime(new Date(app.applied_at), { dateStyle: 'medium' }) })
-                        : t('addedOn', { date: format.dateTime(new Date(app.created_at), { dateStyle: 'medium' }) })}
-                    </span>
-                  </div>
-                </div>
-              ))}
-              {getAppsByStage(stage).length === 0 && (
-                <div className="emptyColumn" aria-live="polite">
-                  {filterStage === 'all' ? t('emptyColumn') : t('noMatches')}
-                </div>
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Add / edit job */}
+  const modals = (
+    <>
       {showAddModal && (
         <JobModal
           onClose={() => setShowAddModal(false)}
@@ -431,353 +314,300 @@ export function JobsClient() {
           onSubmit={(data) => saveJob(editing.id, data)}
         />
       )}
+    </>
+  );
 
-      <style jsx>{`
-        .jobsContainer {
-          display: flex;
-          flex-direction: column;
-          gap: 20px;
-        }
+  // No jobs at all: one sentence and one action, instead of six empty columns.
+  if (totalApps === 0) {
+    return (
+      <div className={styles.jobs}>
+        <div className={styles.firstRun}>
+          <p className={styles.firstRunText}>{t('firstRun')}</p>
+          <button type="button" className="button buttonPrimary" onClick={() => setShowAddModal(true)}>
+            {t('add')}
+          </button>
+        </div>
+        {modals}
+      </div>
+    );
+  }
 
-        .jobsStats {
-          display: flex;
-          gap: 24px;
-          padding: 16px 20px;
-          background: rgba(255, 255, 255, 0.03);
-          border-radius: 12px;
-          border: 1px solid var(--border);
-        }
+  const card = (app: JobWithApplication, draggable: boolean) => (
+    <JobCard
+      key={app.id}
+      app={app}
+      draggable={draggable}
+      dragging={draggedItem?.id === app.id}
+      menuOpen={menuFor === app.id}
+      now={now}
+      shortDate={shortDate}
+      onDragStart={() => {
+        setMenuFor(null);
+        setDraggedItem(app);
+      }}
+      onDragEnd={() => {
+        setDraggedItem(null);
+        setDragOver(null);
+      }}
+      onMenu={() => setMenuFor(menuFor === app.id ? null : app.id)}
+      onEdit={() => {
+        setMenuFor(null);
+        setEditing(app);
+      }}
+      onMove={(stage) => {
+        setMenuFor(null);
+        if (stage !== app.stage) void updateStage(app.id, stage);
+      }}
+      onDelete={() => {
+        setMenuFor(null);
+        void deleteApplication(app.id);
+      }}
+    />
+  );
 
-        .statItem {
-          display: flex;
-          flex-direction: column;
-        }
+  const noResults = filteredApps.length === 0;
+  const phoneStages = filterStage === 'all' ? STAGE_ORDER.filter(stage => getAppsByStage(stage).length > 0) : [filterStage];
 
-        .statValue {
-          font-size: 1.5rem;
-          font-weight: 700;
-          color: var(--text);
-        }
+  return (
+    <div className={styles.jobs}>
+      {/* Screen reader announcements */}
+      <div
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+        className="srOnly"
+      >
+        {announcement}
+      </div>
 
-        .statLabel {
-          font-size: 0.8rem;
-          color: var(--text-light);
-        }
+      <div className={styles.toolbar}>
+        <div className={styles.searchBox} role="search" aria-label={t('searchLabel')}>
+          <SearchIcon size={16} className={styles.searchIcon} />
+          <input
+            type="search"
+            placeholder={t('searchPlaceholder')}
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className={styles.searchInput}
+            id={searchId}
+            aria-label={t('search')}
+            aria-describedby={searchHelpId}
+          />
+          <span id={searchHelpId} className="srOnly">
+            {t('searchHelp')}
+          </span>
+        </div>
 
-        .jobsToolbar {
-          display: flex;
-          align-items: center;
-          gap: 16px;
-          flex-wrap: wrap;
-        }
+        <div className={styles.summary} role="group" aria-label={t('statsLabel')}>
+          <span>{t.rich('summaryJobs', { count: totalApps, n: (chunks) => <span className={styles.summaryNum}>{chunks}</span> })}</span>
+          <span>
+            {t.rich('summaryInterviewing', {
+              count: getStageCount('interview') + getStageCount('offer'),
+              n: (chunks) => <span className={styles.summaryNum}>{chunks}</span>,
+            })}
+          </span>
+          <span>{t.rich('summaryOffers', { count: getStageCount('offer'), n: (chunks) => <span className={styles.summaryNum}>{chunks}</span> })}</span>
+        </div>
 
-        .searchBox {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          min-height: 44px;
-          padding: 0 14px;
-          background: var(--well);
-          border: 1px solid var(--line);
-          border-radius: 10px;
-          flex: 1;
-          min-width: 250px;
-          color: var(--mist);
-        }
+        <button type="button" className={`button buttonPrimary ${styles.addButton}`} onClick={() => setShowAddModal(true)}>
+          {t('add')}
+        </button>
+      </div>
 
-        .searchBox:focus-within {
-          border-color: var(--ember);
-          box-shadow: 0 0 0 3px var(--ember-soft);
-        }
+      <div className={styles.tabs} role="group" aria-label={t('filterLabel')}>
+        {(['all', ...STAGE_ORDER] as const).map(stage => (
+          <button
+            key={stage}
+            type="button"
+            className={styles.tab}
+            onClick={() => setFilterStage(stage)}
+            aria-pressed={filterStage === stage}
+          >
+            {stage === 'all' ? t('all') : stageLabel(stage)}
+            <span className={styles.tabCount}>{stage === 'all' ? totalApps : getStageCount(stage)}</span>
+          </button>
+        ))}
+      </div>
 
-        .searchInput {
-          background: transparent;
-          border: none;
-          color: var(--paper);
-          flex: 1;
-          outline: none;
-          font: inherit;
-          font-size: 15px;
-        }
+      {noResults ? (
+        <p className={styles.noResults} role="status">
+          {query ? t('noMatches') : t('stageEmpty', { stage: filterStage === 'all' ? t('all') : stageLabel(filterStage) })}
+        </p>
+      ) : null}
 
-        .searchInput::placeholder {
-          color: var(--text-light);
-        }
+      {isPhone ? (
+        noResults ? null : (
+          <div className={styles.phoneList}>
+            {phoneStages.map(stage => {
+              const apps = getAppsByStage(stage);
+              return (
+                <div key={stage} className={styles.group} role="group" aria-label={t('columnLabel', { stage: stageLabel(stage), count: apps.length })}>
+                  {filterStage === 'all' ? (
+                    <h2 className={styles.groupTitle} aria-hidden="true">
+                      {stageLabel(stage)}
+                      <span className={styles.columnCount}>{apps.length}</span>
+                    </h2>
+                  ) : null}
+                  <ul className={styles.cards}>{apps.map(app => card(app, false))}</ul>
+                </div>
+              );
+            })}
+          </div>
+        )
+      ) : (
+        <div className={styles.board} role="region" aria-label={t('boardLabel')}>
+          {STAGE_ORDER.map(stage => {
+            const apps = getAppsByStage(stage);
+            return (
+              <div
+                key={stage}
+                className={styles.column}
+                data-dimmed={filterStage !== 'all' && filterStage !== stage}
+                role="group"
+                aria-label={t('columnLabel', { stage: stageLabel(stage), count: apps.length })}
+              >
+                <div className={styles.columnHead} aria-hidden="true">
+                  <span className={styles.columnTitle}>{stageLabel(stage)}</span>
+                  <span className={styles.columnCount}>{apps.length}</span>
+                </div>
+                <ul
+                  className={styles.columnBody}
+                  data-empty={apps.length === 0}
+                  data-over={dragOver === stage && draggedItem?.stage !== stage}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    if (dragOver !== stage) setDragOver(stage);
+                  }}
+                  onDragLeave={(e) => {
+                    if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragOver(null);
+                  }}
+                  onDrop={() => handleDrop(stage)}
+                >
+                  {apps.map(app => card(app, true))}
+                </ul>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
-        .filterButtons {
-          display: flex;
-          gap: 8px;
-          flex-wrap: wrap;
-        }
-
-        .filterBtn {
-          min-height: 34px;
-          padding: 0 12px;
-          background: transparent;
-          border: 1px solid var(--line);
-          border-radius: 999px;
-          color: var(--mist);
-          font: inherit;
-          font-size: 13.5px;
-          cursor: pointer;
-          transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
-        }
-
-        .filterBtn:hover {
-          background: var(--deck-2);
-          color: var(--paper);
-        }
-
-        .filterBtn.active {
-          background: var(--ember-soft);
-          border-color: rgba(255, 181, 71, 0.5);
-          color: var(--ember-text);
-        }
-
-        .jobCardActions {
-          display: inline-flex;
-          align-items: center;
-          gap: 4px;
-        }
-
-        .editBtn {
-          background: none;
-          border: none;
-          color: var(--mist);
-          font: inherit;
-          font-size: 12px;
-          cursor: pointer;
-          padding: 2px 6px;
-          border-radius: 6px;
-        }
-
-        .editBtn:hover,
-        .editBtn:focus-visible {
-          color: var(--paper);
-          background: var(--deck-2);
-        }
-
-        .jobDue {
-          margin-top: 6px;
-          font-size: 12px;
-          color: var(--mist);
-        }
-
-        .jobDue.interview {
-          color: var(--ice);
-        }
-
-        .jobDue.overdue {
-          color: var(--ember);
-        }
-
-        .kanbanBoard {
-          display: grid;
-          grid-template-columns: repeat(6, 1fr);
-          gap: 12px;
-          overflow-x: auto;
-          padding-bottom: 12px;
-        }
-
-        .kanbanColumn {
-          background: rgba(255, 255, 255, 0.02);
-          border: 1px solid var(--border);
-          border-radius: 10px;
-          min-width: 160px;
-          display: flex;
-          flex-direction: column;
-        }
-
-        .kanbanColumn.dimmed {
-          opacity: 0.4;
-        }
-
-        .columnHeader {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          padding: 12px;
-          border-bottom: 1px solid var(--border);
-        }
-
-        .columnTitle {
-          font-weight: 600;
-          font-size: 0.85rem;
-        }
-
-        .columnCount {
-          background: rgba(255, 255, 255, 0.1);
-          padding: 2px 8px;
-          border-radius: 10px;
-          font-size: 0.75rem;
-        }
-
-        .columnContent {
-          padding: 8px;
-          display: flex;
-          flex-direction: column;
-          gap: 8px;
-          min-height: 200px;
-          max-height: 400px;
-          overflow-y: auto;
-        }
-
-        .jobCard {
-          background: rgba(255, 255, 255, 0.04);
-          border: 1px solid var(--border);
-          border-radius: 8px;
-          padding: 10px;
-          cursor: grab;
-          transition: transform 0.15s, box-shadow 0.15s;
-        }
-
-        .jobCard:hover {
-          transform: translateY(-2px);
-          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-        }
-
-        .jobCard:focus-visible {
-          outline: 3px solid var(--focus-ring);
-          outline-offset: 2px;
-        }
-
-        .jobCard:active {
-          cursor: grabbing;
-        }
-
-        .jobCardHeader {
-          display: flex;
-          justify-content: space-between;
-          align-items: flex-start;
-        }
-
-        .jobCompany {
-          font-weight: 600;
-          font-size: 0.9rem;
-          color: var(--text);
-        }
-
-        .deleteBtn {
-          background: none;
-          border: none;
-          color: var(--text-light);
-          cursor: pointer;
-          padding: 0;
-          font-size: 1.1rem;
-          line-height: 1;
-          opacity: 0.5;
-          transition: opacity 0.2s;
-        }
-
-        .deleteBtn:hover {
-          opacity: 1;
-          color: #ef4444;
-        }
-
-        .deleteBtn:focus-visible {
-          outline: 2px solid var(--focus-ring);
-          outline-offset: 2px;
-          opacity: 1;
-        }
-
-        .jobTitle {
-          font-size: 0.8rem;
-          color: var(--text-light);
-          margin-top: 4px;
-        }
-
-        .jobNotes {
-          font-size: 0.75rem;
-          color: var(--text-light);
-          margin-top: 6px;
-          padding-top: 6px;
-          border-top: 1px solid var(--border);
-          display: -webkit-box;
-          -webkit-line-clamp: 2;
-          -webkit-box-orient: vertical;
-          overflow: hidden;
-        }
-
-        .jobMeta {
-          margin-top: 8px;
-        }
-
-        .jobDate {
-          font-size: 0.7rem;
-          color: var(--text-light);
-          opacity: 0.7;
-        }
-
-        .emptyColumn {
-          text-align: center;
-          padding: 20px 10px;
-          color: var(--text-light);
-          font-size: 0.8rem;
-          opacity: 0.6;
-        }
-
-        @media (max-width: 1200px) {
-          .kanbanBoard {
-            grid-template-columns: repeat(3, 1fr);
-          }
-        }
-
-        @media (max-width: 768px) {
-          .kanbanBoard {
-            grid-template-columns: 1fr;
-            gap: 16px;
-          }
-
-          .jobsToolbar {
-            flex-direction: column;
-            align-items: stretch;
-          }
-
-          .jobsStats {
-            flex-direction: column;
-            gap: 16px;
-            text-align: center;
-          }
-
-          .searchBox {
-            min-width: 100%;
-          }
-
-          .filterButtons {
-            overflow-x: auto;
-            flex-wrap: nowrap;
-            padding-bottom: 8px;
-          }
-
-          .filterBtn {
-            white-space: nowrap;
-          }
-
-          .modalContent {
-            margin: 16px;
-            max-width: calc(100% - 32px);
-          }
-        }
-
-        @media (max-width: 480px) {
-          .jobsStats {
-            padding: 12px;
-          }
-
-          .statValue {
-            font-size: 1.25rem;
-          }
-
-          .columnHeader {
-            padding: 10px;
-          }
-
-          .jobCard {
-            padding: 8px;
-          }
-        }
-      `}</style>
+      {modals}
     </div>
+  );
+}
+
+function JobCard({
+  app,
+  draggable,
+  dragging,
+  menuOpen,
+  now,
+  shortDate,
+  onDragStart,
+  onDragEnd,
+  onMenu,
+  onEdit,
+  onMove,
+  onDelete,
+}: {
+  app: JobWithApplication;
+  draggable: boolean;
+  dragging: boolean;
+  menuOpen: boolean;
+  now: number;
+  shortDate: (iso: string, withTime?: boolean) => string;
+  onDragStart: () => void;
+  onDragEnd: () => void;
+  onMenu: () => void;
+  onEdit: () => void;
+  onMove: (stage: ApplicationStage) => void;
+  onDelete: () => void;
+}) {
+  const t = useTranslations('Jobs');
+  const format = useFormatter();
+  const menuId = useId();
+  const moveId = useId();
+  const names = { title: app.title, company: app.company };
+  const interviewAhead = app.interview_at && new Date(app.interview_at).getTime() > now;
+  const followUp = app.next_followup_at && app.stage !== 'offer' && app.stage !== 'rejected' ? app.next_followup_at : null;
+  const overdue = followUp ? new Date(followUp).getTime() <= now : false;
+
+  return (
+    <li className={styles.item} data-menu={app.id} data-open={menuOpen}>
+      <div
+        className={styles.card}
+        data-dragging={dragging}
+        draggable={draggable}
+        onDragStart={draggable ? onDragStart : undefined}
+        onDragEnd={draggable ? onDragEnd : undefined}
+      >
+        <div className={styles.cardHead}>
+          <span className={styles.company}>{app.company}</span>
+          <button
+            type="button"
+            className={styles.menuButton}
+            onClick={onMenu}
+            aria-expanded={menuOpen}
+            aria-controls={menuOpen ? menuId : undefined}
+            aria-label={t('actionsLabel', names)}
+            data-menu-trigger={app.id}
+          >
+            <MoreIcon size={16} />
+          </button>
+        </div>
+        <div className={styles.jobTitle}>{app.title}</div>
+        {app.notes && <div className={styles.notes}>{app.notes}</div>}
+        {interviewAhead ? (
+          <div className={`${styles.due} ${styles.dueInterview}`}>
+            <CalendarIcon size={14} />
+            <span>{t('interviewOn', { when: shortDate(app.interview_at as string, true) })}</span>
+          </div>
+        ) : null}
+        {followUp ? (
+          <div className={`${styles.due} ${overdue ? styles.dueOverdue : ''}`}>
+            <ClockIcon size={14} />
+            <span>{overdue ? t('followUpOverdue', { when: shortDate(followUp) }) : t('followUpOn', { when: shortDate(followUp) })}</span>
+          </div>
+        ) : null}
+        <div className={styles.date}>
+          {app.applied_at
+            ? t('appliedOn', { date: format.dateTime(new Date(app.applied_at), { dateStyle: 'medium' }) })
+            : t('addedOn', { date: format.dateTime(new Date(app.created_at), { dateStyle: 'medium' }) })}
+        </div>
+      </div>
+
+      {menuOpen ? (
+        <div id={menuId} className={styles.menu} role="group" aria-label={t('actionsLabel', names)}>
+          <button type="button" className={styles.menuItem} onClick={onEdit} aria-label={t('editLabel', names)}>
+            <PencilIcon size={16} />
+            {t('edit')}
+          </button>
+          <Link className={styles.menuItemLink} href={`/goals?fromJob=${app.id}`} title={t('goalHelp')}>
+            <TargetIcon size={16} />
+            {t('makeGoal')}
+          </Link>
+          <div className={styles.menuMove}>
+            <label className={styles.menuLabel} htmlFor={moveId}>
+              {t('moveTo')}
+            </label>
+            <select
+              id={moveId}
+              className={`select ${styles.menuSelect}`}
+              value={app.stage}
+              onChange={(e) => onMove(e.target.value as ApplicationStage)}
+            >
+              {STAGE_ORDER.map(option => (
+                <option key={option} value={option}>{t(`stages.${option}`)}</option>
+              ))}
+            </select>
+          </div>
+          <button type="button" className={`${styles.menuItem} ${styles.danger}`} onClick={onDelete} aria-label={t('deleteLabel', names)}>
+            <TrashIcon size={16} />
+            {t('delete')}
+          </button>
+        </div>
+      ) : null}
+    </li>
   );
 }
 
@@ -809,7 +639,7 @@ function JobModal({
   const [interviewAt, setInterviewAt] = useState(toLocalInput(initial?.interview_at ?? null));
   const [followUp, setFollowUp] = useState(toLocalInput(initial?.next_followup_at ?? null).slice(0, 10));
   const modalTitleId = useId();
-  const ids = { company: useId(), title: useId(), url: useId(), stage: useId(), interview: useId(), followUp: useId(), notes: useId() };
+  const ids = { company: useId(), title: useId(), url: useId(), stage: useId(), interview: useId(), followUp: useId(), notes: useId(), help: useId() };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -834,182 +664,71 @@ function JobModal({
 
   return (
     <div
-      className="modalOverlay"
+      className={styles.overlay}
       onClick={onClose}
       role="dialog"
       aria-modal="true"
       aria-labelledby={modalTitleId}
       onKeyDown={handleKeyDown}
     >
-      <div className="modalContent" onClick={e => e.stopPropagation()}>
-        <div className="modalHeader">
-          <h3 id={modalTitleId}>{initial ? t('editTitle') : t('add')}</h3>
+      <div className={styles.dialog} onClick={e => e.stopPropagation()}>
+        <div className={styles.dialogHead}>
+          <h2 id={modalTitleId} className={styles.dialogTitle}>{initial ? t('editTitle') : t('add')}</h2>
           <button
-            className="closeBtn"
+            type="button"
+            className="iconButton"
             onClick={onClose}
             aria-label={t('close')}
-          >×</button>
+          >
+            <CloseIcon size={18} />
+          </button>
         </div>
-        <form onSubmit={handleSubmit}>
-          <div className="formRow">
-            <div className="formGroup">
-              <label htmlFor={ids.company}>{t('company')}</label>
-              <input type="text" id={ids.company} value={company} onChange={e => setCompany(e.target.value)} placeholder={t('companyPlaceholder')} required autoFocus />
+        <form className={styles.form} onSubmit={handleSubmit}>
+          <div className={styles.formRow}>
+            <div className={styles.field}>
+              <label className="label" htmlFor={ids.company}>{t('company')}</label>
+              <input className="input" type="text" id={ids.company} value={company} onChange={e => setCompany(e.target.value)} placeholder={t('companyPlaceholder')} required autoFocus />
             </div>
-            <div className="formGroup">
-              <label htmlFor={ids.title}>{t('title')}</label>
-              <input type="text" id={ids.title} value={title} onChange={e => setTitle(e.target.value)} placeholder={t('titlePlaceholder')} required />
+            <div className={styles.field}>
+              <label className="label" htmlFor={ids.title}>{t('title')}</label>
+              <input className="input" type="text" id={ids.title} value={title} onChange={e => setTitle(e.target.value)} placeholder={t('titlePlaceholder')} required />
             </div>
           </div>
-          <div className="formRow">
-            <div className="formGroup">
-              <label htmlFor={ids.url}>{t('link')}</label>
-              <input type="url" id={ids.url} value={jobUrl} onChange={e => setJobUrl(e.target.value)} placeholder={t('linkPlaceholder')} />
+          <div className={styles.formRow}>
+            <div className={styles.field}>
+              <label className="label" htmlFor={ids.url}>{t('link')}</label>
+              <input className="input" type="url" id={ids.url} value={jobUrl} onChange={e => setJobUrl(e.target.value)} placeholder={t('linkPlaceholder')} />
             </div>
-            <div className="formGroup">
-              <label htmlFor={ids.stage}>{t('stage')}</label>
-              <select id={ids.stage} value={stage} onChange={e => setStage(e.target.value as ApplicationStage)}>
+            <div className={styles.field}>
+              <label className="label" htmlFor={ids.stage}>{t('stage')}</label>
+              <select className="select" id={ids.stage} value={stage} onChange={e => setStage(e.target.value as ApplicationStage)}>
                 {STAGE_ORDER.map(option => (
                   <option key={option} value={option}>{t(`stages.${option}`)}</option>
                 ))}
               </select>
             </div>
           </div>
-          <div className="formRow">
-            <div className="formGroup">
-              <label htmlFor={ids.interview}>{t('interviewAt')}</label>
-              <input type="datetime-local" id={ids.interview} value={interviewAt} onChange={e => setInterviewAt(e.target.value)} />
+          <div className={styles.formRow}>
+            <div className={styles.field}>
+              <label className="label" htmlFor={ids.interview}>{t('interviewAt')}</label>
+              <input className="input" type="datetime-local" id={ids.interview} value={interviewAt} onChange={e => setInterviewAt(e.target.value)} aria-describedby={ids.help} />
             </div>
-            <div className="formGroup">
-              <label htmlFor={ids.followUp}>{t('followUp')}</label>
-              <input type="date" id={ids.followUp} value={followUp} onChange={e => setFollowUp(e.target.value)} />
+            <div className={styles.field}>
+              <label className="label" htmlFor={ids.followUp}>{t('followUp')}</label>
+              <input className="input" type="date" id={ids.followUp} value={followUp} onChange={e => setFollowUp(e.target.value)} aria-describedby={ids.help} />
             </div>
           </div>
-          <p className="formHelp">{t('remindersHelp')}</p>
-          <div className="formGroup">
-            <label htmlFor={ids.notes}>{t('notes')}</label>
-            <textarea id={ids.notes} value={notes} onChange={e => setNotes(e.target.value)} placeholder={t('notesPlaceholder')} rows={3} />
+          <p className="help" id={ids.help}>{t('remindersHelp')}</p>
+          <div className={styles.field}>
+            <label className="label" htmlFor={ids.notes}>{t('notes')}</label>
+            <textarea className="textarea" id={ids.notes} value={notes} onChange={e => setNotes(e.target.value)} placeholder={t('notesPlaceholder')} rows={3} />
           </div>
-          <div className="modalActions">
+          <div className={styles.dialogActions}>
             <button type="button" className="button" onClick={onClose}>{t('cancel')}</button>
             <button type="submit" className="button buttonPrimary">{initial ? t('save') : t('addJob')}</button>
           </div>
         </form>
       </div>
-
-      <style jsx>{`
-        .modalOverlay {
-          position: fixed;
-          inset: 0;
-          background: rgba(0, 0, 0, 0.7);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          z-index: 100;
-        }
-
-        .modalContent {
-          background: var(--bg);
-          border: 1px solid var(--border);
-          border-radius: 12px;
-          width: calc(100% - 32px);
-          max-width: 560px;
-          max-height: calc(100vh - 32px);
-          overflow: auto;
-          padding: 20px;
-        }
-
-        .formRow {
-          display: grid;
-          grid-template-columns: repeat(2, minmax(0, 1fr));
-          gap: 12px;
-        }
-
-        @media (max-width: 560px) {
-          .formRow {
-            grid-template-columns: 1fr;
-          }
-        }
-
-        .formHelp {
-          margin: -6px 0 16px;
-          font-size: 0.8rem;
-          color: var(--mist);
-        }
-
-        .modalHeader {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 20px;
-        }
-
-        .modalHeader h3 {
-          margin: 0;
-          font-size: 1.1rem;
-        }
-
-        .closeBtn {
-          background: none;
-          border: none;
-          color: var(--text-light);
-          font-size: 1.5rem;
-          cursor: pointer;
-          padding: 0;
-          line-height: 1;
-        }
-
-        .closeBtn:focus-visible {
-          outline: 2px solid var(--focus-ring);
-          outline-offset: 2px;
-        }
-
-        .formGroup {
-          margin-bottom: 16px;
-        }
-
-        .formGroup label {
-          display: block;
-          font-size: 0.85rem;
-          margin-bottom: 6px;
-          color: var(--text-light);
-        }
-
-        .formGroup input,
-        .formGroup select,
-        .formGroup textarea {
-          width: 100%;
-          padding: 10px 12px;
-          background: rgba(255, 255, 255, 0.03);
-          border: 1px solid var(--border);
-          border-radius: 8px;
-          color: var(--text);
-          font: inherit;
-          font-size: 0.9rem;
-          color-scheme: dark;
-        }
-
-        .formGroup input:focus,
-        .formGroup select:focus,
-        .formGroup textarea:focus {
-          outline: none;
-          border-color: var(--primary);
-        }
-
-        .formGroup input:focus-visible,
-        .formGroup textarea:focus-visible {
-          outline: 2px solid var(--focus-ring);
-          outline-offset: 2px;
-        }
-
-        .modalActions {
-          display: flex;
-          gap: 12px;
-          justify-content: flex-end;
-          margin-top: 20px;
-        }
-
-      `}</style>
     </div>
   );
 }

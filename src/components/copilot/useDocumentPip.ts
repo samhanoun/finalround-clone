@@ -20,6 +20,26 @@ function pipApi(): DocumentPictureInPictureApi | null {
 
 const noSubscription = () => () => undefined;
 
+const CSS_URL = /url\(\s*(?:"([^"]*)"|'([^']*)'|([^'"\s)]+))\s*\)/g;
+
+/**
+ * Makes the url(…) references in copied CSS absolute. Rules keep the URLs as
+ * written (`../media/font.woff2`, relative to the stylesheet), but in the
+ * floating window they would resolve against the page instead, and the
+ * fonts would go missing.
+ */
+export function absolutizeCssUrls(cssText: string, base: string): string {
+  return cssText.replace(CSS_URL, (match, double?: string, single?: string, bare?: string) => {
+    const value = (double ?? single ?? bare ?? '').trim();
+    if (!value || /^(data:|blob:|#)/i.test(value) || /^[a-z][a-z0-9+.-]*:/i.test(value)) return match;
+    try {
+      return `url("${new URL(value, base).href}")`;
+    } catch {
+      return match;
+    }
+  });
+}
+
 /**
  * Copies the page's styles and theme into the floating window, so components
  * rendered there look the same. Stylesheets we can't read (cross-origin) are
@@ -29,9 +49,12 @@ export function copyDocumentStyles(source: Document, target: Document): void {
   for (const sheet of Array.from(source.styleSheets)) {
     try {
       const style = target.createElement('style');
-      style.textContent = Array.from(sheet.cssRules)
-        .map((rule) => rule.cssText)
-        .join('\n');
+      style.textContent = absolutizeCssUrls(
+        Array.from(sheet.cssRules)
+          .map((rule) => rule.cssText)
+          .join('\n'),
+        sheet.href ?? source.baseURI,
+      );
       target.head.appendChild(style);
     } catch {
       if (sheet.href) {

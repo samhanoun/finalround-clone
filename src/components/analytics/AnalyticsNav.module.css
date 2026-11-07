@@ -1,33 +1,59 @@
+/* Underline tabs on a hairline. On phones they scroll sideways, edge to edge. */
 .nav {
-  align-self: flex-start;
-  display: inline-flex;
-  gap: 4px;
-  padding: 4px;
-  max-width: 100%;
+  display: flex;
+  gap: 24px;
   overflow-x: auto;
-  border-radius: 12px;
-  background: var(--well);
-  border: 1px solid var(--line);
+  scrollbar-width: none;
+  border-bottom: 1px solid var(--hairline);
 }
 
-.link {
+.nav::-webkit-scrollbar {
+  display: none;
+}
+
+.tabLink {
+  position: relative;
   display: inline-flex;
   align-items: center;
-  min-height: 38px;
-  padding: 0 16px;
-  border-radius: 9px;
-  color: var(--mist);
-  font-size: 14.5px;
+  flex-shrink: 0;
+  height: 40px;
+  color: var(--text-2);
+  font-size: 14px;
   font-weight: 500;
   text-decoration: none;
   white-space: nowrap;
+  transition: color var(--dur-fast) var(--ease);
 }
 
-.link:hover {
-  color: var(--paper);
+.tabLink:hover {
+  color: var(--text-1);
 }
 
-.link[aria-current='page'] {
-  background: var(--deck-2);
-  color: var(--paper);
+.tabLink[aria-current='page'] {
+  color: var(--text-1);
+}
+
+.tabLink[aria-current='page']::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--text-1);
+}
+
+@media (pointer: coarse) {
+  .tabLink {
+    height: 44px;
+  }
+}
+
+@media (max-width: 559px) {
+  .nav {
+    gap: 20px;
+    margin: 0 -16px;
+    padding: 0 16px;
+  }
 }

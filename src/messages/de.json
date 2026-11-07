@@ -23,18 +23,11 @@
     "settings": "Einstellungen",
     "copilot": "Copilot"
   },
-  "dashboard": {
-    "welcome": "Willkommen bei Apex Round",
-    "subtitle": "Dein KI-Assistent für Vorstellungsgespräche",
-    "recentActivity": "Letzte Aktivitäten",
-    "quickActions": "Schnellzugriff",
-    "usage": "Nutzung"
-  },
   "settings": {
     "title": "Einstellungen",
     "profile": "Profil",
     "language": "App-Sprache",
-    "languageDescription": "Die Sprache von Menüs, Schaltflächen und Meldungen.",
+    "languageDescription": "Die Sprache von Menüs, Schaltflächen und Meldungen",
     "notifications": "Benachrichtigungen",
     "account": "Konto",
     "security": "Sicherheit",
@@ -51,7 +44,28 @@
       "de": "Deutsch",
       "pt": "Português"
     },
-    "teams": "Teams"
+    "teams": "Teams",
+    "sections": {
+      "label": "Bereiche der Einstellungen",
+      "profile": "Profil",
+      "language": "Sprache und Region",
+      "answers": "Antworten",
+      "meetings": "Meeting-Apps",
+      "notifications": "Benachrichtigungen",
+      "desktop": "Desktop-App",
+      "billing": "Abrechnung und Nutzung",
+      "account": "Konto"
+    },
+    "descs": {
+      "language": "Die Sprache der App und deine Zeitzone",
+      "desktop": "Tastenkürzel, Bildschirmaufnahme und Meeting-Erkennung auf diesem Computer",
+      "billing": "Dein Tarif und die Nutzung in diesem Monat",
+      "account": "Deine Anmeldung, dein Team und deine Daten"
+    },
+    "signedInAs": "Angemeldet als",
+    "team": "Team",
+    "teamHelp": "Leute einladen, Rollen und Single Sign-on verwalten",
+    "manageTeam": "Team verwalten"
   },
   "languages": {
     "en": "Englisch",
@@ -98,16 +112,26 @@
       "resume": "Lebenslauf",
       "jobs": "Jobs",
       "settings": "Einstellungen",
-      "goals": "Ziele"
+      "goals": "Ziele",
+      "coverLetters": "Anschreiben",
+      "analytics": "Auswertung",
+      "teams": "Teams",
+      "help": "Hilfe",
+      "more": "Mehr"
     },
     "signedInAs": "Angemeldet als {email}",
     "signIn": "Anmelden",
-    "help": "Hilfe & Support"
+    "help": "Hilfe & Support",
+    "sections": {
+      "prepare": "Vorbereitung",
+      "progress": "Fortschritt"
+    },
+    "close": "Schließen"
   },
   "RequireAuth": {
     "loading": "Wird geladen …",
     "title": "Du bist abgemeldet",
-    "description": "Melde dich an, um weiterzumachen.",
+    "description": "Melde dich an, um weiterzumachen",
     "signIn": "Anmelden",
     "home": "Zurück zur Startseite"
   },
@@ -177,7 +201,7 @@
   },
   "Auth": {
     "home": "Zurück zur Startseite",
-    "tagline": "Zwei Stimmen. Eine Antwort auf dem Bildschirm, bevor du sie brauchst.",
+    "tagline": "Zwei Stimmen. Eine Antwort auf dem Bildschirm, bevor du sie brauchst",
     "interviewer": "Interviewer",
     "you": "Du",
     "account": "Konto",
@@ -188,7 +212,7 @@
     "email": "E-Mail",
     "workEmail": "Geschäftliche E-Mail",
     "password": "Passwort",
-    "passwordHelp": "Mindestens 8 Zeichen.",
+    "passwordHelp": "Mindestens 8 Zeichen",
     "forgot": "Passwort vergessen?",
     "useSso": "Single Sign-on (SSO) verwenden",
     "backToSignIn": "Zurück zur Anmeldung",
@@ -201,10 +225,10 @@
       "forgot": "Passwort zurücksetzen"
     },
     "subtitle": {
-      "login": "Willkommen zurück.",
-      "signup": "Kostenlos starten, mit 10 Minuten Live-Hilfe pro Monat.",
-      "sso": "Für Teams, die sich über ihr Unternehmen anmelden (Okta, Microsoft Entra, Google Workspace …).",
-      "forgot": "Wir schicken dir einen Link, um ein neues Passwort festzulegen."
+      "login": "Mit E-Mail und Passwort, Google oder Single Sign-on",
+      "signup": "Kostenlos starten, mit 10 Minuten Live-Hilfe pro Monat",
+      "sso": "Für Teams, die sich über ihr Unternehmen anmelden (Okta, Microsoft Entra, Google Workspace …)",
+      "forgot": "Wir schicken dir einen Link, um ein neues Passwort festzulegen"
     },
     "submit": {
       "login": "Anmelden",
@@ -235,8 +259,8 @@
   },
   "ResetPassword": {
     "title": "Neues Passwort festlegen",
-    "subtitle": "Du bleibst auf diesem Gerät angemeldet.",
-    "expired": "Dieser Link ist abgelaufen oder wurde schon verwendet.",
+    "subtitle": "Du bleibst auf diesem Gerät angemeldet",
+    "expired": "Dieser Link ist abgelaufen oder wurde schon verwendet",
     "requestNew": "Neuen Link senden",
     "newPassword": "Neues Passwort",
     "confirm": "Neues Passwort wiederholen",
@@ -280,7 +304,10 @@
       "waiting_user": "Wartet auf dich",
       "resolved": "Gelöst",
       "closed": "Geschlossen"
-    }
+    },
+    "newRequest": "Neue Anfrage",
+    "closedNote": "Diese Anfrage ist geschlossen. Stell eine neue, wenn du noch Hilfe brauchst.",
+    "opened": "Geöffnet am {date}"
   },
   "Notifications": {
     "resumeReady": {
@@ -357,7 +384,7 @@
     "showArchived": "Archivierte anzeigen",
     "showActive": "Aktive anzeigen",
     "empty": "Noch keine Ziele. Leg für jede Stelle, für die du Interviews hast, eines an.",
-    "noArchived": "Nichts archiviert.",
+    "noArchived": "Nichts archiviert",
     "untitled": "Ziel ohne Titel",
     "noRole": "Noch keine Rolle",
     "resume": "Lebenslauf",
@@ -391,7 +418,7 @@
     "cancel": "Abbrechen",
     "save": "Speichern",
     "saving": "Wird gespeichert …",
-    "saved": "Gespeichert.",
+    "saved": "Gespeichert",
     "saveFailed": "Nicht gespeichert. Versuche es erneut.",
     "rounds": {
       "screen": "Recruiter- oder Telefon-Screening",
@@ -411,9 +438,9 @@
     "fileHelp": "PDF, Word, Text oder Markdown, bis 5 MB. Nur der Text wird gespeichert.",
     "content": "Text",
     "untitledMaterial": "Unterlage ohne Titel",
-    "materialAdded": "Hinzugefügt.",
+    "materialAdded": "Hinzugefügt",
     "yourMaterials": "Deine Unterlagen",
-    "noMaterialsYet": "Hier ist noch nichts.",
+    "noMaterialsYet": "Noch keine Unterlagen. Füge welche hinzu, dann kann der Copilot in einer Live-Session daraus zitieren.",
     "words": "{count, plural, one {# Wort} other {# Wörter}}",
     "usedBy": "{count, plural, =0 {in keinem Ziel} one {in # Ziel} other {in # Zielen}}",
     "confirmDeleteMaterial": "„{title}“ löschen?",
@@ -441,7 +468,7 @@
     "examplePlaybookName": "Ruhig und konkret",
     "examplePlaybook": "Beginne mit einem Satz, den ich sofort sagen kann.\nSag „ich“, nicht „wir“, und nenne, was ich selbst entschieden habe.\nNenne pro Beispiel eine Zahl, wenn ich eine habe.\nHalte Verhaltensantworten bei Situation, Handlung, Ergebnis.\nSprich bei technischen Fragen den Kompromiss aus, bevor es ins Detail geht.",
     "yourPlaybooks": "Deine Leitfäden",
-    "noPlaybooks": "Noch keine Leitfäden.",
+    "noPlaybooks": "Noch keine Leitfäden. Fang mit dem Beispiel an, wenn du nicht weißt, was du schreiben sollst.",
     "confirmDeletePlaybook": "Den Leitfaden „{name}“ löschen?",
     "memoryTitle": "Gedächtnis",
     "memoryHelp": "Fakten über dich, die der Copilot zwischen Sessions behält, etwa ein Projekt, das du erwähnt hast, oder wie viele Leute du geführt hast. Er nutzt sie nur, wenn sie zu einer Frage passen.",
@@ -455,19 +482,22 @@
     "whatIKnow": "Was sich der Copilot merkt",
     "forgetAll": "Alles vergessen",
     "confirmForgetAll": "Alles vergessen, was sich der Copilot über dich gemerkt hat?",
-    "noMemories": "Noch nichts.",
+    "noMemories": "Noch nichts gemerkt. Füge hier etwas hinzu oder lass den Copilot aus deinen Live-Sessions lernen.",
     "learnedInSession": "Aus einer Session",
     "addedByYou": "Von dir hinzugefügt",
-    "forget": "Vergessen"
+    "forget": "Vergessen",
+    "close": "Schließen",
+    "roleAt": "{role} bei {company}",
+    "editPlaybook": "Leitfaden bearbeiten"
   },
   "SessionSetup": {
     "label": "Session einrichten",
     "title": "Richte dein Interview ein",
-    "intro": "Alles hier ist optional. Je mehr Kontext du gibst, desto mehr klingen die Antworten nach dir: Sie nutzen nur Fakten aus deinem Lebenslauf und deinen Unterlagen.",
+    "intro": "Optional. Je mehr du ergänzt, desto mehr klingen die Antworten nach dir. Sie nutzen nur Fakten aus deinem Lebenslauf und deinen Unterlagen.",
     "goal": "Ziel",
     "loading": "Wird geladen …",
     "noGoal": "Kein Ziel: manuell einrichten",
-    "goalHelp": "Die Unterlagen, der Leitfaden und die Erinnerungen des Ziels werden übernommen. Die Felder unten kannst du für diese Session trotzdem ändern.",
+    "goalHelp": "Seine Unterlagen, sein Leitfaden und seine Erinnerungen werden übernommen. Ändere, was du willst, nur für diese Session.",
     "noGoalHelp": "Speichere ein Ziel pro Stelle, um schneller zu starten und deine Unterlagen mitzunehmen.",
     "manageGoals": "Ziele verwalten",
     "stepInterview": "Das Interview",
@@ -493,9 +523,9 @@
     "meetingLinkFound": "{app}-Meeting. „Zuhören starten“ zeigt dir, wie du es teilst.",
     "meetingLinkOther": "Kein Zoom-, Meet- oder Teams-Link: Es gelten die allgemeinen Schritte zum Teilen.",
     "meetingLinkInvalid": "Das sieht nicht nach einem Link aus.",
-    "singleMic": "Am Telefon oder vor Ort.",
+    "singleMic": "Am Telefon oder vor Ort",
     "singleMicHelp": "Ein Mikrofon hört euch beide (Lautsprecher oder derselbe Raum). Die Stimmen werden anhand einer kurzen Probe deiner Stimme unterschieden.",
-    "hintsOnly": "Nur Hinweise.",
+    "hintsOnly": "Nur Hinweise",
     "hintsOnlyHelp": "Zeigt Ansatz, Komplexität und Hinweise, aber nie eine vollständige Lösung.",
     "stepResume": "Dein Lebenslauf",
     "resume": "Lebenslauf",
@@ -528,13 +558,25 @@
     "next": "Danach: Teile den Meeting-Tab mit Ton und löse dann das Antwortfenster heraus.",
     "nextAuto": "Beim Start der Session wirst du sofort gebeten, das Meeting zu teilen (Einstellungen → Meeting-Apps).",
     "playbook": "Leitfaden",
-    "goalPlaybook": "Der Leitfaden des Ziels"
+    "summaryLabel": "Details des Ziels",
+    "round": "Runde",
+    "materials": "Unterlagen",
+    "notSet": "Nicht angegeben",
+    "editForSession": "Für diese Session bearbeiten",
+    "fromGoal": "{name} (aus dem Ziel)",
+    "rounds": {
+      "screen": "Recruiter- oder Telefon-Screening",
+      "behavioral": "Verhaltensinterview",
+      "technical": "Technisch",
+      "system_design": "Systemdesign",
+      "final": "Finale Runde",
+      "other": "Beliebige Runde"
+    }
   },
   "LivePage": {
     "title": "Live-Copilot",
-    "beta": "Beta",
     "offTitle": "Der Live-Copilot ist ausgeschaltet",
-    "offHelp": "Setze <code>NEXT_PUBLIC_BETA_LIVE_COPILOT=true</code>, um ihn in dieser Umgebung einzuschalten."
+    "offHelp": "Diese Website hat ihn ausgeschaltet. Bitte die Person, die sie betreibt, ihn wieder einzuschalten."
   },
   "AnswerPanel": {
     "windowTitle": "Apex Round · Antworten",
@@ -607,7 +649,9 @@
       "invalid_image": "Die Bildschirmaufnahme konnte nicht gelesen werden.",
       "answer_failed": "Die Antwort konnte nicht erstellt werden. Versuche „Jetzt antworten“ erneut.",
       "unknown": "Keine Antwort erhalten. Versuche „Jetzt antworten“ erneut."
-    }
+    },
+    "emptyNotListening": "Starte das Zuhören, dann werden Fragen erkannt, während sie gestellt werden.",
+    "controls": "Antwortsteuerung"
   },
   "AudioSources": {
     "title": "Audioquellen",
@@ -628,15 +672,15 @@
     "start": "Zuhören starten",
     "starting": "Wird gestartet …",
     "stop": "Zuhören beenden",
-    "desktopHelp": "Die Desktop-App hört alles, was dein PC abspielt, daher funktionieren auch Meeting-Apps wie Zoom und Teams, und sie liest deinen Hauptbildschirm für „Bildschirm lösen“. Trag Kopfhörer, damit deine Lautsprecher nicht ins Mikrofon zurückkoppeln.",
+    "desktopHelp": "Die Desktop-App hört alles, was dein PC abspielt, daher funktionieren auch Meeting-Apps wie Zoom und Teams, und „Bildschirm lösen“ liest den Bildschirm, den du in den Einstellungen auswählst. Trag Kopfhörer, damit deine Lautsprecher nicht ins Mikrofon zurückkoppeln.",
     "openMeeting": "Meeting in neuem Tab öffnen",
     "roomHelp": "Stell dein Telefon auf Lautsprecher neben diesen Computer oder setz dich so, dass sein Mikrofon euch beide hört. Von deinem Bildschirm wird nichts geteilt.",
     "captions": "Live-Untertitel",
     "interviewer": "Interviewer",
     "you": "Du",
-    "interviewerMeter": "Interviewer (geteiltes Audio)",
-    "youMeter": "Du (Mikrofon)",
-    "roomMeter": "Mikrofon (ihr beide)",
+    "interviewerMeter": "Interviewer",
+    "youMeter": "Du",
+    "roomMeter": "Ihr beide",
     "hearing": "Audio erkannt",
     "quiet": "Still",
     "levelLabel": "Pegel: {label}",
@@ -675,7 +719,10 @@
       "rateLimited": "Zu viele Verbindungsversuche in einer Minute; kurz warten vor dem nächsten Versuch.",
       "upstreamFailed": "Der Transkriptionsdienst hat den Stream abgebrochen. Neue Verbindung …",
       "unreachable": "Der Transkriptionsserver ist nicht erreichbar. Neue Verbindung …"
-    }
+    },
+    "shareHelpToggle": "So teilst du den Meeting-Ton",
+    "desktopHelpToggle": "So hört die Desktop-App zu",
+    "roomHelpToggle": "So richtest du den Raum ein"
   },
   "Practice": {
     "types": {
@@ -726,13 +773,13 @@
       "rolePlaceholder": "z. B. Senior Product Manager",
       "company": "Unternehmen (optional)",
       "companyPlaceholder": "z. B. Acme",
-      "fromBank": "Mit Fragen aus der Fragensammlung von {company} beginnen ({count}).",
-      "fromBankHelp": "Fragen aus echten Interviews kommen zuerst; den Rest schreibt die KI.",
+      "fromBank": "Mit Fragen aus der Fragensammlung von {company} beginnen",
+      "fromBankHelp": "{count, plural, one {Sie enthält # Frage.} other {Sie enthält # Fragen.}} Fragen aus echten Interviews kommen zuerst; den Rest schreibt die KI.",
       "type": "Interviewart",
       "difficulty": "Schwierigkeit",
       "length": "Länge",
       "lengthOption": "{count} Fragen",
-      "followUps": "Nachfragen.",
+      "followUps": "Nachfragen",
       "followUpsHelp": "Nach einer Antwort kann der Interviewer bei etwas nachhaken, das du gesagt hast – wie echte Interviewer.",
       "resume": "Lebenslauf (optional)",
       "none": "Keiner",
@@ -742,7 +789,8 @@
       "jobPlaceholder": "Füge die Anzeige ein, um Fragen dazu zu bekommen, was dieses Team braucht.",
       "start": "Interview starten",
       "starting": "Deine Fragen werden geschrieben …",
-      "startFailed": "Das Interview konnte nicht starten. Versuche es erneut."
+      "startFailed": "Das Interview konnte nicht starten. Versuche es erneut.",
+      "summary": "{count, plural, one {# Frage} other {# Fragen}} · {type} · {difficulty}"
     },
     "interview": {
       "questions": "Fragen",
@@ -777,14 +825,17 @@
       "answerFollowUp": "Nachfrage beantworten",
       "next": "Nächste Frage",
       "finish": "Beenden und Bericht ansehen",
-      "finishing": "Dein Bericht wird geschrieben …"
+      "finishing": "Dein Bericht wird geschrieben …",
+      "railQuestion": "Frage {n}",
+      "stepScore": "{score}/10"
     },
     "feedback": {
       "label": "Feedback zu deiner Antwort",
       "worked": "Was gut war",
       "improve": "Zu verbessern",
       "stronger": "Eine stärkere Antwort würde enthalten",
-      "yourAnswer": "Deine Antwort"
+      "yourAnswer": "Deine Antwort",
+      "outOf": "/10"
     },
     "report": {
       "overall": "Gesamtergebnis",
@@ -796,9 +847,11 @@
       "toWorkOn": "Daran arbeiten",
       "nextSteps": "Nächste Schritte",
       "eachAnswer": "Jede Antwort",
-      "notAnswered": "Nicht beantwortet.",
+      "notAnswered": "Nicht beantwortet",
       "export": "Exportieren",
-      "again": "Erneut üben"
+      "again": "Erneut üben",
+      "evidence": "Beobachtung",
+      "change": "Was du ändern kannst"
     }
   },
   "PracticePages": {
@@ -809,12 +862,24 @@
     "new": "Neues Übungsinterview",
     "listTitle": "Deine Übungsinterviews",
     "listDesc": "Beantworte Interviewfragen und lies dann die Bewertung und das Feedback zu jeder Session.",
-    "empty": "Noch keine Übungsinterviews. Starte eines, um Bewertung und Feedback zu bekommen.",
+    "empty": "Ein Interviewer stellt dir laut Fragen zu deiner Stelle, bewertet dann jede Antwort und sagt dir, was du ändern kannst.",
     "score": "{score}/100",
     "status": {
       "draft": "Nicht begonnen",
       "in_progress": "Läuft",
       "completed": "Abgeschlossen"
+    },
+    "trendTitle": "Letzte Bewertung",
+    "trendChart": "Gesamtbewertung {count, plural, one {deines letzten abgeschlossenen Übungsinterviews} other {deiner letzten # abgeschlossenen Übungsinterviews}}, das älteste zuerst",
+    "changeUp": "+{delta} gegenüber dem vorherigen",
+    "changeDown": "−{delta} gegenüber dem vorherigen",
+    "changeSame": "Gleich wie beim vorherigen",
+    "firstScore": "Dein erstes bewertetes Interview",
+    "columns": {
+      "interview": "Interview",
+      "status": "Status",
+      "score": "Bewertung",
+      "date": "Datum"
     }
   },
   "QuestionBank": {
@@ -822,13 +887,13 @@
     "findTitle": "Fragen nach Unternehmen",
     "findDesc": "Fragen, die bei einem Unternehmen gestellt wurden: die aus deinen Übungsinterviews, die aus deinen echten Interviews und die, die andere Bewerber teilen wollten. Es ist nie zu sehen, wer eine Frage geteilt hat.",
     "company": "Unternehmen",
-    "companyPlaceholder": "Unternehmen suchen oder eingeben, z. B. Acme",
+    "companyPlaceholder": "Unternehmen suchen",
     "open": "Öffnen",
     "companies": "Unternehmen mit Fragen",
     "companyCount": "{count, plural, one {# Frage} other {# Fragen}}",
     "noCompanies": "Für dieses Unternehmen gibt es noch keine Sammlung. Öffne sie, um die erste Frage hinzuzufügen.",
     "loadFailed": "Die Fragen wurden nicht geladen. Versuche es erneut.",
-    "bankCount": "{count, plural, =0 {Noch keine Fragen.} one {# Frage.} other {# Fragen.}}",
+    "bankCount": "{count, plural, =0 {Noch keine Fragen} one {# Frage} other {# Fragen}}",
     "practice": "Diese Fragen üben",
     "mine": "Deine Fragen",
     "mineEmpty": "Noch keine. Übungsinterviews für dieses Unternehmen fügen ihre Fragen hier hinzu, und du kannst das auch.",
@@ -856,22 +921,25 @@
       "technical": "Technisch",
       "situational": "Situativ",
       "general": "Allgemein"
-    }
+    },
+    "shareLabel": "Mit anderen Bewerbern teilen",
+    "allCompanies": "Alle Unternehmen",
+    "loading": "Wird geladen…"
   },
   "ProfileSettings": {
     "title": "Profil",
-    "desc": "Dein Name, die Rollen, die du anstrebst, und deine Zeitzone.",
+    "desc": "Dein Name und die Rollen, die du anstrebst",
     "loading": "Profil wird geladen …",
     "loadFailed": "Dein Profil wurde nicht geladen. Lade die Seite neu.",
     "saveFailed": "Dein Profil wurde nicht gespeichert. Versuche es erneut.",
     "email": "E-Mail",
-    "emailHelp": "Deine Anmelde-E-Mail kann hier nicht geändert werden.",
+    "emailHelp": "Deine Anmelde-E-Mail kann hier nicht geändert werden",
     "fullName": "Vollständiger Name",
     "fullNamePlaceholder": "Gib deinen vollständigen Namen ein",
     "avatar": "URL des Profilbilds",
     "avatarPreview": "Vorschau des Profilbilds",
     "targetRoles": "Zielrollen",
-    "targetRolesHelp": "Wähle die Rollen, die du anstrebst (bis zu {max}).",
+    "targetRolesHelp": "Wähle bis zu {max}",
     "roles": {
       "frontend": "Frontend-Entwickler",
       "backend": "Backend-Entwickler",
@@ -888,14 +956,15 @@
     },
     "customRole": "Weitere Rolle hinzufügen",
     "add": "Hinzufügen",
-    "selected": "Ausgewählt: {count}/{max}",
+    "selected": "{count} von {max}",
     "removeRole": "{role} entfernen",
     "timezone": "Zeitzone",
-    "timezoneHelp": "Erinnerungen und die wöchentliche Zusammenfassung nutzen diese Zeitzone. E-Mail- und Gerätebenachrichtigungen findest du unten unter Benachrichtigungseinstellungen.",
+    "timezoneHelp": "Erinnerungen und die wöchentliche Zusammenfassung nutzen diese Zeitzone",
     "saving": "Wird gespeichert …",
     "save": "Profil speichern",
-    "saved": "Profil gespeichert.",
-    "avatarPlaceholder": "https://example.com/avatar.jpg"
+    "saved": "Gespeichert",
+    "avatarPlaceholder": "https://example.com/avatar.jpg",
+    "timezoneFailed": "Die Zeitzone wurde nicht gespeichert. Versuche es erneut."
   },
   "SessionBar": {
     "label": "Live-Session",
@@ -915,7 +984,8 @@
       "disconnected": "Getrennt"
     },
     "stopping": "Wird beendet …",
-    "stop": "Session beenden"
+    "stop": "Session beenden",
+    "live": "Live"
   },
   "AutoEndNotice": {
     "message": "Das Teilen des Meeting-Tons wurde beendet. Diese Session endet in <strong>{time}</strong>, wenn du nicht wieder zuhörst.",
@@ -925,15 +995,15 @@
     "transcriptLabel": "Bereich für das Live-Transkript",
     "transcript": "Transkript",
     "lines": "{count, plural, one {# Zeile} other {# Zeilen}}",
-    "transcriptWaiting": "Warte auf das Transkript …",
-    "transcriptIdle": "Starte eine Session, um Transkriptzeilen zu erfassen.",
+    "transcriptWaiting": "Zeilen erscheinen hier, sobald gesprochen wird",
+    "transcriptIdle": "In dieser Session wurde nichts transkribiert",
     "interviewer": "Interviewer",
     "you": "Du",
     "answersLabel": "Bereich für Live-Vorschläge",
     "answers": "Antworten",
     "saved": "{count} gespeichert",
-    "answersWaiting": "Antworten werden hier gespeichert, sobald sie fertig geschrieben sind.",
-    "answersIdle": "Starte eine Session; Antworten auf Fragen des Interviewers werden hier gespeichert.",
+    "answersWaiting": "Fertige Antworten werden hier gespeichert",
+    "answersIdle": "In dieser Session wurden keine Antworten gespeichert",
     "complexity": "Komplexität:",
     "edgeCases": "Grenzfälle",
     "checklist": "Checkliste",
@@ -1056,12 +1126,7 @@
       "connecting": "Verbindet …"
     },
     "liveAssistance": "Live-Unterstützung",
-    "viewTabs": "Ansichten des Copilots",
     "views": "Copilot-Ansichten",
-    "liveTab": "Live",
-    "analyticsTab": "Auswertung",
-    "liveTabDesc": "Was gesagt wurde und die in dieser Session gespeicherten Antworten.",
-    "analyticsTabDesc": "Frühere Sessions, ihre Zahlen und ihre Berichte.",
     "layout": {
       "label": "Layout der Live-Ansicht",
       "title": "Transkript und Antworten",
@@ -1076,15 +1141,12 @@
       "building": "Stärken, Schwächen und nächste Schritte werden zusammengestellt …",
       "noStrengths": "Noch keine Stärken erkannt.",
       "noWeaknesses": "Noch keine Schwächen erkannt.",
-      "noNextSteps": "Noch keine nächsten Schritte erkannt."
+      "noNextSteps": "Noch keine nächsten Schritte erkannt.",
+      "again": "Neu erstellen"
     },
     "history": {
       "label": "Verlaufsansicht",
       "title": "Copilot-Verlauf",
-      "currentLines": "Aktuelle Transkriptzeilen",
-      "currentSuggestions": "Aktuelle Vorschläge",
-      "selectedLines": "Zeilen der gewählten Session",
-      "selectedTips": "Tipps der gewählten Session",
       "listLabel": "Liste der Sessions",
       "recent": "Letzte Sessions",
       "refresh": "Aktualisieren",
@@ -1094,10 +1156,10 @@
       "mode": "Modus",
       "allModes": "Alle Modi",
       "loading": "Session-Verlauf wird geladen …",
-      "empty": "Noch keine Copilot-Sessions. Führe eine Live-Session durch, um einen Verlauf aufzubauen.",
+      "empty": "Noch keine früheren Sessions. Sie erscheinen hier nach deiner ersten Live-Session.",
       "noMatches": "Keine Session passt zu deinen Filtern.",
       "detailLabel": "Details der Session",
-      "selectOne": "Wähle eine Session, um ihre Auswertung zu sehen.",
+      "selectOne": "Wähle eine Session, um Transkript, Antworten und Bericht zu sehen",
       "loadingDetail": "Details der Session werden geladen …",
       "retry": "Erneut laden",
       "deleting": "Wird gelöscht …",
@@ -1112,11 +1174,13 @@
       "recentSuggestions": "Letzte Vorschläge",
       "last5": "Letzte 5",
       "noTranscript": "Keine Transkriptereignisse erfasst.",
-      "noSuggestions": "Keine Vorschläge erfasst."
+      "noSuggestions": "Keine Vorschläge erfasst.",
+      "sectionTitle": "Frühere Sessions",
+      "sectionDesc": "Transkripte, Antworten und Berichte früherer Sessions und deine Copilot-Daten"
     },
     "data": {
       "label": "Auswertungseinstellungen des Live-Copilots",
-      "title": "Auswertungseinstellungen",
+      "title": "Deine Copilot-Daten",
       "desc": "Alle Copilot-Daten exportieren oder endgültig löschen",
       "exportTitle": "Datenexport",
       "exportDesc": "Lade einen JSON-Export aller deiner Copilot-Sessions, Transkriptereignisse und erstellten Zusammenfassungen herunter.",
@@ -1135,7 +1199,7 @@
       "live": "Live-Bericht",
       "legacy": "Ältere Zusammenfassung",
       "copied": "Kopiert",
-      "copy": "Bericht als JSON kopieren",
+      "copy": "Bericht kopieren",
       "loading": "Bericht wird geladen …",
       "none": "Für diese Session gibt es noch keinen Bericht.",
       "overall": "Gesamtbewertung",
@@ -1153,18 +1217,16 @@
     "composer": {
       "label": "Getippte Zeilen und Werkzeuge",
       "title": "Zeile eingeben",
-      "audioLive": "Audio aktiv",
-      "audioOff": "Audio aus",
-      "syncing": "Transkribiert …",
-      "synced": "Synchronisiert",
+      "syncing": "Zeilen werden gespeichert …",
+      "synced": "Zeilen gespeichert",
       "speaker": "Wer sagt die getippte Zeile",
       "candidate": "Kandidat",
       "sending": "Wird gesendet …",
       "send": "Zeile senden",
-      "filler": "10-Sekunden-Überbrückung einfügen",
+      "filler": "Satz zum Zeitgewinnen einfügen",
       "summarize": "Zusammenfassung erstellen",
       "placeholder": "Füge hier die letzte Frage oder Antwort ein",
-      "shortcuts": "Tastenkürzel: Strg/Cmd+Enter senden · Strg/Cmd+M Zuhören starten/beenden · Strg/Cmd+K zum Eingabefeld"
+      "shortcuts": "<kbd>Strg/Cmd Enter</kbd> senden · <kbd>Strg/Cmd M</kbd> Zuhören starten oder beenden · <kbd>Strg/Cmd K</kbd> Zeile eingeben · <kbd>A</kbd> jetzt antworten · <kbd>Esc</kbd> Antwort stoppen"
     },
     "diagnostics": {
       "summary": "<strong>Diagnose</strong>: Overlay-Steuerung und SLO-Einhaltung",
@@ -1194,6 +1256,14 @@
       "withinCount": "{within}/{total} innerhalb des SLO ({target})",
       "noSamples": "Noch keine Messwerte. Interagiere, um welche zu sammeln.",
       "recent": "Zuletzt:"
+    },
+    "dismissError": "Ausblenden",
+    "controlsLabel": "Session-Steuerung",
+    "lastSession": "Letzte Session: {title}",
+    "tools": {
+      "title": "Weitere Werkzeuge",
+      "composerDesc": "Tippe die Frage ein, wenn das Audio sie verpasst hat, oder ergänze, was du gesagt hast",
+      "summaryDesc": "Stärken, Schwächen und nächste Schritte aus dem bisherigen Transkript"
     }
   },
   "ShareSteps": {
@@ -1217,13 +1287,13 @@
       "ms_teams-browser": "Microsoft Teams im Browser",
       "ms_teams-app": "Microsoft-Teams-Desktop-App"
     },
-    "whereHelpAuto": "„Zuhören starten“ erklärt, wie du Meet, Zoom oder Teams im Browser teilst.",
-    "whereHelpApp": "„Zuhören starten“ bittet dich, deinen gesamten Bildschirm mit Systemaudio zu teilen – damit ist die {app}-App unter Windows abgedeckt.",
-    "whereHelpTab": "„Zuhören starten“ bittet dich, den {app}-Tab mit Ton zu teilen.",
+    "whereHelpAuto": "„Zuhören starten“ erklärt, wie du Meet, Zoom oder Teams im Browser teilst",
+    "whereHelpApp": "„Zuhören starten“ bittet dich, deinen gesamten Bildschirm mit Systemaudio zu teilen – damit ist die {app}-App unter Windows abgedeckt",
+    "whereHelpTab": "„Zuhören starten“ bittet dich, den {app}-Tab mit Ton zu teilen",
     "toggles": {
       "askForLink": {
         "label": "Beim Einrichten einer Session nach dem Meeting-Link fragen",
-        "help": "Der Copilot erkennt Zoom-, Meet- und Teams-Links, passt die Schritte zum Teilen an und öffnet das Meeting für dich."
+        "help": "Der Copilot erkennt Zoom-, Meet- und Teams-Links, passt die Schritte zum Teilen an und öffnet das Meeting für dich"
       },
       "autoStartListening": {
         "label": "Zuhören starten, sobald die Session beginnt",
@@ -1231,48 +1301,48 @@
       },
       "endWhenSharingStops": {
         "label": "Session beenden, wenn ich das Meeting nicht mehr teile",
-        "help": "Nach einem 2-minütigen Countdown, den du abbrechen kannst – damit eine vergessene Session keine Minuten verbraucht."
+        "help": "Nach einem 2-minütigen Countdown, den du abbrechen kannst – damit eine vergessene Session keine Minuten verbraucht"
       },
       "useMicrophone": {
         "label": "Auch mein Mikrofon verwenden",
         "help": "So hört der Copilot deine Seite und weiß, wann du zu antworten beginnst. Aus: Er hört nur den Interviewer."
       }
     },
-    "saved": "Gespeichert.",
+    "saved": "Gespeichert",
     "notSaved": "Nicht gespeichert. Versuche es erneut."
   },
   "AnswerModel": {
     "label": "Einstellungen des Antwortmodells",
     "title": "Antwortmodell",
-    "desc": "Das Modell, das deine Live-Antworten, das Übungsfeedback, Berichte und Anschreiben schreibt – und wie es schreibt.",
-    "unavailable": "Auf diesem Server ist noch kein KI-Anbieter eingerichtet, daher gibt es nichts auszuwählen.",
-    "answers": "Antworten",
+    "desc": "Das Modell, das deine Live-Antworten, das Übungsfeedback, Berichte und Anschreiben schreibt – und wie es schreibt",
+    "unavailable": "Auf diesem Server ist noch kein KI-Anbieter eingerichtet, daher gibt es nichts auszuwählen",
+    "answers": "Antwortmodell",
     "coding": "Coding, Systemdesign und „Bildschirm lösen“",
     "serverDefault": "Server-Standard ({model})",
     "sameAsAnswer": "Wie das Antwortmodell",
-    "chosenByServer": "Von diesem Server gewählt.",
-    "codingHelp": "Es muss für „Bildschirm lösen“ Bilder lesen können.",
+    "chosenByServer": "Von diesem Server gewählt",
+    "codingHelp": "Es muss für „Bildschirm lösen“ Bilder lesen können",
     "modelNotes": {
       "gpt-4o-mini": "Am schnellsten. Gut für die meisten gesprochenen Antworten.",
-      "gpt-4o": "Besser beim Denken und Coden, etwas langsamer.",
-      "claude-haiku-5-5": "Schnell, mit natürlicher Formulierung.",
-      "claude-sonnet-5-5": "Am stärksten bei Coding und Systemdesign, langsamer.",
-      "server": "Von diesem Server festgelegt."
+      "gpt-4o": "Besser beim Denken und Coden, etwas langsamer",
+      "claude-haiku-5-5": "Schnell, mit natürlicher Formulierung",
+      "claude-sonnet-5-5": "Am stärksten bei Coding und Systemdesign, langsamer",
+      "server": "Von diesem Server festgelegt"
     },
     "style": "Schreibstil (Live-Antworten)",
     "styleLabel": "Schreibstil",
     "styles": {
       "precise": {
         "label": "Präzise",
-        "note": "Bleibt nah an deinem Lebenslauf und der Frage."
+        "note": "Bleibt nah an deinem Lebenslauf und der Frage"
       },
       "balanced": {
         "label": "Ausgewogen",
-        "note": "Die Standardeinstellung."
+        "note": "Die Standardeinstellung"
       },
       "creative": {
         "label": "Kreativ",
-        "note": "Abwechslungsreichere Formulierungen."
+        "note": "Abwechslungsreichere Formulierungen"
       }
     },
     "length": "Antwortlänge (Live-Antworten)",
@@ -1283,57 +1353,59 @@
       "detailed": "Ausführlich"
     },
     "aboutWords": "etwa {words} Wörter",
-    "nextSession": "Eine Live-Session behält das Modell, mit dem sie gestartet ist; Änderungen gelten ab der nächsten.",
+    "nextSession": "Eine Live-Session behält das Modell, mit dem sie gestartet ist; Änderungen gelten ab der nächsten",
     "saving": "Wird gespeichert …",
     "save": "Speichern",
     "modelUnavailable": "Dieses Modell ist auf diesem Server nicht verfügbar.",
-    "saveFailed": "Speichern nicht möglich.",
+    "saveFailed": "Nicht gespeichert. Versuche es erneut.",
     "savedTitle": "Gespeichert",
     "savedBody": "Neue Live-Sessions, Übungen und Anschreiben verwenden diese Einstellungen.",
-    "notSavedTitle": "Nicht gespeichert"
+    "notSavedTitle": "Nicht gespeichert",
+    "saved": "Gespeichert"
   },
   "NotificationPreferences": {
     "title": "Benachrichtigungseinstellungen",
     "desc": "Worüber Apex Round dich informiert und wo. Team-Einladungen und Kontohinweise erscheinen immer unter der Glocke.",
     "loading": "Wird geladen …",
-    "inApp": "In der App (die Glocke)",
-    "byEmail": "Per E-Mail",
-    "sentTo": "Wird an {email} gesendet.",
-    "sentToAccount": "Wird an deine Anmeldeadresse gesendet.",
-    "emailUnconfigured": "E-Mail ist auf diesem Server noch nicht eingerichtet, daher wird vorerst nichts verschickt.",
+    "inApp": "In der App",
+    "byEmail": "E-Mail",
+    "sentTo": "E-Mails gehen an {email}",
+    "sentToAccount": "E-Mails gehen an deine Anmeldeadresse",
+    "emailUnconfigured": "E-Mail ist auf diesem Server noch nicht eingerichtet, daher wird vorerst nichts verschickt",
     "kinds": {
       "interview_reminders": {
         "label": "Interview-Erinnerungen",
-        "when": "Einen Tag und eine Stunde vor einem Interviewtermin, den du auf dem Job-Board einträgst."
+        "when": "Einen Tag und eine Stunde vor einem Interviewtermin, den du auf dem Job-Board einträgst"
       },
       "application_updates": {
         "label": "Nachfass-Erinnerungen",
-        "when": "Am Nachfassdatum, das du für einen Job einträgst."
+        "when": "Am Nachfassdatum, das du für einen Job einträgst"
       },
       "ai_suggestions": {
         "label": "KI-Vorschläge",
-        "when": "Wenn ein angepasster Lebenslauf fertig ist, und dein nächster Schritt nach einem Übungsinterview."
+        "when": "Wenn ein angepasster Lebenslauf fertig ist, und dein nächster Schritt nach einem Übungsinterview"
       }
     },
     "digest": "Wöchentliche Zusammenfassung",
-    "digestHelp": "Montagmorgen: deine Übungen, Live-Sessions und Bewerbungen der vergangenen Woche.",
+    "digestHelp": "Montagmorgen: deine Übungen, Live-Sessions und Bewerbungen der vergangenen Woche",
     "device": "Dieses Gerät",
     "push": {
       "checking": "Browser wird geprüft …",
-      "unsupported": "Dieser Browser kann keine Benachrichtigungen anzeigen.",
-      "unconfigured": "Gerätebenachrichtigungen sind auf diesem Server noch nicht eingerichtet.",
+      "unsupported": "Dieser Browser kann keine Benachrichtigungen anzeigen",
+      "unconfigured": "Gerätebenachrichtigungen sind auf diesem Server noch nicht eingerichtet",
       "blocked": "Benachrichtigungen sind für diese Website blockiert. Erlaube sie in den Website-Einstellungen deines Browsers und lade dann neu.",
-      "off": "In diesem Browser aus.",
-      "on": "An: Benachrichtigungen aus der App erscheinen auch auf diesem Gerät, selbst wenn Apex Round geschlossen ist."
+      "off": "In diesem Browser aus",
+      "on": "An: Benachrichtigungen aus der App erscheinen auch auf diesem Gerät, selbst wenn Apex Round geschlossen ist"
     },
     "working": "Läuft …",
     "pushOff": "Auf diesem Gerät ausschalten",
     "pushOn": "Auf diesem Gerät benachrichtigen",
     "pushFailed": "Gerätebenachrichtigungen konnten nicht eingeschaltet werden. Versuche es erneut.",
-    "saved": "Gespeichert.",
+    "saved": "Gespeichert",
     "notSaved": "Nicht gespeichert. Versuche es erneut.",
     "saving": "Wird gespeichert …",
-    "save": "Einstellungen speichern"
+    "save": "Einstellungen speichern",
+    "kind": "Benachrichtigung"
   },
   "AccountDeletion": {
     "title": "Konto löschen",
@@ -1378,7 +1450,8 @@
     "copilotToday": "Live-Copilot, heute",
     "smartMonth": "Smart-Modus, diesen Monat",
     "reviewsMonth": "Lebenslauf-Prüfungen, diesen Monat",
-    "proLimits": "Pro erhöht die Limits auf 400 Minuten pro Monat, 30-Minuten-Sessions, 45 Minuten pro Tag, 80 Minuten Smart-Modus und 10 Lebenslauf-Prüfungen pro Monat."
+    "proLimits": "Pro erhöht die Limits auf 400 Minuten pro Monat, 30-Minuten-Sessions, 45 Minuten pro Tag, 80 Minuten Smart-Modus und 10 Lebenslauf-Prüfungen pro Monat.",
+    "seePlans": "Tarife und Abrechnung"
   },
   "Billing": {
     "errors": {
@@ -1390,12 +1463,12 @@
     },
     "unreachable": "Die Abrechnung ist nicht erreichbar. Versuche es erneut.",
     "returned": {
-      "success": "Danke! Pro wird aktiviert; es kann ein paar Sekunden dauern, bis es hier erscheint. Lade sonst neu.",
+      "success": "Bezahlung abgeschlossen. Pro kann ein paar Sekunden brauchen, bis es hier erscheint; lade sonst neu.",
       "cancelled": "Der Bezahlvorgang wurde abgebrochen. Dir wurde nichts berechnet."
     },
     "opening": "Wird geöffnet …",
     "manage": "Abrechnung verwalten",
-    "manageHelp": "Karte ändern, Rechnungen ansehen oder kündigen.",
+    "manageHelp": "Karte ändern, Rechnungen ansehen oder kündigen",
     "payIn": "Bezahlen in",
     "currencies": {
       "usd": "US-Dollar ($)",
@@ -1403,14 +1476,31 @@
     },
     "openingCheckout": "Bezahlvorgang wird geöffnet …",
     "upgrade": "Auf Pro upgraden",
-    "checkoutHelp": "Sichere Bezahlung über Stripe; du siehst den Preis, bevor du zahlst."
+    "checkoutHelp": "Sichere Bezahlung über Stripe; du siehst den Preis, bevor du zahlst",
+    "plans": {
+      "free": "Kostenlos",
+      "pro": "Pro",
+      "tester": "Tester",
+      "team": "Team"
+    },
+    "proLimits": "Pro erhöht die Limits auf 400 Minuten pro Monat, 30-Minuten-Sessions, 45 Minuten pro Tag, 80 Minuten Smart-Modus und 10 Lebenslauf-Prüfungen pro Monat",
+    "loading": "Nutzung wird geladen …",
+    "usageLabel": "Nutzung in diesem Monat",
+    "usage": {
+      "perSession": "Pro Session",
+      "count": "{used} / {limit}",
+      "copilotMonth": "Live-Copilot diesen Monat",
+      "copilotToday": "Live-Copilot heute",
+      "smartMonth": "Smart-Modus diesen Monat",
+      "reviewsMonth": "Lebenslauf-Prüfungen diesen Monat",
+      "minutes": "{used} / {limit} Min."
+    },
+    "usageFailed": "Deine Nutzung wurde nicht geladen",
+    "planName": "Tarif {plan}"
   },
   "Home": {
     "title": "Start",
     "startLive": "Live-Session starten",
-    "heroTitle": "Bald ein Interview?",
-    "heroLead": "Füge deinen Lebenslauf und die Stelle hinzu, teile dein Meeting, und Antworten erscheinen, sobald die Fragen gestellt werden. Die Einrichtung dauert etwa zwei Minuten.",
-    "heroCta": "Live-Copilot einrichten",
     "practice": "Ein Interview üben",
     "practiceTitle": "Übungsinterviews",
     "allPractice": "Alle Übungen",
@@ -1449,6 +1539,67 @@
         "title": "Auswertung",
         "desc": "Deine Sessions im Zeitverlauf"
       }
+    },
+    "statLiveMinutes": "Live-Minuten diesen Monat",
+    "nextUp": {
+      "label": "Als Nächstes",
+      "roleAt": "{role} bei {company}",
+      "inStage": "In der Phase Interview, noch ohne Termin",
+      "noDate": "Noch kein Interviewtermin",
+      "startLive": "Live-Session starten",
+      "practice": "Dafür üben",
+      "readyTitle": "Schon bereit",
+      "resume": "Lebenslauf",
+      "resumeOn": "Lebenslauf: {name}",
+      "resumeOff": "Kein Lebenslauf in diesem Ziel",
+      "jobOn": "Stellenbeschreibung gespeichert",
+      "jobOff": "Noch keine Stellenbeschreibung",
+      "editGoal": "Ziel bearbeiten",
+      "noGoal": "Noch kein Ziel für diesen Job",
+      "noGoalHelp": "Ein Ziel hält deinen Lebenslauf und die Stellenbeschreibung für jede Live-Session und jedes Übungsinterview bereit.",
+      "makeGoal": "Ziel anlegen",
+      "setupTitle": "Mach dich bereit für dein nächstes Interview",
+      "setupLead": "Drei Schritte. Danach kommen die Antworten aus deinem eigenen Lebenslauf, während die Frage noch gestellt wird.",
+      "stepsLabel": "Schritte zur Vorbereitung",
+      "stepDone": "erledigt",
+      "steps": {
+        "resume": {
+          "title": "Lebenslauf hinzufügen",
+          "desc": "Antworten bauen auf deiner eigenen Erfahrung auf",
+          "action": "Lebenslauf hinzufügen"
+        },
+        "goal": {
+          "title": "Ziel speichern",
+          "desc": "Firma, Rolle und Stellenbeschreibung, bereit für jede Session",
+          "action": "Neues Ziel"
+        },
+        "live": {
+          "title": "Live-Session starten",
+          "desc": "Teile dein Meeting, und Antworten erscheinen, während du gefragt wirst",
+          "action": "Live-Session starten",
+          "done": "{count, plural, one {# Live-Session bisher} other {# Live-Sessions bisher}}"
+        }
+      }
+    },
+    "stats": {
+      "thisMonth": "{count, plural, =0 {Keine diesen Monat} other {+# diesen Monat}}",
+      "scoreChange": "{diff} Pkt. ggü. letztem Monat",
+      "scoreSame": "Wie im letzten Monat",
+      "scoreNew": "Erste Bewertungen diesen Monat",
+      "scoreNone": "Noch keine bewerteten Interviews",
+      "liveChange": "{diff} Min. ggü. demselben Zeitraum im Vormonat",
+      "liveSame": "Wie im selben Zeitraum im Vormonat"
+    },
+    "trend": {
+      "title": "Übungsbewertung",
+      "desc": "{count, plural, =0 {Aus den Berichten deiner Übungsinterviews} one {# bewertetes Übungsinterview} other {Die letzten # bewerteten Übungsinterviews}}",
+      "vsPrevious": "{diff} ggü. deinem vorigen Interview",
+      "samePrevious": "Wie dein voriges Interview",
+      "emptyNone": "Dein Verlauf erscheint nach zwei bewerteten Übungsinterviews.",
+      "emptyOne": "Bisher ein bewertetes Übungsinterview: {score} von 100. Der Verlauf beginnt mit dem zweiten.",
+      "practice": "Ein Interview üben",
+      "listLabel": "Übungsbewertungen, älteste zuerst",
+      "point": "{date}: {score} von 100"
     }
   },
   "Toast": {
@@ -1472,8 +1623,8 @@
     "badgeLabel": "Abzeichen: {badge}",
     "close": "Schließen",
     "awarded": "Erhalten: {date}",
-    "share": "Teile deinen Erfolg:",
-    "shareTitle": "Ich habe gerade das Abzeichen „{badge}“ bei Apex Round bekommen!",
+    "share": "Teilen",
+    "shareTitle": "Ich habe das Abzeichen „{badge}“ bei Apex Round bekommen",
     "shareSummary": "Sieh dir meinen Erfolg bei Apex Round an, der KI-App zur Vorbereitung auf Vorstellungsgespräche.",
     "kinds": {
       "first_interview": {
@@ -1566,9 +1717,9 @@
     "startFree": "Kostenlos starten",
     "startLive": "Live-Session starten",
     "getApp": "Windows-App holen",
-    "heroTitle": "Die Antwort, während die Frage noch im Raum steht.",
-    "heroLead": "Apex Round hört deinem Interview zu, erkennt jede Frage, sobald sie gestellt wird, und blendet eine vorgeschlagene Antwort ein – geschrieben auf Basis deines eigenen Lebenslaufs.",
-    "heroNote": "Im kostenlosen Tarif sind 10 Minuten Live-Hilfe pro Monat enthalten. Keine Karte nötig.",
+    "heroTitle": "Die Antwort, während die Frage noch im Raum steht",
+    "heroLead": "Apex Round hört deinem Interview zu, erkennt jede Frage, sobald sie gestellt wird, und blendet eine vorgeschlagene Antwort ein – geschrieben auf Basis deines eigenen Lebenslaufs",
+    "heroNote": "Im kostenlosen Tarif: 10 Minuten Live-Hilfe pro Monat, keine Karte nötig",
     "demo": {
       "label": "Beispiel: eine Frage und die vorgeschlagene Antwort",
       "interviewer": "Interviewer",
@@ -1576,35 +1727,39 @@
       "category": "Systemdesign",
       "timing": "Erste Wörter nach 0,6 s",
       "lead": "Ich würde pro API-Schlüssel einen Token Bucket vor den Dienst setzen, gestützt auf Redis, damit jeder Knoten dieselben Zähler sieht.",
-      "point1": "Limits pro Schlüssel und pro Route, mit Spielraum für Lastspitzen.",
-      "point2": "429 mit Retry-After, damit Clients sauber zurückfahren.",
-      "point3": "Abwägung: ein Redis-Roundtrip pro Anfrage – bei hohem Volumen also bündeln oder lokal cachen."
+      "point1": "Limits pro Schlüssel und pro Route, mit Spielraum für Lastspitzen",
+      "point2": "429 mit Retry-After, damit Clients sauber zurückfahren",
+      "point3": "Bei Ledgerly habe ich das für 2.400 Partner-Schlüssel umgesetzt, mit unter 3 ms Aufschlag im p99",
+      "speaker": "Dana Whitfield",
+      "initials": "DW",
+      "you": "Du",
+      "source": "Aus deinem Lebenslauf: Ledgerly, Leitung API-Plattform, 2021–2024"
     },
     "howTitle": "Vom Betreten des Calls bis zur ersten Antwort in vier Schritten",
     "steps": {
       "context": {
         "title": "Lebenslauf und Stelle hinzufügen",
-        "body": "Antworten nutzen nur Fakten aus dem, was du angibst."
+        "body": "Antworten nutzen nur Fakten aus dem, was du angibst"
       },
       "share": {
         "title": "Meeting teilen",
-        "body": "Ein Meet-, Zoom- oder Teams-Tab in Chrome oder jede Meeting-App mit der Windows-App. Am Telefon oder vor Ort reicht ein Mikrofon."
+        "body": "Ein Meet-, Zoom- oder Teams-Tab in Chrome, jede Meeting-App mit der Windows-App oder ein Mikrofon am Telefon und vor Ort"
       },
       "pickUp": {
         "title": "Fragen werden erkannt",
-        "body": "Small Talk wird ignoriert. Wird eine Frage verpasst, drück A."
+        "body": "Small Talk wird ignoriert, und wird eine Frage verpasst, drück <kbd>A</kbd>"
       },
       "say": {
         "title": "Lesen, dann mit eigenen Worten sagen",
-        "body": "Ein Einstiegssatz und ein paar Punkte, die du abdecken solltest, in einem Fenster, das im Vordergrund bleibt."
+        "body": "Ein Einstiegssatz und ein paar Punkte, die du abdecken solltest, in einem Fenster, das im Vordergrund bleibt"
       }
     },
-    "screenTitle": "Coding-Runde? Lös den Bildschirm.",
-    "screenLead": "Drück S, und Apex Round liest die Aufgabe im geteilten Tab, erklärt einen Ansatz, schreibt den Code in der Sprache auf dem Bildschirm und nennt die Komplexität. Screenshots werden nie gespeichert.",
-    "demoCode": "def top_k_frequent(nums, k):\n    counts = Counter(nums)\n    return [n for n, _ in counts.most_common(k)]\n\n# Zeit O(n log k), Speicher O(n)",
-    "desktopTitle": "Für Desktop-Meeting-Apps nutzt du die Windows-App.",
-    "desktopLead": "Sie hört alles, was dein PC abspielt, also funktionieren auch die Zoom- und Teams-Apps – mit Tastenkürzeln, die auch greifen, wenn das Meeting im Fokus ist: <kbd>Strg</kbd>+<kbd>Umschalt</kbd>+<kbd>A</kbd> zum Antworten und <kbd>Strg</kbd>+<kbd>Umschalt</kbd>+<kbd>S</kbd> zum Lösen des Bildschirms.",
-    "desktopSoon": "Das Installationsprogramm kommt mit der ersten öffentlichen Version.",
+    "screenTitle": "Coding-Runde? Lös den Bildschirm",
+    "screenLead": "Drück <kbd>S</kbd>, und Apex Round liest die Aufgabe im geteilten Tab, erklärt einen Ansatz, schreibt den Code in der Sprache auf dem Bildschirm und nennt die Komplexität. Screenshots werden nie gespeichert.",
+    "demoCode": "from collections import Counter\n\ndef top_k_frequent(nums, k):\n    counts = Counter(nums)\n    return [n for n, _ in counts.most_common(k)]",
+    "desktopTitle": "Für Desktop-Meeting-Apps nutzt du die Windows-App",
+    "desktopLead": "Sie hört alles, was dein PC abspielt, also funktionieren auch die Zoom- und Teams-Apps. Ihre Tastenkürzel greifen auch, wenn das Meeting im Fokus ist.",
+    "desktopSoon": "Das Installationsprogramm kommt mit der ersten öffentlichen Version",
     "pricing": "Preise",
     "free": {
       "name": "Kostenlos",
@@ -1620,17 +1775,40 @@
       "cancel": "Jederzeit in den Einstellungen kündbar",
       "cta": "Pro holen"
     },
-    "footer": "Prüfe vor der Nutzung, was die Regeln deines Interviews zu externer Hilfe sagen."
+    "footer": "Prüfe vor der Nutzung, was die Regeln deines Interviews zu externer Hilfe sagen",
+    "menu": "Menü",
+    "closeMenu": "Menü schließen",
+    "screenDemo": {
+      "label": "Beispiel: eine Coding-Aufgabe, gelöst vom geteilten Bildschirm",
+      "problem": "Die k häufigsten Elemente",
+      "language": "Python",
+      "approach": "Jede Zahl einmal zählen, dann die k häufigsten mit einem Heap behalten",
+      "complexity": "Zeit O(n log k), Speicher O(n)"
+    },
+    "shortcuts": {
+      "answer": "Jetzt antworten",
+      "solve": "Bildschirm lösen",
+      "toggle": "Antwortfenster ein- oder ausblenden"
+    },
+    "keys": {
+      "ctrl": "Strg",
+      "shift": "Umschalt"
+    },
+    "desktopDemo": {
+      "label": "Das Antwortfenster der Windows-App, angeheftet über einem Meeting",
+      "window": "Meeting",
+      "pinned": "Immer im Vordergrund"
+    },
+    "pricingLead": "Starte kostenlos und wechsle, wenn du mehr Minuten brauchst"
   },
   "Onboarding": {
     "back": "Zurück",
     "continue": "Weiter",
-    "previous": "Vorherige",
     "next": "Nächste",
     "finishing": "Wird eingerichtet …",
     "finish": "Apex Round nutzen",
     "welcome": {
-      "title": "Willkommen bei Apex Round",
+      "title": "Apex Round einrichten",
       "desc": "Hilfe im Interview und Übung davor. Die Einrichtung dauert etwa zwei Minuten.",
       "practice": "Übungsinterviews mit Bewertung und Feedback",
       "resume": "Dein Lebenslauf, abgeglichen mit jeder Stelle",
@@ -1641,7 +1819,6 @@
     "plan": {
       "title": "Tarif wählen",
       "desc": "Starte kostenlos und upgrade, wenn du mehr Minuten brauchst. Bei Pro öffnet sich am Ende der Bezahlvorgang.",
-      "popular": "Am beliebtesten",
       "selected": "Ausgewählt",
       "select": "Auswählen",
       "free": {
@@ -1665,7 +1842,7 @@
     },
     "profile": {
       "title": "Über dich",
-      "desc": "Antworten und Übungsfragen werden auf die Rollen abgestimmt, die du hier auswählst.",
+      "desc": "Antworten und Übungsfragen werden auf die Rollen abgestimmt, die du hier auswählst",
       "name": "Vollständiger Name",
       "namePlaceholder": "Dein Name",
       "roles": "Rollen, die du anstrebst (mindestens eine wählen)",
@@ -1695,7 +1872,7 @@
     },
     "tutorial": {
       "title": "So funktioniert’s",
-      "desc": "Vier Dinge, die du mit Apex Round tun kannst.",
+      "desc": "Vier Dinge, die du mit Apex Round tun kannst",
       "practice": {
         "title": "Ein Interview üben",
         "desc": "Beantworte Verhaltens- oder Fachfragen laut und lies dann eine Bewertung und Notizen zu jeder Antwort."
@@ -1712,7 +1889,8 @@
         "title": "Lebenslauf schärfen",
         "desc": "Lade ihn einmal hoch und gleiche ihn dann mit jeder Stellenbeschreibung auf fehlende Schlüsselwörter ab."
       }
-    }
+    },
+    "stepOf": "Schritt {current} von {total}"
   },
   "Resume": {
     "errors": {
@@ -1776,7 +1954,7 @@
     "matchedLabel": "Gefundene Schlüsselwörter",
     "missing": "Fehlende Schlüsselwörter:",
     "missingLabel": "Fehlende Schlüsselwörter",
-    "suggestions": "Vorschläge:",
+    "suggestions": "Vorschläge",
     "keywordsTitle": "Schlüsselwörter aus der Stelle, die in deinem Lebenslauf fehlen",
     "keywordsNone": "Keine: Dein Lebenslauf deckt die Schlüsselwörter der Stelle bereits ab.",
     "keywordsHelp": "Füge nur die hinzu, die du mit echter Erfahrung belegen kannst.",
@@ -1788,10 +1966,10 @@
     "rewrite": "Stichpunkte umschreiben",
     "rewrittenHeading": "Umgeschriebene Stichpunkte",
     "analysisLabel": "Stichpunkt {n} von {total}",
-    "original": "Original:",
-    "rewritten": "Umgeschrieben:",
+    "original": "Original",
+    "rewritten": "Umgeschrieben",
     "bulletScoreLabel": "Bewertung {score} von 100",
-    "bulletScore": "Bewertung: {score}/100",
+    "bulletScore": "{score}/100",
     "issues": "Probleme: {issues}",
     "history": "Verlauf",
     "refreshLabel": "Verlauf aktualisieren",
@@ -1804,7 +1982,7 @@
     "downloadLabel": "{name} herunterladen",
     "download": "Herunterladen",
     "pdf": "PDF",
-    "noUploads": "Noch nichts hochgeladen.",
+    "noUploads": "Noch keine Lebensläufe. Lade eine PDF- oder Word-Datei hoch, um anzufangen.",
     "tailored": "Angepasste Versionen",
     "tailoredFallback": "Angepasster Lebenslauf",
     "statusWriting": "Wird geschrieben …",
@@ -1819,7 +1997,9 @@
     "copy": "Kopieren",
     "text": "Text",
     "delete": "Löschen",
-    "noTailored": "Noch keine angepassten Versionen. Wähle einen Lebenslauf, füge eine Stelle ein und wähle „Angepasste Version schreiben“."
+    "noTailored": "Noch keine angepassten Versionen. Wähle einen Lebenslauf, füge eine Stelle ein und wähle „Angepasste Version schreiben“.",
+    "outOf": "von 100",
+    "docScore": "{score} % Übereinstimmung"
   },
   "PageTitles": {
     "resume": "Lebenslauf",
@@ -1853,7 +2033,7 @@
     "failed": "Deine wöchentliche Aktivität wurde nicht geladen. Lade die Seite neu, um es erneut zu versuchen.",
     "loading": "Deine Wochen werden geladen …",
     "title": "Woche für Woche",
-    "desc": "Die letzten 8 Wochen. Hellere Zellen bedeuten mehr Aktivität in dieser Zeile.",
+    "desc": "Die letzten 8 Wochen, jeweils Montag bis Sonntag. Die laufende Woche ist hervorgehoben.",
     "empty": "In den letzten 8 Wochen noch nichts. Übungsinterviews, Live-Sessions und Bewerbungen erscheinen hier.",
     "activity": "Aktivität",
     "rows": {
@@ -1865,7 +2045,14 @@
     },
     "csv": {
       "week": "Woche ab"
-    }
+    },
+    "metricLabel": "Angezeigte Aktivität",
+    "metricEmpty": "Dazu gab es in den letzten 8 Wochen nichts.",
+    "thisWeek": "Diese Woche bisher",
+    "lastWeekValue": "{value} letzte Woche",
+    "table": "Als Tabelle anzeigen",
+    "weekOf": "Woche vom {date}",
+    "noScore": "Keine bewerteten Interviews"
   },
   "Funnel": {
     "failed": "Der Funnel wurde nicht geladen. Lade die Seite neu, um es erneut zu versuchen.",
@@ -1941,7 +2128,8 @@
     "resumed": "Fortgesetzt.",
     "deleted": "Gelöscht.",
     "sentTo": "An {email} gesendet.",
-    "sentToAccount": "An deine E-Mail-Adresse gesendet."
+    "sentToAccount": "An deine E-Mail-Adresse gesendet.",
+    "scheduledTitle": "Geplant"
   },
   "Overview": {
     "title": "Deine Aktivität",
@@ -2005,9 +2193,9 @@
       "warning": "Einige Abweichungen",
       "critical": "Zahlen stimmen nicht überein"
     },
-    "actual": "Aus Ereignissen gezählt:",
-    "expected": "In den Summen angezeigt:",
-    "difference": "Differenz:",
+    "actual": "Aus Ereignissen gezählt",
+    "expected": "In den Summen angezeigt",
+    "difference": "Differenz",
     "period": "Zeitraum: {start} – {end}",
     "lastChecked": "Zuletzt geprüft: {time}",
     "total": "Kennzahlen",
@@ -2073,7 +2261,8 @@
     "deleting": "Wird gelöscht …",
     "delete": "Löschen",
     "keep": "Behalten",
-    "deleteLetter": "Anschreiben löschen"
+    "deleteLetter": "Anschreiben löschen",
+    "unsaved": "Ungespeicherte Änderungen"
   },
   "Jobs": {
     "stages": {
@@ -2099,17 +2288,14 @@
     "loading": "Deine Jobs werden geladen …",
     "statsLabel": "Bewerbungsstatistik",
     "statApplications": "Bewerbungen",
-    "statInterviewing": "Im Interview",
-    "statOffers": "Angebote",
     "searchLabel": "Jobs durchsuchen und filtern",
     "searchPlaceholder": "Nach Unternehmen, Titel oder Notizen suchen",
     "searchHelp": "Filtert deine Jobs nach Unternehmen, Titel oder Notizen",
     "filterLabel": "Nach Phase filtern",
-    "all": "Alle ({count})",
+    "all": "Alle",
     "add": "Job hinzufügen",
-    "boardLabel": "Job-Board: Zieh einen Job in eine andere Spalte, um seine Phase zu ändern",
+    "boardLabel": "Job-Board. Zieh einen Job in eine andere Spalte oder verschieb ihn über sein Menü.",
     "columnLabel": "{stage}: {count, plural, one {# Job} other {# Jobs}}",
-    "cardLabel": "{title} bei {company}. In eine andere Phase ziehen.",
     "goalHelp": "Ein Ziel für diesen Job anlegen",
     "goal": "Ziel",
     "editLabel": "{title} bei {company} bearbeiten: Termine, Notizen und Link",
@@ -2120,7 +2306,6 @@
     "followUpOn": "Nachfassen: {when}",
     "appliedOn": "Beworben: {date}",
     "addedOn": "Hinzugefügt: {date}",
-    "emptyColumn": "Noch nichts hier",
     "noMatches": "Keine passenden Jobs",
     "editTitle": "Job bearbeiten",
     "close": "Dialog schließen",
@@ -2138,7 +2323,18 @@
     "notesPlaceholder": "Ansprechperson, Gehaltsspanne, nächste Schritte …",
     "cancel": "Abbrechen",
     "save": "Speichern",
-    "addJob": "Job hinzufügen"
+    "addJob": "Job hinzufügen",
+    "search": "Jobs durchsuchen",
+    "summaryJobs": "<n>{count}</n> {count, plural, one {Job} other {Jobs}}",
+    "summaryInterviewing": "<n>{count}</n> im Interview",
+    "summaryOffers": "<n>{count}</n> {count, plural, one {Angebot} other {Angebote}}",
+    "actionsLabel": "Aktionen für {title} bei {company}",
+    "makeGoal": "Ziel anlegen",
+    "moveTo": "Verschieben nach",
+    "followUpOverdue": "Nachfassen überfällig: {when}",
+    "stageEmpty": "Keine Jobs in {stage}",
+    "firstRun": "Füg die Stellen hinzu, die du anstrebst, und schieb jede von Gespeichert bis Angebot weiter, während du dich bewirbst und Interviews führst.",
+    "confirmDelete": "{title} bei {company} löschen? Notizen und Termine werden mitgelöscht."
   },
   "Teams": {
     "errors": {
@@ -2223,12 +2419,12 @@
     "namePlaceholder": "z. B. Acme Engineering",
     "address": "Teamadresse",
     "addressPlaceholder": "acme-engineering",
-    "addressHelp": "Kleinbuchstaben, Ziffern und Bindestriche.",
+    "addressHelp": "Kleinbuchstaben, Ziffern und Bindestriche",
     "planLabel": "Tarif",
     "saved": "Gespeichert",
     "saving": "Wird gespeichert …",
     "saveName": "Namen speichern",
-    "ownerOnly": "Nur der Inhaber des Teams kann das ändern.",
+    "ownerOnly": "Nur der Inhaber des Teams kann das ändern",
     "emailPlaceholder": "name@firma.de",
     "roleAdminHelp": "Admin (kann Mitglieder verwalten)",
     "roleViewerHelp": "Betrachter (nur lesen)",
@@ -2272,12 +2468,26 @@
       "metadataXmlLabel": "Metadaten-XML des Identitätsanbieters",
       "metadataUrlPlaceholder": "https://acme.okta.com/app/…/sso/saml/metadata",
       "metadataXmlPlaceholder": "'<'EntityDescriptor …>",
-      "separateAccounts": "Über Single Sign-on erstellte Konten sind getrennt von Passwortkonten mit derselben E-Mail-Adresse.",
+      "separateAccounts": "Über Single Sign-on erstellte Konten sind getrennt von Passwortkonten mit derselben E-Mail-Adresse",
       "turnOff": "Ausschalten",
       "save": "Änderungen speichern",
       "turnOn": "Single Sign-on einschalten",
-      "ownerOnly": "Nur der Inhaber des Teams kann Single Sign-on ändern."
-    }
+      "ownerOnly": "Nur der Inhaber des Teams kann Single Sign-on ändern",
+      "turnOffTitle": "Single Sign-on ausschalten",
+      "turnOffHelp": "Mitglieder können sich dann nicht mehr über deinen Identitätsanbieter anmelden",
+      "confirmOff": "Single Sign-on für {team} ausschalten? Mitglieder können sich dann nicht mehr über deinen Identitätsanbieter anmelden."
+    },
+    "sending": "Wird gesendet …",
+    "joinedOn": "Beigetreten am {date}",
+    "expiresOn": "Läuft am {date} ab",
+    "removeMember": "{member} entfernen",
+    "cancelInvitation": "Einladung an {email} zurückziehen",
+    "dangerZone": "Gefahrenbereich",
+    "deleteTeam": "Team löschen",
+    "deletingTeam": "Wird gelöscht …",
+    "deleteTeamHelp": "Löscht das Team, den Zugriff seiner Mitglieder und seine Einladungen. Alle behalten ihr eigenes Konto",
+    "confirmDeleteTeam": "{team} löschen? Die Mitglieder verlieren den Zugriff auf das Team und seine Einladungen funktionieren nicht mehr. Das lässt sich nicht rückgängig machen.",
+    "deleteTeamFailed": "Das Team konnte nicht gelöscht werden. Versuch es noch einmal"
   },
   "JoinTeam": {
     "roles": {
@@ -2304,7 +2514,9 @@
     "signedInAs": "Du bist als {email} angemeldet.",
     "joining": "Wird beigetreten …",
     "declining": "Wird abgelehnt …",
-    "decline": "Ablehnen"
+    "decline": "Ablehnen",
+    "openTeams": "Teams öffnen",
+    "goHome": "Zu Apex Round"
   },
   "Admin": {
     "tabs": {
@@ -2352,20 +2564,20 @@
       "actions": "Aktionen"
     },
     "values": {
-      "active": "aktiv",
-      "canceled": "gekündigt",
-      "past_due": "überfällig",
+      "active": "Aktiv",
+      "canceled": "Gekündigt",
+      "past_due": "Überfällig",
       "trialing": "Testphase",
-      "open": "offen",
-      "in_progress": "in Bearbeitung",
-      "waiting_user": "wartet auf Nutzer",
-      "resolved": "gelöst",
-      "closed": "geschlossen",
-      "low": "niedrig",
-      "medium": "mittel",
-      "high": "hoch",
-      "urgent": "dringend",
-      "critical": "kritisch"
+      "open": "Offen",
+      "in_progress": "In Bearbeitung",
+      "waiting_user": "Wartet auf Nutzer",
+      "resolved": "Gelöst",
+      "closed": "Geschlossen",
+      "low": "Niedrig",
+      "medium": "Mittel",
+      "high": "Hoch",
+      "urgent": "Dringend",
+      "critical": "Kritisch"
     },
     "free": "Kostenlos",
     "confirmAdmin": "{email} zum Admin machen?",
@@ -2401,5 +2613,83 @@
     "title": "Seite nicht gefunden",
     "body": "Diese Seite gibt es nicht, oder du hast keinen Zugriff darauf.",
     "home": "Zur Startseite"
+  },
+  "LiveMeeting": {
+    "started": "{app} ist in einem Meeting",
+    "startedHelp": "Starte eine Session, um währenddessen Antworten zu bekommen",
+    "startNow": "Jetzt starten",
+    "dismiss": "Ausblenden",
+    "ended": "{app} nutzt das Mikrofon nicht mehr. Die Session endet in <timer>{seconds} s</timer>",
+    "keepGoing": "Weitermachen",
+    "endNow": "Jetzt beenden"
+  },
+  "Desktop": {
+    "saved": "Gespeichert",
+    "notSaved": "Nicht gespeichert. Versuche es erneut.",
+    "loadFailed": "Die Einstellungen der Desktop-App ließen sich nicht lesen. Starte Apex Round neu und versuche es erneut.",
+    "capture": "Aufgenommener Bildschirm",
+    "captureHelp": "„Zuhören starten“ und „Bildschirm lösen“ lesen diesen Bildschirm. Eine Änderung gilt ab dem nächsten Zuhören.",
+    "display": "{name}, {width} × {height}",
+    "displayMain": "{name} (Hauptbildschirm), {width} × {height}",
+    "detect": "Meetings erkennen",
+    "detectHelp": "Wenn Zoom, Teams, Webex oder Slack dein Mikrofon verwendet, bietet Apex Round an, eine Live-Sitzung zu starten",
+    "tray": "Beim Schließen im Infobereich weiterlaufen",
+    "trayHelp": "Schließen blendet das Fenster aus. Zum Beenden nutze das Symbol im Infobereich.",
+    "trayHelpMac": "Schließen blendet das Fenster aus. Zum Beenden nutze das Symbol in der Menüleiste.",
+    "shortcuts": "Tastenkürzel",
+    "shortcutsHelp": "Sie funktionieren auch, wenn die Meeting-App im Fokus ist. Klicke auf ein Tastenkürzel und drücke dann die neuen Tasten.",
+    "commands": {
+      "answer-now": "Jetzt antworten",
+      "solve-screen": "Bildschirm lösen",
+      "toggle-answers": "Antwortfenster ein- oder ausblenden"
+    },
+    "notSet": "Keins",
+    "recording": "Tasten drücken",
+    "recordingHint": "Esc bricht ab, die Rücktaste entfernt das Tastenkürzel",
+    "changeLabel": "{command}: {keys}. Tastenkürzel ändern",
+    "setLabel": "{command}: kein Tastenkürzel. Eins festlegen",
+    "recordingLabel": "{command}: drücke die neuen Tasten",
+    "reset": "Zurücksetzen",
+    "resetLabel": "{command} auf {keys} zurücksetzen",
+    "errors": {
+      "taken": "Eine andere App verwendet diese Tasten schon",
+      "invalid": "Nutze Strg, Alt oder Win mit einer weiteren Taste oder eine Funktionstaste",
+      "invalidMac": "Nutze ⌘, ⌃ oder ⌥ mit einer weiteren Taste oder eine Funktionstaste",
+      "duplicate": "Schon für „{command}“ vergeben",
+      "reserved": "Dient zum Verschieben oder Vergrößern des Antwortfensters"
+    },
+    "window": {
+      "move": "Antwortfenster verschieben",
+      "resize": "Größe des Antwortfensters ändern",
+      "back": "Antwortfenster an seinen Platz zurücksetzen"
+    },
+    "windowNote": "Sie funktionieren, solange das Antwortfenster offen ist, und lassen sich nicht ändern",
+    "keys": {
+      "ctrl": "Strg",
+      "alt": "Alt",
+      "shift": "Umschalt",
+      "win": "Win",
+      "cmd": "⌘",
+      "option": "⌥",
+      "control": "⌃",
+      "shiftMac": "⇧",
+      "up": "↑",
+      "down": "↓",
+      "left": "←",
+      "right": "→",
+      "arrows": "←↑→↓",
+      "space": "Leertaste",
+      "enter": "Eingabe",
+      "escape": "Esc",
+      "backspace": "Rücktaste",
+      "delete": "Entf",
+      "insert": "Einfg",
+      "home": "Pos1",
+      "end": "Ende",
+      "pageUp": "Bild auf",
+      "pageDown": "Bild ab",
+      "tab": "Tab",
+      "numpad": "Num {key}"
+    }
   }
 }

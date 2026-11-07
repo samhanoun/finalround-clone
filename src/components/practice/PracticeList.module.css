@@ -1,0 +1,333 @@
+/* Practice: the score trend, the list of interviews, and statuses shown as a dot and quiet text. */
+.page {
+  display: grid;
+  gap: 24px;
+}
+
+/* Score trend: the latest figure, then a neutral line with the latest point in the accent */
+.trend {
+  display: grid;
+  grid-template-columns: minmax(180px, 240px) minmax(0, 1fr);
+  align-items: stretch;
+  gap: 32px;
+  padding: 24px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+}
+
+.trendFigure {
+  display: grid;
+  align-content: start;
+  gap: 4px;
+}
+
+.trendTitle {
+  margin: 0;
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.trendValue {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 4px 0 0;
+}
+
+.trendNumber {
+  font-size: 48px;
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.trendOf {
+  color: var(--text-3);
+  font-size: 13px;
+}
+
+.trendChange {
+  margin: 4px 0 0;
+  color: var(--text-2);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.trendChange[data-direction='up'] {
+  color: var(--positive-text);
+}
+
+.trendChange[data-direction='down'] {
+  color: var(--negative-text);
+}
+
+.chart {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  grid-template-rows: 128px auto;
+  gap: 8px;
+  min-width: 0;
+}
+
+.axis {
+  position: relative;
+}
+
+.axis span,
+.dates span {
+  color: var(--text-3);
+  font-family: var(--font-code);
+  font-size: 12px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.axis span {
+  position: absolute;
+  right: 0;
+  transform: translateY(-50%);
+}
+
+.plot {
+  position: relative;
+}
+
+.plotSvg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.gridLine {
+  stroke: var(--hairline);
+  stroke-width: 1;
+}
+
+.line {
+  fill: none;
+  stroke: var(--text-3);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.point,
+.latestPoint {
+  position: absolute;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.point {
+  width: 6px;
+  height: 6px;
+  background: var(--text-3);
+}
+
+.latestPoint {
+  width: 10px;
+  height: 10px;
+  background: var(--accent);
+  box-shadow: 0 0 0 3px var(--surface);
+}
+
+.dates {
+  display: flex;
+  grid-column: 2;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+/* The list */
+.listPanel {
+  overflow: hidden;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+}
+
+.listTitle {
+  margin: 0;
+  padding: 20px 24px 12px;
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.listHead,
+.rowLink {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 152px 64px 128px;
+  align-items: center;
+  gap: 16px;
+  padding: 0 24px;
+}
+
+.listHead {
+  height: 32px;
+  border-bottom: 1px solid var(--hairline);
+  color: var(--text-3);
+  font-size: 12px;
+}
+
+.listHead span:nth-child(3),
+.listHead span:nth-child(4) {
+  text-align: right;
+}
+
+.list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.list li + li {
+  border-top: 1px solid var(--hairline);
+}
+
+.rowLink {
+  min-height: 44px;
+  padding-top: 8px;
+  padding-bottom: 8px;
+  color: var(--text-1);
+  text-decoration: none;
+  transition: background-color var(--dur-fast) var(--ease);
+}
+
+.rowLink:hover {
+  background: rgba(237, 237, 237, 0.03);
+}
+
+.rowTitle {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 14px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rowScore {
+  font-size: 15px;
+  font-weight: 500;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.rowDate {
+  color: var(--text-3);
+  font-size: 13px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Status: a dot and quiet text. Not started is a ring, in progress a light dot, completed green. */
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: var(--text-2);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.statusDot {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.status[data-status='draft'] .statusDot {
+  border: 1.5px solid var(--text-3);
+}
+
+.status[data-status='in_progress'] .statusDot {
+  background: var(--text-1);
+}
+
+.status[data-status='completed'] .statusDot {
+  background: var(--positive);
+}
+
+/* First run */
+.empty {
+  gap: 16px;
+  padding: 40px 32px;
+}
+
+.empty p {
+  max-width: 48ch;
+  margin: 0;
+  color: var(--text-2);
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+@media (max-width: 767px) {
+  .trend {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 20px;
+    padding: 16px;
+  }
+
+  .chart {
+    grid-template-rows: 112px auto;
+  }
+
+  .listTitle {
+    padding: 16px 16px 8px;
+  }
+
+  .listHead {
+    display: none;
+  }
+
+  .list {
+    border-top: 1px solid var(--hairline);
+  }
+
+  .rowLink {
+    grid-template-columns: auto auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      'title title title score'
+      'status date . score';
+    gap: 4px 8px;
+    min-height: 64px;
+    padding: 12px 16px;
+  }
+
+  .rowTitle {
+    grid-area: title;
+  }
+
+  .status {
+    grid-area: status;
+  }
+
+  .rowDate {
+    grid-area: date;
+    text-align: left;
+  }
+
+  .rowDate::before {
+    content: '·';
+    margin-right: 8px;
+  }
+
+  .rowScore {
+    grid-area: score;
+    padding-left: 8px;
+    font-size: 17px;
+  }
+
+  .empty {
+    padding: 24px 20px;
+  }
+}

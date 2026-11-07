@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useFormatter, useTranslations } from 'next-intl';
 import styles from './LiveCopilotClient.module.css';
 import { formatCopilotActionError } from './liveCopilotDataControls';
@@ -14,13 +14,14 @@ import { useVoiceSample } from './copilot/useVoiceSample';
 import { useCopilotAnswers } from './copilot/useCopilotAnswers';
 import { AnswerPanel } from './copilot/AnswerPanel';
 import { AutoEndNotice } from './copilot/AutoEndNotice';
+import { MeetingEndedNotice, MeetingStartedNotice } from './copilot/MeetingNotices';
 import { LatencyDrawer, LatencyTable } from './copilot/LatencyDrawer';
 import { isLatencyPayload, summarizeLatencyEvents } from '@/lib/copilot/latency';
 import { grabScreenFrame, screenSignature } from '@/lib/copilot/screenFrame';
 import { AutoScreenWatcher } from '@/lib/copilot/autoScreen';
-import { onDesktopCommand } from '@/lib/desktop';
+import { onDesktopCommand, onDesktopMeeting, withAnswerWindowHidden } from '@/lib/desktop';
 import type { ConnectionState, TailLine } from './copilot/AnswerView';
-import { SuggestionFeed, TranscriptFeed } from './copilot/LiveFeeds';
+import { FeedsSection, type FeedLayout } from './copilot/LiveFeeds';
 import { SessionBar } from './copilot/SessionBar';
 import {
   SessionSetup,
@@ -31,6 +32,7 @@ import {
   type SessionSetupValue,
 } from './copilot/SessionSetup';
 import type { Utterance } from '@/lib/stt/utterances';
+import { ChevronDownIcon, CloseIcon, MicIcon, ScreenIcon } from './icons';
 
 type CopilotSession = {
   id: string;
@@ -174,14 +176,6 @@ function asPercent(value: number | null, max: number): number {
   return Math.max(0, Math.min(100, Math.round((value / max) * 100)));
 }
 
-function scoreTone(value: number | null, max: number): 'high' | 'medium' | 'low' {
-  if (value === null) return 'low';
-  const ratio = value / max;
-  if (ratio >= 0.75) return 'high';
-  if (ratio >= 0.5) return 'medium';
-  return 'low';
-}
-
 function parseReportPayload(payload: unknown): Omit<ReportViewModel, 'source'> | null {
   const root = asObject(payload);
   const nested = asObject(root.report);
@@ -244,6 +238,15 @@ function isTypingTarget(target: EventTarget | null): boolean {
   return target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName);
 }
 
+/** An answer on one flowing line for a preview: no source marks, points joined by middle dots. */
+function previewText(text: string): string {
+  return text
+    .replace(/\s*\[S\d+\]/g, '')
+    .replace(/\n\s*[-*•]\s+/g, ' · ')
+    .replace(/\s*\n\s*/g, ' ')
+    .trim();
+}
+
 function calculateDurationMinutes(startedAt?: string | null, stoppedAt?: string | null): number {
   if (!startedAt) return 0;
   const start = new Date(startedAt).getTime();
@@ -252,11 +255,75 @@ function calculateDurationMinutes(startedAt?: string | null, stoppedAt?: string 
   return Math.max(0, Math.round((end - start) / 60_000));
 }
 
-export function LiveCopilotClient({ initialGoalId = null }: { initialGoalId?: string | null } = {}) {
+/**
+ * A disclosure row: the heading holds the button (its name), with one line on
+ * what it's for as its description. The whole row is clickable.
+ */
+function ToolToggle({
+  open,
+  onToggle,
+  controls,
+  name,
+  description,
+  level = 3,
+  headingId,
+}: {
+  open: boolean;
+  onToggle: () => void;
+  controls: string;
+  name: string;
+  description: string;
+  level?: 2 | 3;
+  headingId?: string;
+}) {
+  const descriptionId = useId();
+  const Heading = level === 2 ? 'h2' : 'h3';
+  return (
+    <div className={styles.toolRow}>
+      <Heading id={headingId} className={styles.toolHeading}>
+        <button
+          type="button"
+          className={styles.toolToggle}
+          aria-expanded={open}
+          aria-controls={controls}
+          aria-describedby={descriptionId}
+          onClick={onToggle}
+        >
+          <ChevronDownIcon size={16} className={styles.chevron} />
+          {name}
+        </button>
+      </Heading>
+      <p id={descriptionId} className={styles.toolDesc}>
+        {description}
+      </p>
+    </div>
+  );
+}
+
+function PointList({ items, empty }: { items: string[]; empty: string }) {
+  return (
+    <ul className={styles.pointsList}>
+      {items.length > 0 ? items.map((item, idx) => <li key={idx}>{item}</li>) : <li className={styles.muted}>{empty}</li>}
+    </ul>
+  );
+}
+
+export function LiveCopilotClient({
+  initialGoalId = null,
+  debug = false,
+  onSessionChange,
+}: {
+  initialGoalId?: string | null;
+  /** `?debug=1`: latency, diagnostics and the event stream's state, for support. */
+  debug?: boolean;
+  /** Tells the page frame when a session starts or ends (phones hide the tab bar during one). */
+  onSessionChange?: (active: boolean) => void;
+} = {}) {
   const t = useTranslations('Copilot');
   const tSetup = useTranslations('SessionSetup');
   const tErrors = useTranslations('CopilotErrors');
   const tAnswer = useTranslations('Answer');
+  const tAudio = useTranslations('AudioSources');
   const format = useFormatter();
   const modeLabel = (mode: string) => {
     const raw = mode.trim() || 'general';
@@ -288,9 +355,18 @@ export function LiveCopilotClient({ initialGoalId = null }: { initialGoalId?: st
   const [lastMicSyncAt, setLastMicSyncAt] = useState<string | null>(null);
   const [summary, setSummary] = useState<{ content: string; strengths: string[]; weaknesses: string[]; next_steps: string[] } | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
+  const [summaryError, setSummaryError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [activePanel, setActivePanel] = useState<'live' | 'analytics'>('live');
-  const [liveLayout, setLiveLayout] = useState<'split' | 'transcript' | 'suggestions'>('split');
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [liveLayout, setLiveLayout] = useState<FeedLayout>('split');
+  // Secondary tools: Type a line and Session summary open on demand.
+  const [composerOpen, setComposerOpen] = useState(false);
+  const [summaryOpen, setSummaryOpen] = useState(false);
+  const [composerFocusRequest, setComposerFocusRequest] = useState(0);
+
+  // Desktop app: a meeting app started (offer to start) or stopped (count down to the end) using the microphone.
+  const [meetingStarted, setMeetingStarted] = useState<{ app: string } | null>(null);
+  const [meetingEnded, setMeetingEnded] = useState<{ app: string; at: number; sessionId: string } | null>(null);
 
   const [historySessions, setHistorySessions] = useState<CopilotHistorySession[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -314,7 +390,7 @@ export function LiveCopilotClient({ initialGoalId = null }: { initialGoalId?: st
   const [settingsError, setSettingsError] = useState<string | null>(null);
   const [settingsSuccess, setSettingsSuccess] = useState<string | null>(null);
 
-  // Overlay controls for T4: hide/show, mute, timer
+  // Overlay controls for T4: hide/show, mute, timer (support diagnostics, ?debug=1)
   const [overlayVisible, setOverlayVisible] = useState(true);
   const [overlayMuted, setOverlayMuted] = useState(false);
   const [overlayTimerRunning, setOverlayTimerRunning] = useState(false);
@@ -330,7 +406,7 @@ export function LiveCopilotClient({ initialGoalId = null }: { initialGoalId?: st
   // SLO compliance state for UI display
   const [sloCompliance, setSloCompliance] = useState<SLOCompliance[]>([]);
   const [recentSloMetrics, setRecentSloMetrics] = useState<SLOMetric[]>([]);
-  
+
   // Helper to update SLO compliance (both refs and state)
   const updateSLOCompliance = useCallback(() => {
     const compliance = sloClient.getAllCompliance();
@@ -350,9 +426,15 @@ export function LiveCopilotClient({ initialGoalId = null }: { initialGoalId?: st
   const transcriptFlushTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const transcriptFlushInFlightRef = useRef(false);
   const draftTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  // One stop at a time, whoever asks (the button, a countdown, the desktop app).
+  const stoppingRef = useRef(false);
 
   const isActive = session?.status === 'active';
   const currentSessionId = session?.id ?? null;
+
+  useEffect(() => {
+    onSessionChange?.(isActive);
+  }, [isActive, onSessionChange]);
 
   useEffect(() => {
     return () => {
@@ -469,21 +551,19 @@ export function LiveCopilotClient({ initialGoalId = null }: { initialGoalId?: st
     setDetailReload((n) => n + 1);
   };
 
-  const selectPanel = useCallback(
-    (panel: 'live' | 'analytics') => {
-      if (panel === activePanel) return;
-      setActivePanel(panel);
-      setSettingsError(null);
-      setSettingsSuccess(null);
-      if (panel === 'analytics') void loadHistory();
-    },
-    [activePanel, loadHistory],
-  );
+  /** Past sessions open on demand; opening them loads the list. */
+  function toggleHistory() {
+    const next = !historyOpen;
+    setHistoryOpen(next);
+    setSettingsError(null);
+    setSettingsSuccess(null);
+    if (next) void loadHistory();
+  }
 
   // detailLoading is set when the selection changes (render-time block next to
   // filteredHistorySessions) or by Retry; this only fetches.
   useEffect(() => {
-    if (activePanel !== 'analytics' || !selectedHistoryId) return;
+    if (!historyOpen || !selectedHistoryId) return;
 
     const loadDetail = async () => {
       try {
@@ -510,7 +590,7 @@ export function LiveCopilotClient({ initialGoalId = null }: { initialGoalId?: st
     };
 
     void loadDetail();
-  }, [activePanel, selectedHistoryId, detailReload, t]);
+  }, [historyOpen, selectedHistoryId, detailReload, t]);
 
   // T4: Timer effect for overlay countdown
   useEffect(() => {
@@ -525,8 +605,10 @@ export function LiveCopilotClient({ initialGoalId = null }: { initialGoalId?: st
     };
   }, [overlayTimerRunning]);
 
-  // T4: Hotkey handler for overlay controls (keyboard shortcuts)
+  // T4: Hotkeys for the diagnostics overlay controls. Support only (?debug=1),
+  // so Ctrl+H, Ctrl+T and Esc keep their usual meaning for everyone else.
   useEffect(() => {
+    if (!debug) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       // Ignore if user is typing in an input/textarea
       const target = e.target as HTMLElement;
@@ -545,7 +627,7 @@ export function LiveCopilotClient({ initialGoalId = null }: { initialGoalId?: st
           // Record to SLO client
           sloClient.recordMetric(SLO_TYPE_OVERLAY_INTERACTION, 'toggleOverlay', latencyMs);
           updateSLOCompliance();
-          
+
           return !prev;
         });
         return;
@@ -562,7 +644,7 @@ export function LiveCopilotClient({ initialGoalId = null }: { initialGoalId?: st
           // Record to SLO client
           sloClient.recordMetric(SLO_TYPE_OVERLAY_INTERACTION, 'toggleMute', latencyMs);
           updateSLOCompliance();
-          
+
           return !prev;
         });
         return;
@@ -579,7 +661,7 @@ export function LiveCopilotClient({ initialGoalId = null }: { initialGoalId?: st
           // Record to SLO client
           sloClient.recordMetric(SLO_TYPE_OVERLAY_INTERACTION, 'toggleTimer', latencyMs);
           updateSLOCompliance();
-          
+
           return !prev;
         });
         return;
@@ -596,19 +678,19 @@ export function LiveCopilotClient({ initialGoalId = null }: { initialGoalId?: st
         // Record to SLO client
         sloClient.recordMetric(SLO_TYPE_OVERLAY_INTERACTION, 'hideOverlay', latencyMs);
         updateSLOCompliance();
-        
+
         return;
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [overlayVisible, updateSLOCompliance]);
+  }, [debug, overlayVisible, updateSLOCompliance]);
 
   // The legacy-summary fallback and loading flag are set when the inputs change
   // (render-time block next to filteredHistorySessions); this only fetches.
   useEffect(() => {
-    if (activePanel !== 'analytics' || !selectedHistoryId) return;
+    if (!historyOpen || !selectedHistoryId) return;
 
     let cancelled = false;
 
@@ -641,7 +723,7 @@ export function LiveCopilotClient({ initialGoalId = null }: { initialGoalId?: st
     return () => {
       cancelled = true;
     };
-  }, [activePanel, selectedHistoryId, historyDetail, t]);
+  }, [historyOpen, selectedHistoryId, historyDetail, t]);
 
   function connectStream(sessionId: string) {
     streamRef.current?.close();
@@ -703,6 +785,7 @@ export function LiveCopilotClient({ initialGoalId = null }: { initialGoalId?: st
     setTranscript([]);
     setSuggestions([]);
     setSummary(null);
+    setSummaryError(null);
     setLastMicSyncAt(null);
 
     try {
@@ -723,6 +806,7 @@ export function LiveCopilotClient({ initialGoalId = null }: { initialGoalId?: st
       }
 
       setSession(json.session);
+      setMeetingStarted(null);
       connectStream(json.session.id);
       // Still inside the Start session click, so the share prompt is allowed.
       if (meeting.autoStartListening) void startListening();
@@ -733,9 +817,14 @@ export function LiveCopilotClient({ initialGoalId = null }: { initialGoalId?: st
     }
   }
 
-  async function stopSession(reason: StopReason = 'user') {
-    if (!session?.id || submitting) return;
+  /**
+   * Ends the session. `force` is for countdowns that ran out: they end it even
+   * while a typed line is being sent, instead of leaving it running.
+   */
+  async function stopSession(reason: StopReason = 'user', { force = false }: { force?: boolean } = {}) {
+    if (!session?.id || stoppingRef.current || (submitting && !force)) return;
 
+    stoppingRef.current = true;
     setError(null);
     setSubmitting(true);
 
@@ -749,6 +838,9 @@ export function LiveCopilotClient({ initialGoalId = null }: { initialGoalId?: st
       if (!res.ok || !json.session) throw new Error(t('errors.stopFailed'));
 
       setSession(json.session);
+      setMeetingEnded(null);
+      // An open Past sessions list still shows this session as active.
+      if (historyOpen) void loadHistory();
       streamRef.current?.close();
       streamRef.current = null;
       setStreamOpen(false);
@@ -763,6 +855,7 @@ export function LiveCopilotClient({ initialGoalId = null }: { initialGoalId?: st
     } catch (e) {
       setError(e instanceof Error ? e.message : t('errors.stopFailed'));
     } finally {
+      stoppingRef.current = false;
       setSubmitting(false);
     }
   }
@@ -797,7 +890,7 @@ export function LiveCopilotClient({ initialGoalId = null }: { initialGoalId?: st
 
         setTranscript((prev) => appendUniqueEvents(prev, Array.isArray(json.events) ? json.events : []));
         setSuggestions((prev) => appendUniqueEvents(prev, Array.isArray(json.suggestions) ? json.suggestions : []));
-        
+
         // Track transcript-to-suggestion latency for mic input
         if (Array.isArray(json.suggestions) && json.suggestions.length > 0) {
           const latency = Date.now() - submitTime;
@@ -806,7 +899,7 @@ export function LiveCopilotClient({ initialGoalId = null }: { initialGoalId?: st
             updateSLOCompliance();
           }
         }
-        
+
         setLastMicSyncAt(new Date().toISOString());
       }
     } catch (e) {
@@ -871,7 +964,8 @@ export function LiveCopilotClient({ initialGoalId = null }: { initialGoalId?: st
     }
   }, [interviewerCaption, requestAnswerNow, t]);
 
-  // Solve screen reads the tab or screen already shared for audio: no second prompt.
+  // Solve screen reads the tab or screen already shared for audio: no second
+  // prompt. The desktop app's floating answer window steps aside for the grab.
   const getDisplayVideoTrack = audio.getDisplayVideoTrack;
   const answerScreen = answers.answerScreen;
   const solveScreen = useCallback(async () => {
@@ -881,7 +975,7 @@ export function LiveCopilotClient({ initialGoalId = null }: { initialGoalId?: st
       return;
     }
     try {
-      const frame = await grabScreenFrame(track);
+      const frame = await withAnswerWindowHidden(async () => grabScreenFrame(track));
       if (!answerScreen(frame)) setError(t('errors.startFirst'));
     } catch {
       setError(t('errors.screenFailed'));
@@ -927,13 +1021,34 @@ export function LiveCopilotClient({ initialGoalId = null }: { initialGoalId?: st
     });
   }, [isActive, answerNow, solveScreen]);
 
+  // Desktop app meeting detection. "ended" during a session starts a short
+  // countdown to its end; "started" with no session offers to start one.
+  const activeSessionId = isActive && session ? session.id : null;
+  const activeSessionRef = useRef<string | null>(null);
+  useEffect(() => {
+    activeSessionRef.current = activeSessionId;
+  }, [activeSessionId]);
+  useEffect(
+    () =>
+      onDesktopMeeting((event) => {
+        const sessionId = activeSessionRef.current;
+        if (event.state === 'started') {
+          setMeetingEnded(null);
+          setMeetingStarted(sessionId ? null : { app: event.app });
+        } else {
+          setMeetingStarted(null);
+          setMeetingEnded(sessionId ? { app: event.app, at: Date.now(), sessionId } : null);
+        }
+      }),
+    [],
+  );
+
   useEffect(() => {
     saveSetup(setup);
   }, [setup]);
 
   // Closing the tab ends the session (and its billed minutes) instead of
   // leaving it to expire. A beacon still goes out while the page unloads.
-  const activeSessionId = isActive && session ? session.id : null;
   useEffect(() => {
     if (!activeSessionId) return;
     const onPageHide = () => {
@@ -1030,7 +1145,7 @@ export function LiveCopilotClient({ initialGoalId = null }: { initialGoalId?: st
 
       setTranscript((prev) => appendUniqueEvents(prev, Array.isArray(json.events) ? json.events : []));
       setSuggestions((prev) => appendUniqueEvents(prev, Array.isArray(json.suggestions) ? json.suggestions : []));
-      
+
       // Track transcript-to-suggestion latency if suggestions arrived
       if (Array.isArray(json.suggestions) && json.suggestions.length > 0) {
         const suggestionArrivalTime = Date.now();
@@ -1040,7 +1155,7 @@ export function LiveCopilotClient({ initialGoalId = null }: { initialGoalId?: st
           updateSLOCompliance();
         }
       }
-      
+
       setLastMicSyncAt(new Date().toISOString());
       setDraftText('');
       // Typed interviewer lines are always answered; typed candidate lines add context.
@@ -1052,11 +1167,22 @@ export function LiveCopilotClient({ initialGoalId = null }: { initialGoalId?: st
     }
   }, [addTypedLine, currentSessionId, draftSpeaker, draftText, submitting, updateSLOCompliance, t]);
 
+  /** Start or stop listening; from a click or a key, which the share prompt needs. */
+  const audioStatus = audio.status;
+  const toggleListening = useCallback(() => {
+    if (audioStatus === 'live') stopAudio();
+    else if (audioStatus !== 'starting') void startListening();
+  }, [audioStatus, stopAudio, startListening]);
+
+  // Ctrl/Cmd+K opens Type a line; the field is focused once it's on screen.
+  useEffect(() => {
+    if (composerFocusRequest > 0) draftTextareaRef.current?.focus();
+  }, [composerFocusRequest]);
+
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
     const onKeyDown = (event: KeyboardEvent) => {
-      if (activePanel !== 'live') return;
       if (!session?.id || !isActive || submitting) return;
 
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'enter') {
@@ -1067,16 +1193,13 @@ export function LiveCopilotClient({ initialGoalId = null }: { initialGoalId?: st
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'm') {
         event.preventDefault();
         // The keypress counts as the user gesture the screen-share prompt needs.
-        if (audio.status === 'live') {
-          audio.stop();
-        } else if (audio.status !== 'starting') {
-          void startListening();
-        }
+        toggleListening();
       }
 
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
         event.preventDefault();
-        draftTextareaRef.current?.focus();
+        setComposerOpen(true);
+        setComposerFocusRequest((n) => n + 1);
       }
 
       // A = Answer now and Esc = stop the answer, unless the user is typing.
@@ -1092,9 +1215,10 @@ export function LiveCopilotClient({ initialGoalId = null }: { initialGoalId?: st
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [activePanel, answerNow, audio, isActive, session?.id, stopAnswer, submitTranscriptEvent, submitting]);
+  }, [answerNow, isActive, session?.id, stopAnswer, submitTranscriptEvent, submitting, toggleListening]);
 
-  function injectFillerLine() {
+  /** Fills Type a line with a sentence you can say to buy a few seconds while you think. */
+  function insertBuyTimeLine() {
     setDraftSpeaker('candidate');
     setDraftText(t('fillerLine'));
     draftTextareaRef.current?.focus();
@@ -1121,7 +1245,7 @@ export function LiveCopilotClient({ initialGoalId = null }: { initialGoalId?: st
   async function generateSummary() {
     if (!session?.id || submitting || summaryLoading) return;
 
-    setError(null);
+    setSummaryError(null);
     setSummaryLoading(true);
 
     try {
@@ -1143,7 +1267,7 @@ export function LiveCopilotClient({ initialGoalId = null }: { initialGoalId?: st
         next_steps: Array.isArray(json.summary.payload?.next_steps) ? json.summary.payload.next_steps : [],
       });
     } catch (e) {
-      setError(e instanceof Error ? e.message : t('errors.summaryFailed'));
+      setSummaryError(e instanceof Error ? e.message : t('errors.summaryFailed'));
     } finally {
       setSummaryLoading(false);
     }
@@ -1318,18 +1442,6 @@ export function LiveCopilotClient({ initialGoalId = null }: { initialGoalId?: st
     [suggestions],
   );
 
-  const analyticsSummary = useMemo(() => {
-    const codingStructuredTips = suggestionRows.filter((row) => row.complexity || row.edgeCases.length > 0 || row.checklist.length > 0).length;
-    const withFollowUps = suggestionRows.filter((row) => row.followUp).length;
-
-    return {
-      transcriptLines: transcriptRows.length,
-      suggestions: suggestionRows.length,
-      codingStructuredTips,
-      withFollowUps,
-    };
-  }, [suggestionRows, transcriptRows.length]);
-
   const filteredHistorySessions = useMemo(() => {
     const normalizedQuery = historyQuery.trim().toLowerCase();
 
@@ -1353,15 +1465,15 @@ export function LiveCopilotClient({ initialGoalId = null }: { initialGoalId?: st
     setSelectedHistoryId(filteredHistorySessions[0]?.id ?? null);
   }
 
-  // Reset analytics state when the panel, selection or loaded detail changes
-  // (React's "adjust state when inputs change" pattern). The effects above only
-  // fetch the detail and the report.
-  const [historyInputs, setHistoryInputs] = useState({ panel: activePanel, id: selectedHistoryId, detail: historyDetail });
-  if (historyInputs.panel !== activePanel || historyInputs.id !== selectedHistoryId || historyInputs.detail !== historyDetail) {
+  // Reset history state when the section opens or closes, or the selection or
+  // loaded detail changes (React's "adjust state when inputs change" pattern).
+  // The effects above only fetch the detail and the report.
+  const [historyInputs, setHistoryInputs] = useState({ open: historyOpen, id: selectedHistoryId, detail: historyDetail });
+  if (historyInputs.open !== historyOpen || historyInputs.id !== selectedHistoryId || historyInputs.detail !== historyDetail) {
     const idChanged = historyInputs.id !== selectedHistoryId;
-    const viewChanged = idChanged || historyInputs.panel !== activePanel;
-    const viewing = activePanel === 'analytics' && selectedHistoryId !== null;
-    setHistoryInputs({ panel: activePanel, id: selectedHistoryId, detail: historyDetail });
+    const viewChanged = idChanged || historyInputs.open !== historyOpen;
+    const viewing = historyOpen && selectedHistoryId !== null;
+    setHistoryInputs({ open: historyOpen, id: selectedHistoryId, detail: historyDetail });
 
     if (idChanged) {
       setDeleteError(null);
@@ -1441,35 +1553,29 @@ export function LiveCopilotClient({ initialGoalId = null }: { initialGoalId?: st
   }, [historyDetail]);
 
   const streamState = connecting ? 'connecting' : streamOpen ? 'connected' : 'disconnected';
-
-  const handlePanelTabKeyDown = useCallback(
-    (event: ReactKeyboardEvent<HTMLDivElement>) => {
-      const panelOrder: Array<'live' | 'analytics'> = ['live', 'analytics'];
-      const currentIndex = panelOrder.indexOf(activePanel);
-      if (currentIndex < 0) return;
-
-      if (event.key === 'ArrowRight') {
-        event.preventDefault();
-        selectPanel(panelOrder[(currentIndex + 1) % panelOrder.length]);
-      } else if (event.key === 'ArrowLeft') {
-        event.preventDefault();
-        selectPanel(panelOrder[(currentIndex - 1 + panelOrder.length) % panelOrder.length]);
-      } else if (event.key === 'Home') {
-        event.preventDefault();
-        selectPanel(panelOrder[0]);
-      } else if (event.key === 'End') {
-        event.preventDefault();
-        selectPanel(panelOrder[panelOrder.length - 1]);
-      }
-    },
-    [activePanel, selectPanel],
-  );
+  const hasSavedLines = transcriptRows.length > 0 || suggestionRows.length > 0;
+  // The transcript, answers and tools exist once there's a session: during it, or after it with lines to read.
+  const showFeeds = isActive || (session !== null && hasSavedLines);
+  const showMeetingEnded = isActive && session !== null && meetingEnded !== null && meetingEnded.sessionId === session.id;
+  const showAutoEnd = sharingStoppedAt !== null && meeting.endWhenSharingStops && keepOpenAfterStop !== sharingStoppedAt;
+  const listenLabel = audio.status === 'live' ? tAudio('stop') : audio.status === 'starting' ? tAudio('starting') : tAudio('start');
 
   return (
-    <div className="stack" style={{ gap: 16 }}>
+    <div className={`${styles.page} ${isActive ? styles.inSession : ''}`}>
       {isActive && session ? (
-        <SessionBar session={session} streamState={streamState} onStop={stopSession} stopping={submitting} />
-      ) : (
+        <SessionBar session={session} streamState={streamState} onStop={() => void stopSession()} stopping={submitting} debug={debug} />
+      ) : null}
+
+      {!isActive && meetingStarted ? (
+        <MeetingStartedNotice
+          app={meetingStarted.app}
+          onStart={() => void startSession()}
+          onDismiss={() => setMeetingStarted(null)}
+          starting={submitting}
+        />
+      ) : null}
+
+      {!isActive ? (
         <SessionSetup
           value={setup}
           onChange={setSetup}
@@ -1478,21 +1584,41 @@ export function LiveCopilotClient({ initialGoalId = null }: { initialGoalId?: st
           askForLink={meeting.askForLink}
           autoStartListening={meeting.autoStartListening}
           initialGoalId={initialGoalId}
+          error={error}
         />
-      )}
-
-      {error ? <div className="error" role="status" aria-live="polite">{error}</div> : null}
+      ) : null}
 
       {isActive ? (
         <section className={styles.liveGrid} aria-label={t('liveAssistance')}>
-          {sharingStoppedAt !== null && meeting.endWhenSharingStops && keepOpenAfterStop !== sharingStoppedAt ? (
-            <div className={styles.liveNotice}>
-              <AutoEndNotice
-                key={sharingStoppedAt}
-                startedAt={sharingStoppedAt}
-                onExpire={() => void stopSession('sharing_stopped')}
-                onKeepOpen={() => setKeepOpenAfterStop(sharingStoppedAt)}
-              />
+          {showMeetingEnded || showAutoEnd || error ? (
+            <div className={styles.notices}>
+              {showMeetingEnded && meetingEnded ? (
+                <MeetingEndedNotice
+                  key={meetingEnded.at}
+                  app={meetingEnded.app}
+                  startedAt={meetingEnded.at}
+                  onExpire={() => void stopSession('user', { force: true })}
+                  onKeepGoing={() => setMeetingEnded(null)}
+                  onEndNow={() => void stopSession()}
+                  ending={submitting}
+                />
+              ) : null}
+              {showAutoEnd && sharingStoppedAt !== null ? (
+                <AutoEndNotice
+                  key={sharingStoppedAt}
+                  startedAt={sharingStoppedAt}
+                  onExpire={() => void stopSession('sharing_stopped', { force: true })}
+                  onKeepOpen={() => setKeepOpenAfterStop(sharingStoppedAt)}
+                />
+              ) : null}
+              {error ? (
+                <div className={`error ${styles.sessionError}`} role="status" aria-live="polite">
+                  <span>{error}</span>
+                  <button type="button" className={styles.dismiss} onClick={() => setError(null)} aria-label={t('dismissError')}>
+                    <CloseIcon size={16} />
+                  </button>
+                </div>
+              ) : null}
             </div>
           ) : null}
           <div className={styles.answerCol}>
@@ -1506,208 +1632,163 @@ export function LiveCopilotClient({ initialGoalId = null }: { initialGoalId?: st
               connection={connection}
               tail={answerTail}
               autoScreen={{ on: autoScreen, onToggle: setAutoScreenChoice }}
+              mobileBar
             />
           </div>
-          <div className={styles.signalCol}>
+          <div className={styles.rail}>
             <AudioSourcesPanel
               capture={captureForPanel}
               transcription={transcription}
               disabled={!isActive}
               share={shareGuide}
               voiceSample={singleMic ? voiceSample : undefined}
+              mobileBar
             />
-            <LatencyDrawer answers={answers} />
+            {debug ? <LatencyDrawer answers={answers} /> : null}
           </div>
         </section>
       ) : null}
 
-      <div className={styles.viewBar} aria-label={t('viewTabs')} role="group">
-        <div className={styles.tabRow} role="tablist" aria-label={t('views')} onKeyDown={handlePanelTabKeyDown}>
-          <button
-            id="copilot-tab-live"
-            className={styles.segment}
-            type="button"
-            role="tab"
-            tabIndex={activePanel === 'live' ? 0 : -1}
-            aria-selected={activePanel === 'live'}
-            aria-controls="copilot-panel-live"
-            onClick={() => selectPanel('live')}
-          >
-            {t('liveTab')}
-          </button>
-          <button
-            id="copilot-tab-analytics"
-            className={styles.segment}
-            type="button"
-            role="tab"
-            tabIndex={activePanel === 'analytics' ? 0 : -1}
-            aria-selected={activePanel === 'analytics'}
-            aria-controls="copilot-panel-analytics"
-            onClick={() => selectPanel('analytics')}
-          >
-            {t('analyticsTab')}
-          </button>
-        </div>
-        <p className="small" style={{ margin: 0 }}>
-          {activePanel === 'live' ? t('liveTabDesc') : t('analyticsTabDesc')}
-        </p>
-      </div>
+      {showFeeds ? (
+        <FeedsSection
+          title={isActive ? t('layout.title') : t('lastSession', { title: session?.title?.trim() || t('untitled') })}
+          layout={liveLayout}
+          onLayout={setLiveLayout}
+          transcript={transcriptRows}
+          suggestions={suggestionRows}
+          isActive={isActive}
+        />
+      ) : null}
 
-      <div key={activePanel} className={styles.panelStage}>
-        {activePanel === 'live' ? (
-          <div role="tabpanel" id="copilot-panel-live" aria-labelledby="copilot-tab-live" className="stack">
-          <div className={styles.panelHeader} aria-label={t('layout.label')} role="group">
-            <h2 className="cardTitle">{t('layout.title')}</h2>
-            <div className={styles.tabRow} role="toolbar" aria-label={t('layout.options')}>
-              <button className={styles.segment} type="button" aria-pressed={liveLayout === 'split'} onClick={() => setLiveLayout('split')}>{t('layout.split')}</button>
-              <button className={styles.segment} type="button" aria-pressed={liveLayout === 'transcript'} onClick={() => setLiveLayout('transcript')}>{t('layout.transcript')}</button>
-              <button className={styles.segment} type="button" aria-pressed={liveLayout === 'suggestions'} onClick={() => setLiveLayout('suggestions')}>{t('layout.answers')}</button>
-            </div>
-          </div>
-          <div className={liveLayout === 'split' ? 'grid2' : 'stack'} style={{ alignItems: 'start' }}>
-            {liveLayout !== 'suggestions' ? <TranscriptFeed rows={transcriptRows} isActive={isActive} /> : null}
-            {liveLayout !== 'transcript' ? <SuggestionFeed rows={suggestionRows} isActive={isActive} /> : null}
-          </div>
+      {showFeeds ? (
+        <section className={`card ${styles.tools}`} aria-labelledby="copilot-tools-title">
+          <h2 id="copilot-tools-title" className={styles.toolsTitle}>
+            {t('tools.title')}
+          </h2>
 
-          <section className="card" aria-label={t('summary.title')}>
-            <div className="cardInner stack" style={{ gap: 12 }}>
-              <div className={styles.panelHeader}>
-                <h2 className="cardTitle">{t('summary.title')}</h2>
-                {summaryLoading ? <span className="small">{t('generating')}</span> : null}
-              </div>
-
-              {!summary && !summaryLoading ? <p className={styles.emptyState}>{t('summary.empty')}</p> : null}
-
-              {summaryLoading ? <p className={styles.emptyState}>{t('summary.building')}</p> : null}
-
-              {summary ? (
-                <>
-                  {summary.content ? <p style={{ margin: 0 }}>{summary.content}</p> : null}
-                  <div className="grid2" style={{ alignItems: 'start' }}>
-                    <div>
-                      <h3 className={styles.sectionTitle}>{t('report.strengths')}</h3>
-                      <ul className={styles.pointsList}>
-                        {summary.strengths.length ? (
-                          summary.strengths.map((item, idx) => (
-                            <li key={`strength-${idx}`} className="small">
-                              {item}
-                            </li>
-                          ))
-                        ) : (
-                          <li className="small">{t('summary.noStrengths')}</li>
-                        )}
-                      </ul>
-                    </div>
-                    <div>
-                      <h3 className={styles.sectionTitle}>{t('report.weaknesses')}</h3>
-                      <ul className={styles.pointsList}>
-                        {summary.weaknesses.length ? (
-                          summary.weaknesses.map((item, idx) => (
-                            <li key={`weakness-${idx}`} className="small">
-                              {item}
-                            </li>
-                          ))
-                        ) : (
-                          <li className="small">{t('summary.noWeaknesses')}</li>
-                        )}
-                      </ul>
-                    </div>
+          {isActive ? (
+            <div className={styles.tool}>
+              <ToolToggle
+                open={composerOpen}
+                onToggle={() => setComposerOpen((open) => !open)}
+                controls="copilot-composer"
+                name={t('composer.title')}
+                description={t('tools.composerDesc')}
+              />
+              {composerOpen ? (
+                <div id="copilot-composer" className={styles.toolBody}>
+                  <textarea
+                    ref={draftTextareaRef}
+                    className="textarea"
+                    value={draftText}
+                    onChange={(e) => setDraftText(e.target.value)}
+                    placeholder={t('composer.placeholder')}
+                    aria-label={t('composer.title')}
+                    rows={3}
+                    disabled={!isActive || submitting}
+                  />
+                  <div className={styles.composerRow}>
+                    <select
+                      className={`select ${styles.speakerSelect}`}
+                      value={draftSpeaker}
+                      onChange={(e) => setDraftSpeaker(e.target.value as 'interviewer' | 'candidate')}
+                      disabled={!isActive || submitting}
+                      aria-label={t('composer.speaker')}
+                    >
+                      <option value="interviewer">{t('interviewer')}</option>
+                      <option value="candidate">{t('composer.candidate')}</option>
+                    </select>
+                    <button className="button" type="button" onClick={submitTranscriptEvent} disabled={!isActive || !draftText.trim() || submitting}>
+                      {submitting && isActive ? t('composer.sending') : t('composer.send')}
+                    </button>
+                    <button className="button buttonGhost" type="button" onClick={insertBuyTimeLine} disabled={!isActive || submitting}>
+                      {t('composer.filler')}
+                    </button>
+                    <span className={styles.syncState}>
+                      {micSyncing && isActive ? t('composer.syncing') : t('composer.synced')}
+                      {lastMicSyncAt ? (
+                        <time className={styles.syncTime} dateTime={lastMicSyncAt}>
+                          {format.dateTime(new Date(lastMicSyncAt), { timeStyle: 'medium' })}
+                        </time>
+                      ) : null}
+                    </span>
                   </div>
-                  <div>
-                    <h3 className={styles.sectionTitle}>{t('report.nextSteps')}</h3>
-                    <ul className={styles.pointsList}>
-                      {summary.next_steps.length ? (
-                        summary.next_steps.map((item, idx) => (
-                          <li key={`next-${idx}`} className="small">
-                            {item}
-                          </li>
-                        ))
-                      ) : (
-                        <li className="small">{t('summary.noNextSteps')}</li>
-                      )}
-                    </ul>
-                  </div>
-                </>
+                  <p className={styles.shortcuts}>{t.rich('composer.shortcuts', { kbd: (chunks) => <kbd>{chunks}</kbd> })}</p>
+                </div>
               ) : null}
             </div>
-          </section>
-        </div>
-      ) : (
-        <div role="tabpanel" id="copilot-panel-analytics" aria-labelledby="copilot-tab-analytics">
-        <section className="card" aria-label={t('history.label')}>
-          <div className="cardInner stack" style={{ gap: 14 }}>
-            <h2 className="cardTitle">{t('history.title')}</h2>
+          ) : null}
 
-            <div className={styles.metricGrid}>
-              <div className={styles.metricCard}><span className="small">{t('history.currentLines')}</span><strong>{analyticsSummary.transcriptLines}</strong></div>
-              <div className={styles.metricCard}><span className="small">{t('history.currentSuggestions')}</span><strong>{analyticsSummary.suggestions}</strong></div>
-              <div className={styles.metricCard}><span className="small">{t('history.selectedLines')}</span><strong>{historyInsights.transcriptLines}</strong></div>
-              <div className={styles.metricCard}><span className="small">{t('history.selectedTips')}</span><strong>{historyInsights.suggestions}</strong></div>
-            </div>
-
-            <section className={styles.settingsCard} aria-label={t('data.label')}>
-              <div className={styles.panelHeader}>
-                <h3 className={styles.sectionTitle} style={{ margin: 0 }}>{t('data.title')}</h3>
-                <span className="small">{t('data.desc')}</span>
-              </div>
-
-              <div className={styles.settingsGrid}>
-                <article className={styles.actionCard}>
-                  <h4 className={styles.subSectionTitle}>{t('data.exportTitle')}</h4>
-                  <p className="small" style={{ margin: 0 }}>
-                    {t('data.exportDesc')}
-                  </p>
-                  <button
-                    className="button"
-                    type="button"
-                    onClick={() => void exportAllCopilotData()}
-                    disabled={exportingAllData || deleteAllPending}
-                  >
-                    {exportingAllData ? t('data.exporting') : t('data.export')}
+          <div className={styles.tool}>
+            <ToolToggle
+              open={summaryOpen}
+              onToggle={() => setSummaryOpen((open) => !open)}
+              controls="copilot-summary"
+              name={t('summary.title')}
+              description={t('tools.summaryDesc')}
+            />
+            {summaryOpen ? (
+              <div id="copilot-summary" className={styles.toolBody} aria-busy={summaryLoading}>
+                {summaryLoading ? <p className={styles.toolNote}>{t('summary.building')}</p> : null}
+                {!summary && !summaryLoading ? <p className={styles.toolNote}>{t('summary.empty')}</p> : null}
+                {summary ? (
+                  <div className={styles.summary}>
+                    {summary.content ? <p className={styles.summaryText}>{summary.content}</p> : null}
+                    <div className={styles.summaryColumns}>
+                      <div>
+                        <h3 className={styles.subTitle}>{t('report.strengths')}</h3>
+                        <PointList items={summary.strengths} empty={t('summary.noStrengths')} />
+                      </div>
+                      <div>
+                        <h3 className={styles.subTitle}>{t('report.weaknesses')}</h3>
+                        <PointList items={summary.weaknesses} empty={t('summary.noWeaknesses')} />
+                      </div>
+                    </div>
+                    <div>
+                      <h3 className={styles.subTitle}>{t('report.nextSteps')}</h3>
+                      <PointList items={summary.next_steps} empty={t('summary.noNextSteps')} />
+                    </div>
+                  </div>
+                ) : null}
+                {summaryError ? (
+                  <div className="error" role="status" aria-live="polite">
+                    {summaryError}
+                  </div>
+                ) : null}
+                <div>
+                  <button className="button" type="button" onClick={generateSummary} disabled={!session || summaryLoading || submitting}>
+                    {summaryLoading ? t('generating') : summary ? t('summary.again') : t('composer.summarize')}
                   </button>
-                </article>
-
-                <article className={`${styles.actionCard} ${styles.dangerCard}`}>
-                  <h4 className={styles.subSectionTitle}>{t('data.purgeTitle')}</h4>
-                  <p className="small" style={{ margin: 0 }}>
-                    {t.rich('data.purgeWarning', { strong: (chunks) => <strong>{chunks}</strong> })}
-                  </p>
-                  <label className="label" style={{ margin: 0 }}>
-                    {t.rich('data.purgeConfirm', { phrase: PURGE_PHRASE, code: (chunks) => <code>{chunks}</code> })}
-                    <input
-                      className="input"
-                      value={deleteAllConfirmation}
-                      onChange={(e) => setDeleteAllConfirmation(e.target.value)}
-                      placeholder={PURGE_PHRASE}
-                      disabled={deleteAllPending || exportingAllData}
-                    />
-                  </label>
-                  <button
-                    className="button buttonDanger"
-                    type="button"
-                    onClick={() => void deleteAllCopilotData()}
-                    disabled={isActive || deleteAllPending || exportingAllData || deleteAllConfirmation !== PURGE_PHRASE}
-                  >
-                    {deleteAllPending ? t('data.purging') : t('data.purge')}
-                  </button>
-                </article>
+                </div>
               </div>
+            ) : null}
+          </div>
+        </section>
+      ) : null}
 
-              {settingsError ? <div className="error" role="status" aria-live="polite">{settingsError}</div> : null}
-              {settingsSuccess ? <div className="success" role="status" aria-live="polite">{settingsSuccess}</div> : null}
-            </section>
-
-            <div className={styles.historyScaffold}>
-              <aside className={styles.historyList} aria-label={t('history.listLabel')}>
-                <div className={styles.panelHeader}>
-                  <h3 className={styles.sectionTitle}>{t('history.recent')}</h3>
-                  <button className="button" type="button" onClick={() => void loadHistory()} disabled={historyLoading}>
+      <section className={`card ${styles.history}`} aria-labelledby="copilot-history-title">
+        <ToolToggle
+          open={historyOpen}
+          onToggle={toggleHistory}
+          controls="copilot-history"
+          name={t('history.sectionTitle')}
+          description={t('history.sectionDesc')}
+          level={2}
+          headingId="copilot-history-title"
+        />
+        {historyOpen ? (
+          <div id="copilot-history" className={styles.historyBody}>
+            <div className={styles.historyGrid}>
+              <div className={styles.historyList} role="group" aria-label={t('history.listLabel')}>
+                <div className={styles.listHeader}>
+                  <h3 className={styles.subTitle}>{t('history.recent')}</h3>
+                  <button className="button buttonSmall buttonGhost" type="button" onClick={() => void loadHistory()} disabled={historyLoading}>
                     {historyLoading ? t('history.refreshing') : t('history.refresh')}
                   </button>
                 </div>
 
-                <div className={styles.filtersGrid}>
-                  <label className="label" style={{ margin: 0 }}>
+                <div className={styles.filters}>
+                  <label className="label">
                     {t('history.search')}
                     <input
                       className="input"
@@ -1716,7 +1797,7 @@ export function LiveCopilotClient({ initialGoalId = null }: { initialGoalId?: st
                       placeholder={t('history.searchPlaceholder')}
                     />
                   </label>
-                  <label className="label" style={{ margin: 0 }}>
+                  <label className="label">
                     {t('history.mode')}
                     <select className="select" value={historyModeFilter} onChange={(e) => setHistoryModeFilter(e.target.value as 'all' | CopilotMode)}>
                       <option value="all">{t('history.allModes')}</option>
@@ -1729,466 +1810,500 @@ export function LiveCopilotClient({ initialGoalId = null }: { initialGoalId?: st
                   </label>
                 </div>
 
-                {historyLoading ? <p className={styles.emptyState}>{t('history.loading')}</p> : null}
+                {historyLoading ? <p className={styles.quietState}>{t('history.loading')}</p> : null}
                 {historyError ? <div className="error">{historyError}</div> : null}
-                {!historyLoading && !historyError && historySessions.length === 0 ? (
-                  <p className={styles.emptyState}>{t('history.empty')}</p>
-                ) : null}
+                {!historyLoading && !historyError && historySessions.length === 0 ? <p className={styles.quietState}>{t('history.empty')}</p> : null}
                 {!historyLoading && !historyError && historySessions.length > 0 && filteredHistorySessions.length === 0 ? (
-                  <p className={styles.emptyState}>{t('history.noMatches')}</p>
+                  <p className={styles.quietState}>{t('history.noMatches')}</p>
                 ) : null}
 
                 {filteredHistorySessions.length > 0 ? (
                   <ol className={styles.sessionList}>
                     {filteredHistorySessions.map((item) => {
-                      const modeValue = modeLabel(asText(item.metadata?.mode, 'general'));
-                      const duration = typeof item.consumed_minutes === 'number'
-                        ? item.consumed_minutes
-                        : calculateDurationMinutes(item.started_at, item.stopped_at);
+                      const duration =
+                        typeof item.consumed_minutes === 'number' ? item.consumed_minutes : calculateDurationMinutes(item.started_at, item.stopped_at);
 
                       return (
                         <li key={item.id}>
                           <button
-                            className={`${styles.sessionItemButton} ${selectedHistoryId === item.id ? styles.sessionItemButtonActive : ''}`}
+                            className={styles.sessionItem}
                             type="button"
                             aria-pressed={selectedHistoryId === item.id}
                             onClick={() => setSelectedHistoryId(item.id)}
                           >
-                            <div className={styles.sessionItemTopRow}>
-                              <strong className={styles.sessionItemTitle}>{item.title?.trim() || t('untitled')}</strong>
-                              <span className="small mono">{format.dateTime(new Date(item.created_at), { dateStyle: 'medium' })}</span>
-                            </div>
-                            <div className={styles.chipRow}>
-                              <span className="badge">{statusLabel(item.status)}</span>
-                              <span className="badge">{modeValue}</span>
-                              <span className="badge">{t('minutes', { count: duration })}</span>
-                            </div>
+                            <span className={styles.sessionTop}>
+                              <span className={styles.sessionTitle}>{item.title?.trim() || t('untitled')}</span>
+                              <time className={styles.sessionDate} dateTime={item.created_at}>
+                                {format.dateTime(new Date(item.created_at), { dateStyle: 'medium' })}
+                              </time>
+                            </span>
+                            <span className={styles.dotted}>
+                              <span>{statusLabel(item.status)}</span>
+                              <span>{modeLabel(asText(item.metadata?.mode, 'general'))}</span>
+                              <span>{t('minutes', { count: duration })}</span>
+                            </span>
                           </button>
                         </li>
                       );
                     })}
                   </ol>
                 ) : null}
-              </aside>
+              </div>
 
               <section className={styles.historyDetail} aria-label={t('history.detailLabel')}>
-                {!selectedHistoryId ? <p className={styles.emptyState}>{t('history.selectOne')}</p> : null}
-                {selectedHistoryId && detailLoading ? <p className={styles.emptyState}>{t('history.loadingDetail')}</p> : null}
+                {!selectedHistoryId ? <p className={styles.quietState}>{t('history.selectOne')}</p> : null}
+                {selectedHistoryId && detailLoading ? <p className={styles.quietState}>{t('history.loadingDetail')}</p> : null}
                 {selectedHistoryId && detailError ? (
-                  <div className="stack" style={{ gap: 10 }}>
+                  <div className={styles.detailBlock}>
                     <div className="error">{detailError}</div>
-                    <button className="button" type="button" onClick={retryHistoryDetail}>
-                      {t('history.retry')}
-                    </button>
+                    <div>
+                      <button className="button" type="button" onClick={retryHistoryDetail}>
+                        {t('history.retry')}
+                      </button>
+                    </div>
                   </div>
                 ) : null}
 
                 {selectedHistorySession && historyDetail && !detailLoading && !detailError ? (
-                  <div className="stack" style={{ gap: 12 }}>
-                    <div className={styles.panelHeader}>
-                      <h3 className={styles.sectionTitle} style={{ margin: 0 }}>{selectedHistorySession.title?.trim() || t('untitled')}</h3>
-                      <div className={styles.detailHeaderActions}>
-                        <span className="small mono">
-                          {format.dateTime(new Date(selectedHistorySession.started_at), { dateStyle: 'medium', timeStyle: 'short' })}
-                        </span>
-                        <button
-                          className="button buttonDanger"
-                          type="button"
-                          onClick={() => void deleteSelectedHistorySession()}
-                          disabled={deletingHistoryId === selectedHistorySession.id}
-                        >
-                          {deletingHistoryId === selectedHistorySession.id ? t('history.deleting') : t('history.delete')}
-                        </button>
+                  <>
+                    <div className={styles.detailHeader}>
+                      <div className={styles.detailHeading}>
+                        <h3 className={styles.detailTitle}>{selectedHistorySession.title?.trim() || t('untitled')}</h3>
+                        <p className={styles.dotted}>
+                          <time dateTime={selectedHistorySession.started_at}>
+                            {format.dateTime(new Date(selectedHistorySession.started_at), { dateStyle: 'medium', timeStyle: 'short' })}
+                          </time>
+                          <span>{statusLabel(historyDetail.session.status)}</span>
+                          <span>{modeLabel(historyInsights.mode)}</span>
+                          <span>{t('minutes', { count: historyInsights.durationMinutes })}</span>
+                        </p>
                       </div>
+                      <button
+                        className="button buttonSmall buttonDanger"
+                        type="button"
+                        onClick={() => void deleteSelectedHistorySession()}
+                        disabled={deletingHistoryId === selectedHistorySession.id}
+                      >
+                        {deletingHistoryId === selectedHistorySession.id ? t('history.deleting') : t('history.delete')}
+                      </button>
                     </div>
 
-                    {deleteError ? <div className="error" role="status" aria-live="polite">{deleteError}</div> : null}
-                    {deleteSuccess ? <div className="success" role="status" aria-live="polite">{deleteSuccess}</div> : null}
-
-                    <div className={styles.chipRow}>
-                      <span className="badge">{statusLabel(historyDetail.session.status)}</span>
-                      <span className="badge">{modeLabel(historyInsights.mode)}</span>
-                      <span className="badge">{t('minutes', { count: historyInsights.durationMinutes })}</span>
-                    </div>
-
-                    <div className={styles.metricGrid}>
-                      <div className={styles.metricCard}><span className="small">{t('history.lines')}</span><strong>{historyInsights.transcriptLines}</strong></div>
-                      <div className={styles.metricCard}><span className="small">{t('history.suggestions')}</span><strong>{historyInsights.suggestions}</strong></div>
-                      <div className={styles.metricCard}><span className="small">{t('history.systemEvents')}</span><strong>{historyEventBreakdown.systems.length}</strong></div>
-                    </div>
-
-                    {historyEventBreakdown.latency.turns > 0 ? (
-                      <div className={styles.summaryCard}>
-                        <LatencyTable
-                          summary={historyEventBreakdown.latency.stages}
-                          caption={t('history.latencyCaption', {
-                            answered: historyEventBreakdown.latency.outcomes.answered,
-                            replaced: historyEventBreakdown.latency.outcomes.superseded,
-                            failed: historyEventBreakdown.latency.outcomes.error,
-                          })}
-                        />
+                    {deleteError ? (
+                      <div className="error" role="status" aria-live="polite">
+                        {deleteError}
+                      </div>
+                    ) : null}
+                    {deleteSuccess ? (
+                      <div className="success" role="status" aria-live="polite">
+                        {deleteSuccess}
                       </div>
                     ) : null}
 
-                    <div className={styles.summaryColumns}>
-                      <article className={styles.summaryCard}>
-                        <div className={styles.panelHeader}>
-                          <h4 className={styles.sectionTitle} style={{ margin: 0 }}>{t('history.recentTranscript')}</h4>
-                          <span className="small">{t('history.last5')}</span>
+                    <dl className={styles.stats}>
+                      <div>
+                        <dt>{t('history.lines')}</dt>
+                        <dd>{historyInsights.transcriptLines}</dd>
+                      </div>
+                      <div>
+                        <dt>{t('history.suggestions')}</dt>
+                        <dd>{historyInsights.suggestions}</dd>
+                      </div>
+                      {debug ? (
+                        <div>
+                          <dt>{t('history.systemEvents')}</dt>
+                          <dd>{historyEventBreakdown.systems.length}</dd>
                         </div>
-                        <ol className={styles.pointsList}>
-                          {historyEventBreakdown.transcripts.slice(-5).reverse().map((event) => (
-                            <li key={`transcript-preview-${event.id}`} className="small">
-                              <strong>{asText(event.payload.speaker) === 'interviewer' ? t('interviewer') : t('you')}:</strong>{' '}
-                              {asText(event.payload.text, asText(event.payload.content, '—'))}
-                            </li>
-                          ))}
-                          {historyEventBreakdown.transcripts.length === 0 ? <li className="small">{t('history.noTranscript')}</li> : null}
-                        </ol>
-                      </article>
-                      <article className={styles.summaryCard}>
-                        <div className={styles.panelHeader}>
-                          <h4 className={styles.sectionTitle} style={{ margin: 0 }}>{t('history.recentSuggestions')}</h4>
-                          <span className="small">{t('history.last5')}</span>
+                      ) : null}
+                    </dl>
+
+                    {debug && historyEventBreakdown.latency.turns > 0 ? (
+                      <LatencyTable
+                        summary={historyEventBreakdown.latency.stages}
+                        caption={t('history.latencyCaption', {
+                          answered: historyEventBreakdown.latency.outcomes.answered,
+                          replaced: historyEventBreakdown.latency.outcomes.superseded,
+                          failed: historyEventBreakdown.latency.outcomes.error,
+                        })}
+                      />
+                    ) : null}
+
+                    <div className={styles.recentGrid}>
+                      <div className={styles.recent}>
+                        <div className={styles.listHeader}>
+                          <h4 className={styles.subTitle}>{t('history.recentTranscript')}</h4>
+                          <span className={styles.meta}>{t('history.last5')}</span>
                         </div>
-                        <ol className={styles.pointsList}>
-                          {historyEventBreakdown.suggestions.slice(-5).reverse().map((event) => (
-                            <li key={`suggestion-preview-${event.id}`} className="small">
-                              <strong>{tAnswer.has(`category.${asText(event.payload.category)}`) ? tAnswer(`category.${asText(event.payload.category)}`) : tAnswer('category.other')}:</strong>{' '}
-                              {asText(event.payload.text, asText(event.payload.content, '—'))}
-                            </li>
-                          ))}
-                          {historyEventBreakdown.suggestions.length === 0 ? <li className="small">{t('history.noSuggestions')}</li> : null}
+                        <ol className={styles.recentList}>
+                          {historyEventBreakdown.transcripts
+                            .slice(-5)
+                            .reverse()
+                            .map((event) => {
+                              const interviewer = asText(event.payload.speaker) === 'interviewer';
+                              return (
+                                <li key={`transcript-preview-${event.id}`} data-voice={interviewer ? 'interviewer' : 'you'}>
+                                  <span className={styles.voiceLabel}>{interviewer ? t('interviewer') : t('you')}</span>
+                                  <span>{asText(event.payload.text, asText(event.payload.content, '—'))}</span>
+                                </li>
+                              );
+                            })}
+                          {historyEventBreakdown.transcripts.length === 0 ? <li className={styles.muted}>{t('history.noTranscript')}</li> : null}
                         </ol>
-                      </article>
+                      </div>
+                      <div className={styles.recent}>
+                        <div className={styles.listHeader}>
+                          <h4 className={styles.subTitle}>{t('history.recentSuggestions')}</h4>
+                          <span className={styles.meta}>{t('history.last5')}</span>
+                        </div>
+                        <ol className={styles.recentList}>
+                          {historyEventBreakdown.suggestions
+                            .slice(-5)
+                            .reverse()
+                            .map((event) => (
+                              <li key={`suggestion-preview-${event.id}`}>
+                                <span className={styles.categoryLabel}>
+                                  {tAnswer.has(`category.${asText(event.payload.category)}`)
+                                    ? tAnswer(`category.${asText(event.payload.category)}`)
+                                    : tAnswer('category.other')}
+                                </span>
+                                <span className={styles.clamp}>{previewText(asText(event.payload.text, asText(event.payload.content, '—')))}</span>
+                              </li>
+                            ))}
+                          {historyEventBreakdown.suggestions.length === 0 ? <li className={styles.muted}>{t('history.noSuggestions')}</li> : null}
+                        </ol>
+                      </div>
                     </div>
 
-                    <div className={styles.summaryCard}>
-                      <div className={styles.panelHeader}>
-                        <h4 className={styles.sectionTitle} style={{ margin: 0 }}>{t('report.title')}</h4>
-                        <div className={styles.detailHeaderActions}>
-                          {historyReport ? <span className="small">{historyReport.source === 'api' ? t('report.live') : t('report.legacy')}</span> : null}
-                          <button className="button" type="button" onClick={() => void copyReportSnapshot()} disabled={!historyReport}>
+                    <div className={styles.report}>
+                      <div className={styles.listHeader}>
+                        <h4 className={styles.subTitle}>{t('report.title')}</h4>
+                        <div className={styles.headerActions}>
+                          {debug && historyReport ? (
+                            <span className={styles.meta}>{historyReport.source === 'api' ? t('report.live') : t('report.legacy')}</span>
+                          ) : null}
+                          <button className="button buttonSmall" type="button" onClick={() => void copyReportSnapshot()} disabled={!historyReport}>
                             {historyReportCopied ? t('report.copied') : t('report.copy')}
                           </button>
                         </div>
                       </div>
 
-                      {historyReportLoading ? <p className={styles.emptyState}>{t('report.loading')}</p> : null}
+                      {historyReportLoading ? <p className={styles.quietState}>{t('report.loading')}</p> : null}
                       {historyReportError ? <div className="error">{historyReportError}</div> : null}
-                      {!historyReportLoading && !historyReport && !historyReportError ? (
-                        <p className={styles.emptyState}>{t('report.none')}</p>
-                      ) : null}
+                      {!historyReportLoading && !historyReport && !historyReportError ? <p className={styles.quietState}>{t('report.none')}</p> : null}
 
                       {historyReport ? (
                         <>
-                          <div className={styles.metricGrid}>
-                            <div className={`${styles.metricCard} ${styles.reportMetricCard}`}>
-                              <span className="small">{t('report.overall')}</span>
-                              <strong>{historyReport.overallScore ?? '—'}</strong>
-                              <div className={styles.progressTrack} aria-hidden="true">
-                                <span
-                                  className={`${styles.progressFill} ${styles[`progressFill${scoreTone(historyReport.overallScore, 100)}`]}`}
-                                  style={{ width: `${asPercent(historyReport.overallScore, 100)}%` }}
-                                />
-                              </div>
+                          <dl className={styles.reportFigures}>
+                            <div>
+                              <dt>{t('report.overall')}</dt>
+                              <dd className={styles.figure}>{historyReport.overallScore ?? '—'}</dd>
                             </div>
-                            <div className={styles.metricCard}>
-                              <span className="small">{t('report.signal')}</span>
-                              <strong>{t(`signals.${historyReport.hiringSignal ?? 'unknown'}`)}</strong>
+                            <div>
+                              <dt>{t('report.signal')}</dt>
+                              <dd className={styles.figureText}>{t(`signals.${historyReport.hiringSignal ?? 'unknown'}`)}</dd>
                             </div>
-                          </div>
+                          </dl>
 
-                          {historyReport.summary ? <p style={{ margin: 0 }}>{historyReport.summary}</p> : null}
+                          {historyReport.summary ? <p className={styles.summaryText}>{historyReport.summary}</p> : null}
 
-                          <div className={styles.rubricGrid}>
+                          <ul className={styles.rubric}>
                             {RUBRIC_KEYS.map((key) => {
                               const item = historyReport.rubric[key];
                               return (
-                                <article key={key} className={styles.rubricCard}>
-                                  <div className={styles.panelHeader}>
-                                    <h5 className={styles.subSectionTitle}>{t(`rubric.${key}`)}</h5>
-                                    <span className={`badge ${styles[`scoreBadge${scoreTone(item.score, 5)}`]}`}>{item.score ?? '—'}/5</span>
+                                <li key={key} className={styles.rubricRow}>
+                                  <div className={styles.rubricHead}>
+                                    <span className={styles.rubricName}>{t(`rubric.${key}`)}</span>
+                                    <span className={styles.rubricScore}>{item.score ?? '—'}/5</span>
                                   </div>
-                                  <div className={styles.progressTrack} aria-hidden="true">
-                                    <span
-                                      className={`${styles.progressFill} ${styles[`progressFill${scoreTone(item.score, 5)}`]}`}
-                                      style={{ width: `${asPercent(item.score, 5)}%` }}
-                                    />
+                                  <div className={styles.bar} aria-hidden="true">
+                                    <span className={styles.barFill} style={{ transform: `scaleX(${asPercent(item.score, 5) / 100})` }} />
                                   </div>
-                                  <p className="small" style={{ margin: 0 }}><strong>{t('report.evidence')}</strong> {item.evidence || t('report.notCaptured')}</p>
-                                  <p className="small" style={{ margin: 0 }}><strong>{t('report.recommendation')}</strong> {item.recommendation || t('report.notCaptured')}</p>
-                                </article>
+                                  <p className={styles.rubricText}>
+                                    <span className={styles.rubricLabel}>{t('report.evidence')}</span> {item.evidence || t('report.notCaptured')}
+                                  </p>
+                                  <p className={styles.rubricText}>
+                                    <span className={styles.rubricLabel}>{t('report.recommendation')}</span> {item.recommendation || t('report.notCaptured')}
+                                  </p>
+                                </li>
                               );
                             })}
-                          </div>
+                          </ul>
 
                           <div className={styles.summaryColumns}>
                             <div>
-                              <h5 className={styles.subSectionTitle}>{t('report.strengths')}</h5>
-                              <ul className={styles.pointsList}>
-                                {historyReport.strengths.length > 0
-                                  ? historyReport.strengths.map((point, idx) => <li key={`hist-strength-${idx}`} className="small">{point}</li>)
-                                  : <li className="small">{t('report.noStrengths')}</li>}
-                              </ul>
+                              <h5 className={styles.subTitle}>{t('report.strengths')}</h5>
+                              <PointList items={historyReport.strengths} empty={t('report.noStrengths')} />
                             </div>
                             <div>
-                              <h5 className={styles.subSectionTitle}>{t('report.weaknesses')}</h5>
-                              <ul className={styles.pointsList}>
-                                {historyReport.weaknesses.length > 0
-                                  ? historyReport.weaknesses.map((point, idx) => <li key={`hist-weakness-${idx}`} className="small">{point}</li>)
-                                  : <li className="small">{t('report.noWeaknesses')}</li>}
-                              </ul>
+                              <h5 className={styles.subTitle}>{t('report.weaknesses')}</h5>
+                              <PointList items={historyReport.weaknesses} empty={t('report.noWeaknesses')} />
                             </div>
                           </div>
                           <div>
-                            <h5 className={styles.subSectionTitle}>{t('report.nextSteps')}</h5>
-                            <ul className={styles.pointsList}>
-                              {historyReport.nextSteps.length > 0
-                                ? historyReport.nextSteps.map((point, idx) => <li key={`hist-next-${idx}`} className="small">{point}</li>)
-                                : <li className="small">{t('report.noNextSteps')}</li>}
-                            </ul>
+                            <h5 className={styles.subTitle}>{t('report.nextSteps')}</h5>
+                            <PointList items={historyReport.nextSteps} empty={t('report.noNextSteps')} />
                           </div>
                         </>
                       ) : null}
                     </div>
-                  </div>
+                  </>
                 ) : null}
               </section>
             </div>
-          </div>
-        </section>
-        </div>
-        )}
-      </div>
 
-      <section className="card" aria-label={t('composer.label')}>
-        <div className="cardInner stack" style={{ gap: 14 }}>
-          <div className={styles.composerCard}>
-            <div className={styles.composerHeader}>
-              <h2 className="cardTitle">{t('composer.title')}</h2>
-              <div className={styles.chipRow}>
-                <span className="badge">{audio.status === 'live' ? t('composer.audioLive') : t('composer.audioOff')}</span>
-                <span className="badge">{micSyncing && isActive ? t('composer.syncing') : t('composer.synced')}</span>
-                {lastMicSyncAt ? <span className="small mono">{format.dateTime(new Date(lastMicSyncAt), { timeStyle: 'medium' })}</span> : null}
+            <section className={styles.data} aria-label={t('data.label')}>
+              <div className={styles.dataHeader}>
+                <h3 className={styles.subTitle}>{t('data.title')}</h3>
+                <p className={styles.meta}>{t('data.desc')}</p>
               </div>
-            </div>
-            <div className={styles.composerControls}>
-              <select
-                className="select"
-                value={draftSpeaker}
-                onChange={(e) => setDraftSpeaker(e.target.value as 'interviewer' | 'candidate')}
-                disabled={!isActive || submitting}
-                aria-label={t('composer.speaker')}
-              >
-                <option value="interviewer">{t('interviewer')}</option>
-                <option value="candidate">{t('composer.candidate')}</option>
-              </select>
-              <button
-                className="button"
-                type="button"
-                onClick={submitTranscriptEvent}
-                disabled={!isActive || !draftText.trim() || submitting}
-              >
-                {submitting && isActive ? t('composer.sending') : t('composer.send')}
-              </button>
-              <button className="button" type="button" onClick={injectFillerLine} disabled={!isActive || submitting}>
-                {t('composer.filler')}
-              </button>
-              <button className="button" type="button" onClick={generateSummary} disabled={!session || summaryLoading || submitting}>
-                {summaryLoading ? t('generating') : t('composer.summarize')}
-              </button>
-            </div>
-            <textarea
-              ref={draftTextareaRef}
-              className="input"
-              value={draftText}
-              onChange={(e) => setDraftText(e.target.value)}
-              placeholder={t('composer.placeholder')}
-              rows={3}
-              disabled={!isActive || submitting}
-            />
-            <p className="small" style={{ margin: 0 }}>
-              {t('composer.shortcuts')}
-            </p>
-          </div>
 
-          <details className={styles.settingsCard}>
-            <summary className="small" style={{ cursor: 'pointer' }}>
-              {t.rich('diagnostics.summary', { strong: (chunks) => <strong>{chunks}</strong> })}
-            </summary>
-            {/* T4: Overlay controls with hotkey hints and performance instrumentation */}
-            <section className={styles.settingsCard} aria-label={t('diagnostics.overlay')}>
-              <div className={styles.panelHeader}>
-                <h3 className={styles.sectionTitle} style={{ margin: 0 }}>{t('diagnostics.overlay')}</h3>
-                <span className="small">{t('diagnostics.hotkeys')}</span>
-              </div>
-              <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
-                <button
-                  className="button"
-                  type="button"
-                  onClick={() => {
-                    const start = performance.now();
-                    setOverlayVisible((prev) => {
-                      const latencyMs = Math.round(performance.now() - start);
-                      setInteractionLatency({ action: 'toggleOverlay', latencyMs });
-                      sloClient.recordMetric(SLO_TYPE_OVERLAY_INTERACTION, 'toggleOverlay', latencyMs);
-                      updateSLOCompliance();
-                      
-                      return !prev;
-                    });
-                  }}
-                  aria-pressed={overlayVisible}
-                >
-                  {overlayVisible ? t('diagnostics.hide') : t('diagnostics.show')}
-                </button>
-                <button
-                  className="button"
-                  type="button"
-                  onClick={() => {
-                    const start = performance.now();
-                    setOverlayMuted((prev) => {
-                      const latencyMs = Math.round(performance.now() - start);
-                      setInteractionLatency({ action: 'toggleMute', latencyMs });
-                      sloClient.recordMetric(SLO_TYPE_OVERLAY_INTERACTION, 'toggleMute', latencyMs);
-                      updateSLOCompliance();
-                      
-                      return !prev;
-                    });
-                  }}
-                  aria-pressed={overlayMuted}
-                >
-                  {overlayMuted ? t('diagnostics.unmute') : t('diagnostics.mute')}
-                </button>
-                <button
-                  className="button"
-                  type="button"
-                  onClick={() => {
-                    const start = performance.now();
-                    setOverlayTimerRunning((prev) => {
-                      const latencyMs = Math.round(performance.now() - start);
-                      setInteractionLatency({ action: 'toggleTimer', latencyMs });
-                      sloClient.recordMetric(SLO_TYPE_OVERLAY_INTERACTION, 'toggleTimer', latencyMs);
-                      updateSLOCompliance();
-                      
-                      return !prev;
-                    });
-                  }}
-                  aria-pressed={overlayTimerRunning}
-                >
-                  {overlayTimerRunning ? t('diagnostics.pauseTimer') : t('diagnostics.startTimer')}
-                </button>
-                <button
-                  className="button"
-                  type="button"
-                  onClick={() => {
-                    const start = performance.now();
-                    setOverlayTimerSeconds(0);
-                    setOverlayTimerRunning(false);
-                    const latencyMs = Math.round(performance.now() - start);
-                    setInteractionLatency({ action: 'resetTimer', latencyMs });
-                    sloClient.recordMetric(SLO_TYPE_OVERLAY_INTERACTION, 'resetTimer', latencyMs);
-                    updateSLOCompliance();
-                    
-                  }}
-                  disabled={overlayTimerSeconds === 0}
-                >
-                  {t('diagnostics.resetTimer')}
-                </button>
-                <span className="badge" style={{ fontSize: '1rem', padding: '6px 12px' }}>
-                  {Math.floor(overlayTimerSeconds / 60).toString().padStart(2, '0')}:{(overlayTimerSeconds % 60).toString().padStart(2, '0')}
-                </span>
-                {overlayMuted && <span className="badge badgeDanger">{t('diagnostics.muted')}</span>}
-              </div>
-              {/* Performance metrics display for SLO verification */}
-              {interactionLatency.latencyMs !== null && (
-                <p className="small" style={{ margin: '8px 0 0' }}>
-                  {t.rich('diagnostics.lastInteraction', {
-                    action: interactionLatency.action,
-                    ms: interactionLatency.latencyMs,
-                    strong: (chunks) => <strong>{chunks}</strong>,
-                  })}
-                  {interactionLatency.latencyMs <= 100 ? (
-                    <span className="success" style={{ marginLeft: 8 }}>✓ {t('diagnostics.withinSlo', { target: '<100ms' })}</span>
-                  ) : (
-                    <span className="error" style={{ marginLeft: 8 }}>⚠ {t('diagnostics.exceedsSlo', { target: '<100ms' })}</span>
-                  )}
-                </p>
-              )}
-            </section>
-
-            {/* PRD T4: Real-time SLO compliance status display */}
-            <section className={styles.settingsCard} aria-label={t('diagnostics.sloLabel')}>
-              <div className={styles.panelHeader}>
-                <h3 className={styles.sectionTitle} style={{ margin: 0 }}>{t('diagnostics.slo')}</h3>
-                <span className="small">{t('diagnostics.realtime')}</span>
-              </div>
-              <div className={styles.metricGrid}>
-                {sloCompliance.map((compliance) => {
-                  const isOverlay = compliance.type === 'overlay_interaction';
-                  const targetLabel = isOverlay ? t('diagnostics.overlayInteraction') : t('diagnostics.transcriptToSuggestion');
-                  const targetSlo = isOverlay ? '<100ms' : '<3s';
-                  
-                  return (
-                    <div key={compliance.type} className={styles.metricCard}>
-                      <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span className="small" style={{ fontWeight: 600 }}>{targetLabel}</span>
-                        <span className={`badge ${compliance.currentStatus === 'healthy' ? styles.badgeActive : compliance.currentStatus === 'warning' ? '' : styles.badgeDanger}`}>
-                          {getStatusEmoji(compliance.currentStatus)}{' '}
-                          {t.has(`diagnostics.status.${compliance.currentStatus}`) ? t(`diagnostics.status.${compliance.currentStatus}`) : compliance.currentStatus}
-                        </span>
-                      </div>
-                      {compliance.totalSamples > 0 ? (
-                        <>
-                          <div className="row" style={{ gap: 12, marginTop: 4 }}>
-                            <span className="small">p50: <strong>{formatLatency(compliance.p50)}</strong></span>
-                            <span className="small">p95: <strong>{formatLatency(compliance.p95)}</strong></span>
-                          </div>
-                          <div className={styles.progressTrack} style={{ marginTop: 6 }}>
-                            <span
-                              className={`${styles.progressFill} ${compliance.p95 <= (isOverlay ? 100 : 3000) ? styles.progressFillhigh : compliance.p95 <= (isOverlay ? 150 : 4000) ? styles.progressFillmedium : styles.progressFilllow}`}
-                              style={{ width: `${Math.min(100, (compliance.withinTarget / compliance.totalSamples) * 100)}%` }}
-                            />
-                          </div>
-                          <span className="small" style={{ color: 'var(--muted)' }}>
-                            {t('diagnostics.withinCount', { within: compliance.withinTarget, total: compliance.totalSamples, target: targetSlo })}
-                          </span>
-                        </>
-                      ) : (
-                        <p className="small" style={{ margin: '4px 0 0', color: 'var(--muted)' }}>
-                          {t('diagnostics.noSamples')}
-                        </p>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-              {/* Recent metrics mini-display */}
-              {recentSloMetrics.length > 0 && (
-                <div style={{ marginTop: 8 }}>
-                  <span className="small" style={{ display: 'block', marginBottom: 4 }}>{t('diagnostics.recent')}</span>
-                  <div className="row" style={{ gap: 4, flexWrap: 'wrap' }}>
-                    {recentSloMetrics.slice(-5).reverse().map((metric, idx) => (
-                      <span
-                        key={`${metric.timestamp}-${idx}`}
-                        className="badge"
-                        style={{
-                          fontSize: '0.75rem',
-                          padding: '2px 6px',
-                          borderColor: metric.status === 'healthy' ? 'rgba(26, 194, 115, 0.5)' : metric.status === 'warning' ? 'rgba(255, 191, 91, 0.5)' : 'rgba(255, 92, 138, 0.5)',
-                        }}
-                        title={`${metric.action}: ${format.number(metric.latencyMs, { style: 'unit', unit: 'millisecond' })}`}
-                      >
-                        {formatLatency(metric.latencyMs)}
-                      </span>
-                    ))}
-                  </div>
+              <div className={styles.dataRow}>
+                <div className={styles.dataText}>
+                  <h4 className={styles.dataName}>{t('data.exportTitle')}</h4>
+                  <p className={styles.dataDesc}>{t('data.exportDesc')}</p>
                 </div>
-              )}
+                <button className="button" type="button" onClick={() => void exportAllCopilotData()} disabled={exportingAllData || deleteAllPending}>
+                  {exportingAllData ? t('data.exporting') : t('data.export')}
+                </button>
+              </div>
+
+              <div className={styles.dataRow}>
+                <div className={styles.dataText}>
+                  <h4 className={styles.dataName}>{t('data.purgeTitle')}</h4>
+                  <p className={styles.dataDesc}>{t.rich('data.purgeWarning', { strong: (chunks) => <strong>{chunks}</strong> })}</p>
+                  <label className="label">
+                    <span>{t.rich('data.purgeConfirm', { phrase: PURGE_PHRASE, code: (chunks) => <code>{chunks}</code> })}</span>
+                    <input
+                      className="input"
+                      value={deleteAllConfirmation}
+                      onChange={(e) => setDeleteAllConfirmation(e.target.value)}
+                      placeholder={PURGE_PHRASE}
+                      disabled={deleteAllPending || exportingAllData}
+                    />
+                  </label>
+                </div>
+                <button
+                  className="button buttonDanger"
+                  type="button"
+                  onClick={() => void deleteAllCopilotData()}
+                  disabled={isActive || deleteAllPending || exportingAllData || deleteAllConfirmation !== PURGE_PHRASE}
+                >
+                  {deleteAllPending ? t('data.purging') : t('data.purge')}
+                </button>
+              </div>
+
+              {settingsError ? (
+                <div className="error" role="status" aria-live="polite">
+                  {settingsError}
+                </div>
+              ) : null}
+              {settingsSuccess ? (
+                <div className="success" role="status" aria-live="polite">
+                  {settingsSuccess}
+                </div>
+              ) : null}
             </section>
-          </details>
-        </div>
+          </div>
+        ) : null}
       </section>
+
+      {debug ? (
+        <details className={styles.debug}>
+          <summary className={styles.debugSummary}>{t.rich('diagnostics.summary', { strong: (chunks) => <strong>{chunks}</strong> })}</summary>
+          {/* T4: Overlay controls with hotkey hints and performance instrumentation */}
+          <section className={styles.debugBlock} aria-label={t('diagnostics.overlay')}>
+            <div className={styles.listHeader}>
+              <h3 className={styles.subTitle}>{t('diagnostics.overlay')}</h3>
+              <span className={styles.meta}>{t('diagnostics.hotkeys')}</span>
+            </div>
+            <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+              <button
+                className="button buttonSmall"
+                type="button"
+                onClick={() => {
+                  const start = performance.now();
+                  setOverlayVisible((prev) => {
+                    const latencyMs = Math.round(performance.now() - start);
+                    setInteractionLatency({ action: 'toggleOverlay', latencyMs });
+                    sloClient.recordMetric(SLO_TYPE_OVERLAY_INTERACTION, 'toggleOverlay', latencyMs);
+                    updateSLOCompliance();
+
+                    return !prev;
+                  });
+                }}
+                aria-pressed={overlayVisible}
+              >
+                {overlayVisible ? t('diagnostics.hide') : t('diagnostics.show')}
+              </button>
+              <button
+                className="button buttonSmall"
+                type="button"
+                onClick={() => {
+                  const start = performance.now();
+                  setOverlayMuted((prev) => {
+                    const latencyMs = Math.round(performance.now() - start);
+                    setInteractionLatency({ action: 'toggleMute', latencyMs });
+                    sloClient.recordMetric(SLO_TYPE_OVERLAY_INTERACTION, 'toggleMute', latencyMs);
+                    updateSLOCompliance();
+
+                    return !prev;
+                  });
+                }}
+                aria-pressed={overlayMuted}
+              >
+                {overlayMuted ? t('diagnostics.unmute') : t('diagnostics.mute')}
+              </button>
+              <button
+                className="button buttonSmall"
+                type="button"
+                onClick={() => {
+                  const start = performance.now();
+                  setOverlayTimerRunning((prev) => {
+                    const latencyMs = Math.round(performance.now() - start);
+                    setInteractionLatency({ action: 'toggleTimer', latencyMs });
+                    sloClient.recordMetric(SLO_TYPE_OVERLAY_INTERACTION, 'toggleTimer', latencyMs);
+                    updateSLOCompliance();
+
+                    return !prev;
+                  });
+                }}
+                aria-pressed={overlayTimerRunning}
+              >
+                {overlayTimerRunning ? t('diagnostics.pauseTimer') : t('diagnostics.startTimer')}
+              </button>
+              <button
+                className="button buttonSmall"
+                type="button"
+                onClick={() => {
+                  const start = performance.now();
+                  setOverlayTimerSeconds(0);
+                  setOverlayTimerRunning(false);
+                  const latencyMs = Math.round(performance.now() - start);
+                  setInteractionLatency({ action: 'resetTimer', latencyMs });
+                  sloClient.recordMetric(SLO_TYPE_OVERLAY_INTERACTION, 'resetTimer', latencyMs);
+                  updateSLOCompliance();
+                }}
+                disabled={overlayTimerSeconds === 0}
+              >
+                {t('diagnostics.resetTimer')}
+              </button>
+              <span className="badge tnum">
+                {Math.floor(overlayTimerSeconds / 60)
+                  .toString()
+                  .padStart(2, '0')}
+                :{(overlayTimerSeconds % 60).toString().padStart(2, '0')}
+              </span>
+              {overlayMuted && <span className="badge badgeAlert">{t('diagnostics.muted')}</span>}
+            </div>
+            {/* Performance metrics display for SLO verification */}
+            {interactionLatency.latencyMs !== null && (
+              <p className={styles.meta}>
+                {t.rich('diagnostics.lastInteraction', {
+                  action: interactionLatency.action,
+                  ms: interactionLatency.latencyMs,
+                  strong: (chunks) => <strong>{chunks}</strong>,
+                })}{' '}
+                {interactionLatency.latencyMs <= 100
+                  ? t('diagnostics.withinSlo', { target: '<100ms' })
+                  : t('diagnostics.exceedsSlo', { target: '<100ms' })}
+              </p>
+            )}
+          </section>
+
+          {/* PRD T4: Real-time SLO compliance status display */}
+          <section className={styles.debugBlock} aria-label={t('diagnostics.sloLabel')}>
+            <div className={styles.listHeader}>
+              <h3 className={styles.subTitle}>{t('diagnostics.slo')}</h3>
+              <span className={styles.meta}>{t('diagnostics.realtime')}</span>
+            </div>
+            <div className={styles.debugGrid}>
+              {sloCompliance.map((compliance) => {
+                const isOverlay = compliance.type === 'overlay_interaction';
+                const targetLabel = isOverlay ? t('diagnostics.overlayInteraction') : t('diagnostics.transcriptToSuggestion');
+                const targetSlo = isOverlay ? '<100ms' : '<3s';
+
+                return (
+                  <div key={compliance.type} className={styles.debugItem}>
+                    <div className={styles.listHeader}>
+                      <span className={styles.rubricName}>{targetLabel}</span>
+                      <span className="badge">
+                        {getStatusEmoji(compliance.currentStatus)}{' '}
+                        {t.has(`diagnostics.status.${compliance.currentStatus}`) ? t(`diagnostics.status.${compliance.currentStatus}`) : compliance.currentStatus}
+                      </span>
+                    </div>
+                    {compliance.totalSamples > 0 ? (
+                      <>
+                        <span className={styles.meta}>
+                          p50 <strong>{formatLatency(compliance.p50)}</strong> · p95 <strong>{formatLatency(compliance.p95)}</strong>
+                        </span>
+                        <div className={styles.bar} aria-hidden="true">
+                          <span
+                            className={styles.barFill}
+                            style={{ transform: `scaleX(${Math.min(1, compliance.withinTarget / compliance.totalSamples)})` }}
+                          />
+                        </div>
+                        <span className={styles.meta}>
+                          {t('diagnostics.withinCount', { within: compliance.withinTarget, total: compliance.totalSamples, target: targetSlo })}
+                        </span>
+                      </>
+                    ) : (
+                      <p className={styles.meta}>{t('diagnostics.noSamples')}</p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            {/* Recent metrics mini-display */}
+            {recentSloMetrics.length > 0 && (
+              <div className="row" style={{ gap: 4, flexWrap: 'wrap' }}>
+                <span className={styles.meta}>{t('diagnostics.recent')}</span>
+                {recentSloMetrics
+                  .slice(-5)
+                  .reverse()
+                  .map((metric, idx) => (
+                    <span
+                      key={`${metric.timestamp}-${idx}`}
+                      className={`badge ${metric.status === 'critical' ? 'badgeAlert' : ''}`}
+                      title={`${metric.action}: ${format.number(metric.latencyMs, { style: 'unit', unit: 'millisecond' })}`}
+                    >
+                      {formatLatency(metric.latencyMs)}
+                    </span>
+                  ))}
+              </div>
+            )}
+          </section>
+        </details>
+      ) : null}
+
+      {isActive ? (
+        <div className={styles.mobileBar} role="group" aria-label={t('controlsLabel')}>
+          <button
+            className={`button ${styles.barIcon}`}
+            type="button"
+            onClick={toggleListening}
+            disabled={audio.status === 'starting'}
+            aria-label={listenLabel}
+            title={listenLabel}
+            data-live={audio.status === 'live' ? '' : undefined}
+          >
+            <MicIcon size={18} />
+          </button>
+          {!singleMic ? (
+            <button
+              className={`button ${styles.barIcon}`}
+              type="button"
+              onClick={() => void solveScreen()}
+              disabled={audio.status !== 'live'}
+              aria-label={tAnswer('solveScreen')}
+              title={tAnswer('solveScreen')}
+            >
+              <ScreenIcon size={18} />
+            </button>
+          ) : null}
+          <button className={`button buttonPrimary ${styles.barPrimary}`} type="button" onClick={answerNow}>
+            {tAnswer('answerNow')}
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }

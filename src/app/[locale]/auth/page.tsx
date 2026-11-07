@@ -1,14 +1,14 @@
 'use client';
 
-import { useState, Suspense } from 'react';
+import { useId, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { Link, useRouter } from '@/i18n/routing';
+import { useRouter } from '@/i18n/routing';
 import { useLocale, useTranslations } from 'next-intl';
 import { createClient } from '@/lib/supabase/browser';
-import { ApexMark } from '@/components/ApexMark';
 import { safeNextPath } from '@/lib/safeRedirect';
 import { stripLocalePrefix } from '@/i18n/locales';
 import { domainFromEmail } from '@/lib/ssoDomain';
+import { AuthShell } from './AuthShell';
 import styles from './auth.module.css';
 
 type Mode = 'login' | 'signup' | 'sso' | 'forgot';
@@ -28,7 +28,7 @@ function errorKey(message: string): string | null {
 
 function AuthForm() {
   const t = useTranslations('Auth');
-  const tBrand = useTranslations('Brand');
+  const passwordId = useId();
   const locale = useLocale();
   const router = useRouter();
   const sp = useSearchParams();
@@ -148,132 +148,109 @@ function AuthForm() {
   const passwordMode = mode === 'login' || mode === 'signup';
 
   return (
-    <div className={styles.page}>
-      <aside className={styles.brandPanel}>
-        <Link href="/" className={styles.brandLink} aria-label={t('home')}>
-          <ApexMark size={40} />
-          <span className={styles.brandName}>{tBrand('name')}</span>
-        </Link>
-        <div className={styles.brandCopy}>
-          <p className={styles.brandLine}>{t('tagline')}</p>
-          <div className={styles.signal} aria-hidden="true">
-            <span className={styles.signalWho} data-voice="interviewer">{t('interviewer')}</span>
-            <svg viewBox="0 0 320 36" className={styles.trace}>
-              <path
-                d="M0 18 h22 l3 -10 l4 20 l4 -26 l4 30 l4 -18 l4 10 l4 -6 h12 l3 -12 l4 22 l4 -14 l4 8 h24 l3 -6 l4 12 l4 -16 l4 20 l4 -10 h170"
-                stroke="var(--ice)"
-              />
-            </svg>
-            <span className={styles.signalWho} data-voice="you">{t('you')}</span>
-            <svg viewBox="0 0 320 36" className={styles.trace}>
-              <path d="M0 18 h150 l3 -6 l4 12 l4 -9 l4 6 l4 -3 h151" stroke="var(--ember)" />
-            </svg>
-          </div>
+    <AuthShell>
+      <div className={styles.heading}>
+        <h1 className="pageTitle">{t(`title.${mode}`)}</h1>
+        <p className={styles.subtitle}>{t(`subtitle.${mode}`)}</p>
+      </div>
+
+      {passwordMode ? (
+        <div className={styles.modes} role="group" aria-label={t('account')}>
+          <button type="button" className={styles.mode} aria-pressed={!signup} onClick={() => switchTo('login')}>
+            {t('haveAccount')}
+          </button>
+          <button type="button" className={styles.mode} aria-pressed={signup} onClick={() => switchTo('signup')}>
+            {t('newHere')}
+          </button>
         </div>
-      </aside>
+      ) : null}
 
-      <main id="main-content" className={styles.formSide} tabIndex={-1}>
-        <div className={styles.formBox}>
-          <div className={styles.heading}>
-            <h1 className="pageTitle">{t(`title.${mode}`)}</h1>
-            <p className="help">{t(`subtitle.${mode}`)}</p>
-          </div>
+      {passwordMode ? (
+        <div className={styles.group}>
+          <button type="button" className={`button ${styles.wide}`} onClick={() => void google()} disabled={loading}>
+            <GoogleMark />
+            {t('google')}
+          </button>
+          <p className={styles.or}>
+            <span>{t('or')}</span>
+          </p>
+        </div>
+      ) : null}
 
-          {passwordMode ? (
-            <div className={styles.modes} role="group" aria-label={t('account')}>
-              <button type="button" className={styles.mode} aria-pressed={!signup} onClick={() => switchTo('login')}>
-                {t('haveAccount')}
-              </button>
-              <button type="button" className={styles.mode} aria-pressed={signup} onClick={() => switchTo('signup')}>
-                {t('newHere')}
-              </button>
-            </div>
-          ) : null}
-
-          {passwordMode ? (
-            <>
-              <button type="button" className={`button ${styles.submit}`} onClick={() => void google()} disabled={loading}>
-                <GoogleMark />
-                {t('google')}
-              </button>
-              <p className={styles.or}>
-                <span>{t('or')}</span>
-              </p>
-            </>
-          ) : null}
-
-          <form onSubmit={onSubmit} className="stack" aria-label={t(`title.${mode}`)}>
-            <label className="label">
-              {mode === 'sso' ? t('workEmail') : t('email')}
-              <input
-                className="input"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                type="email"
-                autoComplete="email"
-                required
-              />
+      <form onSubmit={onSubmit} className={styles.form} aria-label={t(`title.${mode}`)}>
+        <label className="label">
+          {mode === 'sso' ? t('workEmail') : t('email')}
+          <input
+            className="input"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            type="email"
+            autoComplete="email"
+            required
+          />
+        </label>
+        {passwordMode ? (
+          <div className={styles.field}>
+            <label className={`label ${styles.fieldLabel}`} htmlFor={passwordId}>
+              {t('password')}
             </label>
-            {passwordMode ? (
-              <label className="label">
-                {t('password')}
-                <input
-                  className="input"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  type="password"
-                  autoComplete={signup ? 'new-password' : 'current-password'}
-                  minLength={signup ? 8 : undefined}
-                  required
-                />
-                {signup ? <span className="help">{t('passwordHelp')}</span> : null}
-              </label>
+            <input
+              id={passwordId}
+              className={`input ${styles.fieldInput}`}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              type="password"
+              autoComplete={signup ? 'new-password' : 'current-password'}
+              minLength={signup ? 8 : undefined}
+              aria-describedby={signup ? `${passwordId}-help` : undefined}
+              required
+            />
+            {signup ? (
+              <span id={`${passwordId}-help`} className={`help ${styles.fieldHelp}`}>
+                {t('passwordHelp')}
+              </span>
             ) : null}
-
+            {/* Shown beside the label, but after the field when tabbing. */}
             {mode === 'login' ? (
               <button type="button" className={styles.textButton} onClick={() => switchTo('forgot')}>
                 {t('forgot')}
               </button>
             ) : null}
+          </div>
+        ) : null}
 
-            {error ? (
-              <div className="error" role="alert">
-                {error}
-              </div>
-            ) : null}
-            {notice ? (
-              <div className={styles.notice} role="status">
-                {notice}
-              </div>
-            ) : null}
+        {error ? (
+          <div className="error" role="alert">
+            {error}
+          </div>
+        ) : null}
+        {notice ? (
+          <div className="success" role="status">
+            {notice}
+          </div>
+        ) : null}
 
-            <button className={`button buttonPrimary ${styles.submit}`} disabled={loading} type="submit">
-              {loading ? t(`working.${mode}`) : t(`submit.${mode}`)}
-            </button>
-          </form>
+        <button className={`button buttonPrimary ${styles.wide}`} disabled={loading} type="submit">
+          {loading ? t(`working.${mode}`) : t(`submit.${mode}`)}
+        </button>
+      </form>
 
-          {mode === 'login' || mode === 'signup' ? (
-            <button type="button" className={`button buttonGhost ${styles.submit}`} onClick={() => switchTo('sso')}>
-              {t('useSso')}
-            </button>
-          ) : (
-            <button type="button" className={`button buttonGhost ${styles.submit}`} onClick={() => switchTo('login')}>
-              {t('backToSignIn')}
-            </button>
-          )}
-
-          <p className="small">
-            <Link href="/">{t('home')}</Link>
-          </p>
-        </div>
-      </main>
-    </div>
+      {mode === 'login' || mode === 'signup' ? (
+        <button type="button" className={`button buttonGhost ${styles.wide}`} onClick={() => switchTo('sso')}>
+          {t('useSso')}
+        </button>
+      ) : (
+        <button type="button" className={`button buttonGhost ${styles.wide}`} onClick={() => switchTo('login')}>
+          {t('backToSignIn')}
+        </button>
+      )}
+    </AuthShell>
   );
 }
 
 function GoogleMark() {
   return (
-    <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true" style={{ marginRight: 8 }}>
+    <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true" focusable="false">
       <path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.92c1.7-1.57 2.68-3.88 2.68-6.62z" />
       <path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.92-2.26c-.8.54-1.84.86-3.04.86-2.34 0-4.32-1.58-5.03-3.7H.96v2.33A9 9 0 0 0 9 18z" />
       <path fill="#FBBC05" d="M3.97 10.72A5.4 5.4 0 0 1 3.68 9c0-.6.1-1.18.29-1.72V4.95H.96A9 9 0 0 0 0 9c0 1.45.35 2.83.96 4.05l3.01-2.33z" />
@@ -282,19 +259,10 @@ function GoogleMark() {
   );
 }
 
-function AuthLoading() {
-  return (
-    <div className={styles.page}>
-      <main className={styles.formSide}>
-        <p className="small">…</p>
-      </main>
-    </div>
-  );
-}
-
 export default function AuthPage() {
   return (
-    <Suspense fallback={<AuthLoading />}>
+    // Until the address's ?mode= is read: the same page, without the form.
+    <Suspense fallback={<AuthShell />}>
       <AuthForm />
     </Suspense>
   );

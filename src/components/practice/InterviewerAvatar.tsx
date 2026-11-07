@@ -3,8 +3,10 @@ import styles from './InterviewerAvatar.module.css';
 const MOUTH_BARS = [0, 1, 2, 3, 4];
 
 /**
- * The practice interviewer: an abstract face whose mouth moves while the
- * question is read aloud, and whose eyes follow your answer while you speak.
+ * The practice interviewer, drawn in Ice like every interviewer voice in the
+ * app: a still face whose mouth moves only while the question is read aloud,
+ * and whose eyes narrow while you dictate. Its size comes from the
+ * `--avatar-size` custom property of the place it sits in (48px by default).
  */
 export function InterviewerAvatar({ state, label }: { state: 'speaking' | 'listening' | 'idle'; label: string }) {
   return (
@@ -15,9 +17,18 @@ export function InterviewerAvatar({ state, label }: { state: 'speaking' | 'liste
           <rect x="30" y="36" width="9" height="12" rx="4.5" />
           <rect x="57" y="36" width="9" height="12" rx="4.5" />
         </g>
-        <g className={styles.mouth}>
+        <g>
           {MOUTH_BARS.map((bar) => (
-            <rect key={bar} className={styles.bar} x={36 + bar * 5.5} y="60" width="3.2" height="8" rx="1.6" style={{ animationDelay: `${bar * 90}ms` }} />
+            <rect
+              key={bar}
+              className={styles.bar}
+              x={36 + bar * 5.5}
+              y="60"
+              width="3.2"
+              height="8"
+              rx="1.6"
+              style={{ animationDelay: `${bar * 90}ms` }}
+            />
           ))}
         </g>
       </svg>

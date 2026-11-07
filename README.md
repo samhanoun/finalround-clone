@@ -245,6 +245,12 @@ npm test -- rateLimit.test.ts
 
 ---
 
+## Deploy
+
+Apex Round needs a Node host with WebSocket support (a custom server relays live transcription), so it cannot run on Vercel. A production `Dockerfile` is included. Step-by-step setup for Supabase, Stripe, cron jobs, Render / Fly.io / Railway and the desktop app is in [docs/deploy.md](docs/deploy.md).
+
+---
+
 ## 🚢 Deployment
 
 ### Node host (required for live transcription)

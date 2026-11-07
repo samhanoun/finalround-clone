@@ -1,79 +1,345 @@
+/* Help & support: the list of requests beside the open one (desktop), or the
+   list and then the request full width (phones). */
 .layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
-  gap: 20px;
+  grid-template-columns: 320px minmax(0, 1fr);
+  gap: 24px;
   align-items: start;
 }
 
-.tickets,
-.thread {
-  list-style: none;
-  margin: 0;
-  padding: 0;
+/* List */
+.listPane {
   display: grid;
-  gap: 10px;
+  gap: 12px;
+  min-width: 0;
 }
 
-.ticket {
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 12px 14px;
-  background: var(--well);
-  display: grid;
-  gap: 10px;
-}
-
-.ticketHead {
+.listHead {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
+  min-height: 32px;
+}
+
+.paneTitle {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0;
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.count {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.newButton[aria-current='true'] {
+  background: var(--raised-2);
+  border-color: var(--hairline-hover);
+}
+
+.list {
+  display: grid;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-card);
+}
+
+.list li + li {
+  margin-top: 2px;
+}
+
+.item {
+  display: grid;
+  gap: 4px;
   width: 100%;
-  padding: 0;
+  padding: 10px 12px;
   border: 0;
-  background: none;
+  border-radius: var(--radius-row);
+  background: transparent;
   color: inherit;
   font: inherit;
   text-align: left;
   cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease);
 }
 
-.ticketHead > span:first-child {
-  display: grid;
-  gap: 2px;
+.item:hover {
+  background: rgba(237, 237, 237, 0.04);
+}
+
+.item[aria-current='true'] {
+  background: var(--raised);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.itemTop,
+.itemBottom {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
   min-width: 0;
 }
 
-.meta {
+.itemSubject {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-1);
+}
+
+.itemTime {
+  flex: none;
+  font-size: 12px;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.itemMeta {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 13px;
-  color: var(--mist);
+  color: var(--text-3);
 }
 
-.body {
+.skeletonItem {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+}
+
+/* Status: quiet text with a dot; only "waiting for you" lights up. */
+.status {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-3);
+}
+
+.status[data-status='waiting_user'] {
+  color: var(--text-1);
+}
+
+.status[data-status='waiting_user'] .dot {
+  background: var(--accent);
+}
+
+.status[data-status='resolved'] .dot {
+  background: var(--positive);
+}
+
+.status[data-status='closed'] {
+  color: var(--text-3);
+}
+
+.status[data-status='closed'] .dot {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--text-3);
+}
+
+/* Detail */
+.detailPane {
+  min-width: 0;
+  padding: 24px;
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-card);
+}
+
+.back {
+  display: none;
+}
+
+.notice {
   margin: 0;
-  white-space: pre-wrap;
-  line-height: 1.55;
+  font-size: 13px;
+  color: var(--text-2);
 }
 
-.thread li {
+.notice:not(:empty) {
+  margin-bottom: 16px;
   padding: 10px 12px;
-  border-radius: 10px;
-  background: var(--deck);
-  border: 1px solid var(--line);
+  border-radius: var(--radius-row);
+  background: var(--raised);
 }
 
-.thread li[data-from='support'] {
-  border-color: color-mix(in srgb, var(--ice) 40%, transparent);
+.detailHead {
+  display: grid;
+  gap: 4px;
 }
 
-.thread p {
-  margin: 4px 0 0;
-  white-space: pre-wrap;
+.detailTitleRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.detailTitle {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 500;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  outline: none;
+}
+
+.detailMeta {
+  margin: 0;
+  font-size: 13px;
   line-height: 1.5;
+  color: var(--text-3);
 }
 
-@media (max-width: 860px) {
+.form {
+  display: grid;
+  gap: 16px;
+  max-width: 600px;
+}
+
+.formFoot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.error {
+  flex: 1 1 200px;
+  margin: 0;
+  font-size: 13px;
+  color: var(--negative-text);
+}
+
+/* The conversation: your messages on the right, support on the left. */
+.thread {
+  display: grid;
+  gap: 20px;
+}
+
+.messages {
+  display: grid;
+  gap: 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.message {
+  display: grid;
+  justify-items: start;
+  gap: 4px;
+  max-width: 80%;
+}
+
+.message[data-from='you'] {
+  justify-self: end;
+  justify-items: end;
+}
+
+.messageMeta {
+  font-size: 12px;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.bubble {
+  margin: 0;
+  padding: 10px 14px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: 12px 12px 12px 4px;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--text-1);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.message[data-from='you'] .bubble {
+  border-color: transparent;
+  border-radius: 12px 12px 4px 12px;
+  background: var(--raised);
+}
+
+.waiting {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-3);
+  text-align: center;
+}
+
+.composer {
+  display: grid;
+  gap: 12px;
+  padding-top: 20px;
+  border-top: 1px solid var(--hairline);
+}
+
+/* Tablets: a narrower list */
+@media (max-width: 1023px) {
   .layout {
-    grid-template-columns: 1fr;
+    grid-template-columns: 280px minmax(0, 1fr);
+  }
+
+  .detailPane {
+    padding: 20px;
+  }
+}
+
+/* Phones: the list, then the open item full width with a back button */
+@media (max-width: 767px) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .layout[data-view='list'] .detailPane,
+  .layout[data-view='detail'] .listPane {
+    display: none;
+  }
+
+  .detailPane {
+    padding: 16px;
+  }
+
+  .back {
+    display: inline-flex;
+    margin: -4px 0 12px -8px;
+  }
+
+  .message {
+    max-width: 88%;
+  }
+
+  .formFoot :global(.button) {
+    width: 100%;
+  }
+
+  .item {
+    padding: 12px;
   }
 }

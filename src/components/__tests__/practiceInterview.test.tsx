@@ -1,7 +1,8 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import React from 'react';
-import { PracticeInterview, type PracticeQuestion } from '@/components/practice/PracticeInterview';
+import { PracticeInterview, type PracticeQuestion, type PracticeReport } from '@/components/practice/PracticeInterview';
 import { pickVoice } from '@/components/practice/useInterviewerVoice';
+import { ToastProvider } from '@/components/Toast';
 
 jest.mock('next/navigation', () => ({ useRouter: () => ({ refresh: jest.fn(), push: jest.fn() }) }));
 
@@ -92,15 +93,83 @@ describe('PracticeInterview', () => {
 
     expect(await screen.findByText('Solid but vague.')).toBeInTheDocument();
     expect(screen.getByText('The interviewer has a follow-up question about your answer.')).toBeInTheDocument();
-    expect(screen.getByText('Question 1 of 3')).toBeInTheDocument();
+    // Follow-ups hang off their question: the count stays at the two questions the interview has.
+    expect(screen.getByText('Question 1 of 2')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Follow-up to question 1' })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Answer the follow-up' }));
-    expect(screen.getByText('Which part of that deadline did you own?')).toBeInTheDocument();
-    expect(screen.getByText('Follow-up')).toBeInTheDocument();
+    const asking = screen.getByRole('region', { name: 'Question' });
+    expect(within(asking).getByText('Which part of that deadline did you own?')).toBeInTheDocument();
+    expect(within(asking).getByText('Follow-up')).toBeInTheDocument();
+    // The exchange it digs into stays above it.
+    expect(screen.getByText('We shipped on time by cutting scope.')).toBeInTheDocument();
     await waitFor(() => expect(spoken).toContain('Which part of that deadline did you own?'));
 
     fireEvent.click(screen.getByRole('button', { name: 'Skip the follow-up' }));
     expect(screen.getByText('Why this team?')).toBeInTheDocument();
+    expect(screen.getByText('Question 2 of 2')).toBeInTheDocument();
+  });
+
+  it('shows the feedback as a score and plain sections', async () => {
+    global.fetch = jest.fn(async () => ({
+      ok: true,
+      json: async () => ({ questionId: 'q1', answeredAt: '2026-10-26T10:00:00Z', feedback: FEEDBACK, followUp: null }),
+    })) as unknown as typeof fetch;
+
+    renderInterview([question('q1', 'Tell me about a hard deadline.')]);
+    fireEvent.change(screen.getByLabelText('Your answer'), { target: { value: 'We shipped on time by cutting scope.' } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Submit answer' }));
+    });
+
+    const feedback = await screen.findByRole('region', { name: 'Feedback on your answer' });
+    expect(within(feedback).getByText('6')).toBeInTheDocument();
+    expect(within(feedback).getByRole('heading', { name: 'What worked' })).toBeInTheDocument();
+    expect(within(feedback).getByRole('heading', { name: 'To improve' })).toBeInTheDocument();
+    expect(within(feedback).getByRole('heading', { name: 'A stronger answer would cover' })).toBeInTheDocument();
+    // The last question answered: the report is the one next step.
+    expect(screen.getByRole('button', { name: 'Finish and see my report' })).toHaveClass('buttonPrimary');
+  });
+});
+
+describe('PracticeInterview report', () => {
+  const REPORT: PracticeReport = {
+    overall_score: 72,
+    hiring_signal: 'lean_hire',
+    summary: 'Specific answers with measurable results.',
+    strengths: ['Uses numbers to show impact'],
+    weaknesses: ['Too much “we”'],
+    next_steps: ['P1: Rewrite two stories around your own decisions', 'P2: Practise a 90-second version'],
+    rubric: {
+      clarity: { score: 4, evidence: 'Short sentences', recommendation: 'Keep the opening to one line.' },
+      structure: { score: 3, evidence: 'Result came early', recommendation: 'Situation, action, result.' },
+    },
+  };
+
+  it('leads with the overall score, then the areas with their evidence and the next steps in order', () => {
+    render(
+      <ToastProvider>
+        <PracticeInterview
+          sessionId="s1"
+          setup={null}
+          questions={[question('q1', 'Tell me about a hard deadline.', { response_text: 'We shipped.', rubric: { feedback: FEEDBACK } })]}
+          report={REPORT}
+          resumes={[]}
+        />
+      </ToastProvider>,
+    );
+    const overall = screen.getByRole('region', { name: 'Overall result' });
+    expect(within(overall).getByText('72')).toBeInTheDocument();
+    expect(within(overall).getByText('Leaning hire')).toBeInTheDocument();
+
+    const areas = screen.getByRole('region', { name: 'Scores by area' });
+    expect(within(areas).getByText('Clarity')).toBeInTheDocument();
+    expect(within(areas).getByText('Short sentences')).toBeInTheDocument();
+    expect(within(areas).getByText('4 / 5')).toBeInTheDocument();
+
+    const steps = within(screen.getByRole('region', { name: 'Next steps' })).getAllByRole('listitem');
+    expect(steps.map((step) => step.textContent)).toEqual(['Rewrite two stories around your own decisions', 'Practise a 90-second version']);
+    expect(screen.getByRole('button', { name: 'Practice again' })).toHaveClass('buttonPrimary');
   });
 });
 
@@ -157,6 +226,45 @@ describe('PracticeInterview setup from a goal', () => {
       resumeDocumentId: RESUME_ID,
       jobDescription: 'Own payments reliability.',
     });
+  });
+
+  it('moves through the interview types with the arrow keys and turns follow-ups off with the switch', async () => {
+    const calls: Array<{ url: string; body?: Record<string, unknown> }> = [];
+    global.fetch = jest.fn(async (url: string, init?: RequestInit) => {
+      calls.push({ url, body: init?.body ? JSON.parse(String(init.body)) : undefined });
+      return {
+        ok: true,
+        json: async () => ({
+          questions: [question('q1', 'Why this team?')],
+          setup: { role: 'Designer', type: 'technical', difficulty: 'medium', count: 5, followUps: false, hasResume: false, hasJob: false },
+        }),
+      };
+    }) as unknown as typeof fetch;
+
+    render(<PracticeInterview sessionId="s1" setup={null} questions={[]} report={null} resumes={[]} />);
+    fireEvent.change(screen.getByLabelText('Role'), { target: { value: 'Designer' } });
+
+    const types = screen.getByRole('radiogroup', { name: 'Interview type' });
+    const behavioral = within(types).getByRole('radio', { name: 'Behavioral' });
+    expect(behavioral).toHaveAttribute('aria-checked', 'true');
+    fireEvent.keyDown(behavioral, { key: 'ArrowRight' });
+    expect(within(types).getByRole('radio', { name: 'Technical' })).toHaveAttribute('aria-checked', 'true');
+    expect(within(types).getByRole('radio', { name: 'Technical' })).toHaveAttribute('tabindex', '0');
+
+    const followUps = screen.getByRole('switch', { name: 'Follow-up questions' });
+    expect(followUps).toHaveAttribute('aria-checked', 'true');
+    fireEvent.click(followUps);
+    expect(followUps).toHaveAttribute('aria-checked', 'false');
+    expect(screen.getByText('5 questions · Technical · Medium')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Start the interview' }));
+    await waitFor(() =>
+      expect(calls.find((call) => call.url === '/api/interviews/s1/practice/start')?.body).toMatchObject({
+        role: 'Designer',
+        type: 'technical',
+        followUps: false,
+      }),
+    );
   });
 });
 

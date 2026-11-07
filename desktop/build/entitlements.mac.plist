@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Hardened-runtime entitlements for the app and its helpers (electron-builder.js).
+  Screen recording has no entitlement: macOS asks for it in
+  System Settings > Privacy & Security > Screen & System Audio Recording.
+-->
+<plist version="1.0">
+  <dict>
+    <!-- V8 compiles JavaScript at run time. -->
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+    <!-- The microphone, for live sessions. -->
+    <key>com.apple.security.device.audio-input</key>
+    <true/>
+  </dict>
+</plist>

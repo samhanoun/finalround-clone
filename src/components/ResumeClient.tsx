@@ -3,7 +3,9 @@
 import { useCallback, useEffect, useState, useId } from 'react';
 import { useFormatter, useTranslations } from 'next-intl';
 import { useToastHook } from '@/components/Toast';
+import { ResumeIcon } from '@/components/icons';
 import { createClient } from '@/lib/supabase/browser';
+import styles from './ResumeClient.module.css';
 
 type Doc = {
   id: string;
@@ -122,15 +124,19 @@ export function ResumeClient(props: { initialDocs: Doc[]; initialGenerations: Ge
   const [bulletInput, setBulletInput] = useState<string>('');
   const [keywordResult, setKeywordResult] = useState<KeywordResult | null>(null);
   const [openGen, setOpenGen] = useState<string | null>(null);
+  // A new file input after each upload, so the chosen file's name clears.
+  const [fileKey, setFileKey] = useState(0);
 
-  // Generate unique IDs for form accessibility
+  // Unique IDs for form accessibility
   const fileInputId = useId();
   const docSelectId = useId();
   const jobDescId = useId();
+  const jobHelpId = useId();
   const bulletInputId = useId();
-  const uploadBtnId = useId();
+  const uploadStatusId = useId();
   const atsStatusId = useId();
   const bulletStatusId = useId();
+  const headingId = useId();
 
   const refreshHistory = useCallback(async () => {
     const res = await fetch('/api/resume/history');
@@ -161,6 +167,7 @@ export function ResumeClient(props: { initialDocs: Doc[]; initialGenerations: Ge
       setDocs((d) => [json.document, ...d]);
       setSelectedDocId(json.document.id);
       setFile(null);
+      setFileKey((key) => key + 1);
       toast.success(t('uploaded'), json.parsed?.status === 'completed' ? t('uploadedReady') : t('uploadedReading'));
     } catch (e) {
       const message = e instanceof Error ? e.message : t('uploadFailed');
@@ -211,7 +218,7 @@ export function ResumeClient(props: { initialDocs: Doc[]; initialGenerations: Ge
     }
   }
 
-  async function download(docId: string, _docName: string) {
+  async function download(docId: string) {
     try {
       const res = await fetch(`/api/resume/${docId}/download`);
       const json = await res.json().catch(() => ({}));
@@ -220,7 +227,7 @@ export function ResumeClient(props: { initialDocs: Doc[]; initialGenerations: Ge
       const url = String(json.url || '');
       if (!url) throw new Error(t('downloadFailed'));
 
-      // Trigger download in a new tab.
+      // The signed link opens in a new tab.
       window.open(url, '_blank', 'noopener,noreferrer');
     } catch (e) {
       const message = e instanceof Error ? e.message : t('downloadFailed');
@@ -307,48 +314,20 @@ export function ResumeClient(props: { initialDocs: Doc[]; initialGenerations: Ge
     }
   }
 
+  const score = atsResult ? Math.max(0, Math.min(100, Math.round(atsResult.atsScore))) : 0;
+
   return (
-    <div className="grid2" style={{ alignItems: 'start' }}>
-      <section className="card" aria-labelledby="resume-builder-heading">
-        <div className="cardInner stack">
-          <h2 className="cardTitle" id="resume-builder-heading">{t('title')}</h2>
-          <p className="cardDesc">{t('desc')}</p>
+    <div className={styles.layout}>
+      <div className={styles.main}>
+        <section className={styles.panel} aria-labelledby={headingId}>
+          <header className={styles.panelHead}>
+            <h2 className={styles.panelTitle} id={headingId}>
+              {t('title')}
+            </h2>
+            <p className={styles.panelDesc}>{t('desc')}</p>
+          </header>
 
-          <div className="stack">
-            {/* Upload Section */}
-            <label className="label" htmlFor={fileInputId}>
-              {t('file')}
-              <input
-                className="input"
-                type="file"
-                id={fileInputId}
-                accept=".pdf,.docx,.doc"
-                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-                aria-label={t('fileLabel')}
-              />
-            </label>
-
-            <div className="row" style={{ justifyContent: 'flex-end' }}>
-              <button 
-                className="button buttonPrimary" 
-                type="button" 
-                onClick={upload} 
-                disabled={!file || uploading}
-                id={uploadBtnId}
-                aria-describedby={uploading ? 'upload-status' : undefined}
-              >
-                {uploading ? t('uploading') : t('upload')}
-              </button>
-              {uploading && (
-                <span id="upload-status" className="srOnly">
-                  {t('uploadingStatus')}
-                </span>
-              )}
-            </div>
-
-            <hr className="hr" />
-
-            {/* Document Selection */}
+          <div className={styles.fields}>
             <label className="label" htmlFor={docSelectId}>
               {t('resume')}
               <select
@@ -364,13 +343,40 @@ export function ResumeClient(props: { initialDocs: Doc[]; initialGenerations: Ge
                 <option value="">{t('chooseResume')}</option>
                 {docs.map((d) => (
                   <option key={d.id} value={d.id}>
-                    {d.filename ?? d.id} {d.ats_score ? `(${d.ats_score}%)` : ''} v{d.version || 1}
+                    {d.filename ?? t('document')}
                   </option>
                 ))}
               </select>
             </label>
 
-            {/* Job Description */}
+            <div className={styles.upload}>
+              <label className="label" htmlFor={fileInputId}>
+                {t('file')}
+                <input
+                  key={fileKey}
+                  className={styles.file}
+                  type="file"
+                  id={fileInputId}
+                  accept=".pdf,.docx,.doc"
+                  onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+                />
+              </label>
+              <button
+                className="button"
+                type="button"
+                onClick={upload}
+                disabled={!file || uploading}
+                aria-describedby={uploading ? uploadStatusId : undefined}
+              >
+                {uploading ? t('uploading') : t('upload')}
+              </button>
+              {uploading ? (
+                <span id={uploadStatusId} className="srOnly">
+                  {t('uploadingStatus')}
+                </span>
+              ) : null}
+            </div>
+
             <label className="label" htmlFor={jobDescId}>
               {t('job')}
               <textarea
@@ -379,16 +385,15 @@ export function ResumeClient(props: { initialDocs: Doc[]; initialGenerations: Ge
                 value={jobDescription}
                 onChange={(e) => setJobDescription(e.target.value)}
                 placeholder={t('jobPlaceholder')}
-                rows={5}
-                aria-describedby="job-desc-help"
+                rows={6}
+                aria-describedby={jobHelpId}
               />
-              <span id="job-desc-help" className="help">
+              <span id={jobHelpId} className="help">
                 {t('jobHelp')}
               </span>
             </label>
 
-            {/* Action Buttons */}
-            <div className="row" style={{ gap: 8, flexWrap: 'wrap' }} role="group" aria-label={t('actions')}>
+            <div className={styles.actions} role="group" aria-label={t('actions')}>
               <button
                 className="button buttonPrimary"
                 type="button"
@@ -398,12 +403,7 @@ export function ResumeClient(props: { initialDocs: Doc[]; initialGenerations: Ge
               >
                 {analyzing ? t('checking') : t('check')}
               </button>
-              <button
-                className="button"
-                type="button"
-                onClick={optimizeKeywords}
-                disabled={!selectedDocId || !jobDescription || analyzing}
-              >
+              <button className="button" type="button" onClick={optimizeKeywords} disabled={!selectedDocId || !jobDescription || analyzing}>
                 {t('findKeywords')}
               </button>
               <button
@@ -415,362 +415,280 @@ export function ResumeClient(props: { initialDocs: Doc[]; initialGenerations: Ge
                 {generating ? t('starting') : t('generate')}
               </button>
             </div>
-
-            {/* Status for ATS analysis */}
-            {analyzing && (
+            {analyzing ? (
               <span id={atsStatusId} className="srOnly">
                 {t('checkingStatus')}
               </span>
-            )}
+            ) : null}
+          </div>
 
-            {/* ATS Results */}
-            {atsResult && (
-              <div className="resultBox" role="region" aria-labelledby="ats-results-heading">
-                <h4 id="ats-results-heading">{t('matchTitle')}</h4>
-                <div className="scoreDisplay">
-                  <span className="scoreLabel">{t('score')}</span>
-                  <span 
-                    className={`scoreValue ${atsResult.atsScore >= 70 ? 'good' : atsResult.atsScore >= 50 ? 'medium' : 'low'}`}
-                    aria-label={t('scoreLabel', { score: atsResult.atsScore })}
-                  >
-                    {atsResult.atsScore}%
-                  </span>
-                </div>
-                {atsResult.matchedKeywords.length > 0 && (
-                  <div className="keywordSection">
-                    <strong>{t('matched')}</strong>
-                    <div className="keywordTags" role="list" aria-label={t('matchedLabel')}>
+          {atsResult ? (
+            <section className={styles.result} role="region" aria-labelledby="ats-results-heading">
+              <h3 className={styles.resultTitle} id="ats-results-heading">
+                {t('matchTitle')}
+              </h3>
+              <p className={styles.scoreFigure}>
+                <span className="srOnly">{t('scoreLabel', { score })}</span>
+                <span className={styles.scoreNumber} aria-hidden="true">
+                  {score}
+                </span>
+                <span className={styles.scoreOf} aria-hidden="true">
+                  {t('outOf')}
+                </span>
+              </p>
+              <span className={styles.meter} aria-hidden="true">
+                <span style={{ transform: `scaleX(${score / 100})` }} />
+              </span>
+              <div className={styles.keywordGroups}>
+                {atsResult.matchedKeywords.length > 0 ? (
+                  <div className={styles.keywordGroup}>
+                    <h4 className={styles.groupTitle}>{t('matchedLabel')}</h4>
+                    <ul className={styles.tags} aria-label={t('matchedLabel')}>
                       {atsResult.matchedKeywords.map((k) => (
-                        <span key={k} className="keywordTag matched" role="listitem">{k}</span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {atsResult.missingKeywords.length > 0 && (
-                  <div className="keywordSection">
-                    <strong>{t('missing')}</strong>
-                    <div className="keywordTags" role="list" aria-label={t('missingLabel')}>
-                      {atsResult.missingKeywords.slice(0, 10).map((k) => (
-                        <span key={k} className="keywordTag missing" role="listitem">{k}</span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {atsResult.suggestions.length > 0 && (
-                  <div className="suggestions">
-                    <strong>{t('suggestions')}</strong>
-                    <ul role="list">
-                      {atsResult.suggestions.map((s, i) => (
-                        <li key={i}>{s}</li>
+                        <li key={k} className={styles.tag}>
+                          {k}
+                        </li>
                       ))}
                     </ul>
                   </div>
-                )}
-              </div>
-            )}
-
-            {keywordResult && (
-              <div className="resultBox" role="region" aria-labelledby="keyword-results-heading">
-                <h4 id="keyword-results-heading">{t('keywordsTitle')}</h4>
-                {keywordResult.suggestedKeywords.length ? (
-                  <div className="keywordTags" role="list" aria-label={t('missingLabel')}>
-                    {keywordResult.suggestedKeywords.map((k) => (
-                      <span key={k} className="keywordTag missing" role="listitem">{k}</span>
-                    ))}
+                ) : null}
+                {atsResult.missingKeywords.length > 0 ? (
+                  <div className={styles.keywordGroup}>
+                    <h4 className={styles.groupTitle}>{t('missingLabel')}</h4>
+                    <ul className={styles.tags} aria-label={t('missingLabel')}>
+                      {atsResult.missingKeywords.slice(0, 10).map((k) => (
+                        <li key={k} className={styles.tag} data-missing="true">
+                          {k}
+                        </li>
+                      ))}
+                    </ul>
                   </div>
-                ) : (
-                  <p className="small" style={{ margin: 0 }}>{t('keywordsNone')}</p>
-                )}
-                <p className="help" style={{ marginBottom: 0 }}>{t('keywordsHelp')}</p>
+                ) : null}
               </div>
-            )}
+              {atsResult.suggestions.length > 0 ? (
+                <div className={styles.keywordGroup}>
+                  <h4 className={styles.groupTitle}>{t('suggestions')}</h4>
+                  <ul className={styles.points}>
+                    {atsResult.suggestions.map((s, i) => (
+                      <li key={i}>{s}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+            </section>
+          ) : null}
 
-            {/* Bullet Analysis Section */}
-            <hr className="hr" />
-            <h3 style={{ margin: 0, fontSize: '1rem' }} id="bullet-rewriter-heading">{t('bulletsTitle')}</h3>
-            <label className="label" htmlFor={bulletInputId}>
-              {t('bulletsInput')}
-              <textarea
-                className="textarea"
-                id={bulletInputId}
-                value={bulletInput}
-                onChange={(e) => setBulletInput(e.target.value)}
-                placeholder={t('bulletsPlaceholder')}
-                rows={4}
-                aria-describedby={analyzing ? bulletStatusId : undefined}
-              />
-            </label>
-            {analyzing && (
-              <span id={bulletStatusId} className="srOnly">
-                {t('bulletsStatus')}
-              </span>
-            )}
-            <button
-              className="button"
-              type="button"
-              onClick={analyzeBullets}
-              disabled={!selectedDocId || !bulletInput.trim() || analyzing}
-            >
+          {keywordResult ? (
+            <section className={styles.result} role="region" aria-labelledby="keyword-results-heading">
+              <h3 className={styles.resultTitle} id="keyword-results-heading">
+                {t('keywordsTitle')}
+              </h3>
+              {keywordResult.suggestedKeywords.length ? (
+                <ul className={styles.tags} aria-label={t('missingLabel')}>
+                  {keywordResult.suggestedKeywords.map((k) => (
+                    <li key={k} className={styles.tag} data-missing="true">
+                      {k}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className={styles.body}>{t('keywordsNone')}</p>
+              )}
+              <p className="help">{t('keywordsHelp')}</p>
+            </section>
+          ) : null}
+        </section>
+
+        <section className={styles.panel} aria-labelledby="bullet-rewriter-heading">
+          <h2 className={styles.panelTitle} id="bullet-rewriter-heading">
+            {t('bulletsTitle')}
+          </h2>
+          <label className="label" htmlFor={bulletInputId}>
+            {t('bulletsInput')}
+            <textarea
+              className="textarea"
+              id={bulletInputId}
+              value={bulletInput}
+              onChange={(e) => setBulletInput(e.target.value)}
+              placeholder={t('bulletsPlaceholder')}
+              rows={4}
+              aria-describedby={analyzing ? bulletStatusId : undefined}
+            />
+          </label>
+          {analyzing ? (
+            <span id={bulletStatusId} className="srOnly">
+              {t('bulletsStatus')}
+            </span>
+          ) : null}
+          <div className={styles.actions}>
+            <button className="button" type="button" onClick={analyzeBullets} disabled={!selectedDocId || !bulletInput.trim() || analyzing}>
               {analyzing ? t('rewriting') : t('rewrite')}
             </button>
+          </div>
 
-            {bulletAnalyses.length > 0 && (
-              <div className="bulletResults" role="region" aria-labelledby="bullet-results-heading">
-                <h4 id="bullet-results-heading" className="srOnly">{t('rewrittenHeading')}</h4>
+          {bulletAnalyses.length > 0 ? (
+            <div className={styles.bulletResults} role="region" aria-labelledby="bullet-results-heading">
+              <h3 id="bullet-results-heading" className="srOnly">
+                {t('rewrittenHeading')}
+              </h3>
+              <ol className={styles.bullets}>
                 {bulletAnalyses.map((analysis, i) => (
-                  <div key={i} className="bulletAnalysis" role="article" aria-label={t('analysisLabel', { n: i + 1, total: bulletAnalyses.length })}>
-                    <div className="bulletOriginal">
-                      <strong>{t('original')}</strong> {analysis.original}
-                    </div>
-                    {analysis.rewritten && (
-                      <div className="bulletRewritten">
-                        <strong>{t('rewritten')}</strong> {analysis.rewritten}
-                      </div>
-                    )}
-                    <div 
-                      className={`bulletScore ${analysis.score >= 70 ? 'good' : analysis.score >= 50 ? 'medium' : 'low'}`}
-                      aria-label={t('bulletScoreLabel', { score: analysis.score })}
-                    >
-                      {t('bulletScore', { score: analysis.score })}
-                    </div>
-                    {analysis.issues.length > 0 && (
-                      <div className="bulletIssues">
-                        {t('issues', { issues: analysis.issues.join(', ') })}
-                      </div>
-                    )}
-                  </div>
+                  <li key={i} className={styles.bullet}>
+                    <article aria-label={t('analysisLabel', { n: i + 1, total: bulletAnalyses.length })}>
+                      <p className={styles.bulletLine}>
+                        <span className={styles.bulletLabel}>{t('original')}</span>
+                        <span className={styles.bulletOriginal}>{analysis.original}</span>
+                      </p>
+                      {analysis.rewritten ? (
+                        <p className={styles.bulletLine}>
+                          <span className={styles.bulletLabel}>{t('rewritten')}</span>
+                          <span className={styles.bulletRewritten}>{analysis.rewritten}</span>
+                        </p>
+                      ) : null}
+                      <p className={styles.bulletMeta}>
+                        <span className="srOnly">{t('bulletScoreLabel', { score: analysis.score })}</span>
+                        <span aria-hidden="true">{t('bulletScore', { score: analysis.score })}</span>
+                        {analysis.issues.length > 0 ? <span>{t('issues', { issues: analysis.issues.join(', ') })}</span> : null}
+                      </p>
+                    </article>
+                  </li>
                 ))}
-              </div>
-            )}
-          </div>
+              </ol>
+            </div>
+          ) : null}
+        </section>
+      </div>
+
+      <aside className={styles.aside} aria-labelledby="history-heading">
+        <div className={styles.asideHead}>
+          <h2 className={styles.panelTitle} id="history-heading">
+            {t('history')}
+          </h2>
+          <button className="button buttonGhost buttonSmall" type="button" onClick={refreshHistory} aria-label={t('refreshLabel')}>
+            {t('refresh')}
+          </button>
         </div>
-      </section>
 
-      <aside className="card" aria-labelledby="history-heading">
-        <div className="cardInner stack">
-          <div className="row" style={{ justifyContent: 'space-between' }}>
-            <h2 className="cardTitle" id="history-heading">{t('history')}</h2>
-            <button 
-              className="button" 
-              type="button" 
-              onClick={refreshHistory}
-              aria-label={t('refreshLabel')}
-            >
-              {t('refresh')}
-            </button>
-          </div>
-
-          <h3 style={{ margin: 0, fontSize: '1rem' }} id="documents-heading">{t('documents')}</h3>
-          <ul 
-            className="stack" 
-            style={{ listStyle: 'none', padding: 0, margin: 0 }} 
-            role="list" 
-            aria-label={t('documentsLabel')}
-          >
-            {docs.length ? (
-              docs.map((d) => (
-                <li key={d.id} className="row" style={{ justifyContent: 'space-between', gap: 12 }}>
-                  <span 
-                    style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                    aria-label={
-                      d.ats_score
-                        ? t('documentScoreLabel', { name: d.filename ?? d.id, score: d.ats_score })
-                        : t('documentLabel', { name: d.filename ?? d.id })
-                    }
-                  >
-                    {d.filename ?? d.id}
-                    {d.ats_score ? ` (${d.ats_score}%)` : ''}
-                  </span>
-                  <span className="row" style={{ gap: 8 }}>
-                    <button 
-                      className="button" 
-                      type="button" 
-                      onClick={() => void download(d.id, d.filename ?? '')}
-                      aria-label={t('downloadLabel', { name: d.filename ?? t('document') })}
+        <section className={styles.asideSection} aria-labelledby="documents-heading">
+          <h3 className={styles.sectionTitle} id="documents-heading">
+            {t('documents')}
+            <span className={styles.count}>{docs.length}</span>
+          </h3>
+          {docs.length ? (
+            <ul className={styles.list} aria-label={t('documentsLabel')}>
+              {docs.map((d) => {
+                const name = d.filename ?? t('document');
+                return (
+                  <li key={d.id} className={styles.doc}>
+                    <ResumeIcon size={16} className={styles.docIcon} />
+                    <span className={styles.docText}>
+                      <span className={styles.docName} title={name}>
+                        {name}
+                      </span>
+                      <span className={styles.docMeta}>
+                        <span>{when(d.created_at)}</span>
+                        {d.ats_score ? <span>{t('docScore', { score: d.ats_score })}</span> : null}
+                      </span>
+                    </span>
+                    <button
+                      className="button buttonGhost buttonSmall"
+                      type="button"
+                      onClick={() => void download(d.id)}
+                      aria-label={t('downloadLabel', { name })}
                     >
                       {t('download')}
                     </button>
-                    <span className="small mono">{when(d.created_at)}</span>
-                  </span>
-                </li>
-              ))
-            ) : (
-              <li className="small" aria-live="polite">{t('noUploads')}</li>
-            )}
-          </ul>
-
-          <hr className="hr" />
-
-          <h3 style={{ margin: 0, fontSize: '1rem' }} id="generations-heading">{t('tailored')}</h3>
-          <ul className="stack" style={{ listStyle: 'none', padding: 0, margin: 0 }} role="list" aria-labelledby="generations-heading">
-            {gens.length ? (
-              gens.map((g) => {
-                const done = g.status === 'completed' && Boolean(g.output?.resume);
-                const open = openGen === g.id;
-                return (
-                  <li key={g.id} className="card" style={{ background: 'rgba(255,255,255,0.04)', boxShadow: 'none' }}>
-                    <div className="cardInner stack" style={{ gap: 8 }}>
-                      <div className="row" style={{ justifyContent: 'space-between', gap: 8 }}>
-                        <strong style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                          {g.output?.target || t('tailoredFallback')}
-                        </strong>
-                        <span className="badge" role="status">
-                          {isPending(g) ? t('statusWriting') : done ? t('statusReady') : t('statusFailed')}
-                        </span>
-                      </div>
-                      <span className="small mono">{when(g.created_at)}</span>
-                      {isPending(g) && <p className="small" style={{ margin: 0 }}>{t('writingNow')}</p>}
-                      {!isPending(g) && !done && (
-                        <p className="small" style={{ margin: 0 }}>{t('writeFailed')}</p>
-                      )}
-                      {done && g.output.summary && <p className="small" style={{ margin: 0 }}>{g.output.summary}</p>}
-                      {done && open && (
-                        <>
-                          {g.output.changes?.length ? (
-                            <div className="suggestions">
-                              <strong>{t('changed')}</strong>
-                              <ul>
-                                {g.output.changes.map((change, i) => (
-                                  <li key={i}>{change}</li>
-                                ))}
-                              </ul>
-                            </div>
-                          ) : null}
-                          {g.output.keywords?.length ? (
-                            <div className="keywordTags" role="list" aria-label={t('coveredLabel')}>
-                              {g.output.keywords.map((k) => (
-                                <span key={k} className="keywordTag matched" role="listitem">{k}</span>
-                              ))}
-                            </div>
-                          ) : null}
-                          <pre className="tailored">{g.output.resume}</pre>
-                        </>
-                      )}
-                      <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
-                        {done && (
-                          <>
-                            <button className="button" type="button" onClick={() => setOpenGen(open ? null : g.id)} aria-expanded={open}>
-                              {open ? t('hide') : t('show')}
-                            </button>
-                            <button className="button" type="button" onClick={() => void copyResume(g)}>{t('copy')}</button>
-                            <button className="button" type="button" onClick={() => void downloadPdf(g)}>{t('pdf')}</button>
-                            <button className="button" type="button" onClick={() => downloadText(g)}>{t('text')}</button>
-                          </>
-                        )}
-                        {!isPending(g) && (
-                          <button className="button buttonGhost" type="button" onClick={() => void removeGeneration(g.id)}>
-                            {t('delete')}
-                          </button>
-                        )}
-                      </div>
-                    </div>
                   </li>
                 );
-              })
-            ) : (
-              <li className="small">{t('noTailored')}</li>
-            )}
-          </ul>
-        </div>
-      </aside>
+              })}
+            </ul>
+          ) : (
+            <p className={styles.hint} aria-live="polite">
+              {t('noUploads')}
+            </p>
+          )}
+        </section>
 
-      <style jsx>{`
-        .resultBox {
-          background: rgba(255, 255, 255, 0.05);
-          border-radius: 8px;
-          padding: 16px;
-          margin-top: 16px;
-        }
-        .resultBox h4 {
-          margin: 0 0 12px;
-          font-size: 1rem;
-        }
-        .scoreDisplay {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          margin-bottom: 12px;
-        }
-        .scoreLabel {
-          font-weight: bold;
-        }
-        .scoreValue {
-          font-size: 1.5rem;
-          font-weight: bold;
-        }
-        .scoreValue.good { color: #22c55e; }
-        .scoreValue.medium { color: #f59e0b; }
-        .scoreValue.low { color: #ef4444; }
-        .keywordSection {
-          margin-bottom: 12px;
-        }
-        .keywordTags {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 4px;
-          margin-top: 4px;
-        }
-        .keywordTag {
-          padding: 2px 8px;
-          border-radius: 4px;
-          font-size: 0.75rem;
-        }
-        .keywordTag.matched {
-          background: rgba(34, 197, 94, 0.2);
-          color: #22c55e;
-        }
-        .keywordTag.missing {
-          background: rgba(239, 68, 68, 0.2);
-          color: #ef4444;
-        }
-        .suggestions {
-          margin-top: 12px;
-        }
-        .suggestions ul {
-          margin: 4px 0 0;
-          padding-left: 20px;
-        }
-        .tailored {
-          margin: 0;
-          white-space: pre-wrap;
-          font-family: inherit;
-          font-size: 0.875rem;
-          line-height: 1.5;
-          max-height: 420px;
-          overflow: auto;
-          padding: 12px;
-          border-radius: 8px;
-          background: rgba(0, 0, 0, 0.25);
-        }
-        .bulletResults {
-          margin-top: 16px;
-        }
-        .bulletAnalysis {
-          background: rgba(255, 255, 255, 0.05);
-          border-radius: 8px;
-          padding: 12px;
-          margin-bottom: 8px;
-        }
-        .bulletOriginal {
-          color: var(--muted);
-          margin-bottom: 8px;
-        }
-        .bulletRewritten {
-          color: #22c55e;
-          margin-bottom: 8px;
-        }
-        .bulletScore {
-          font-weight: bold;
-        }
-        .bulletScore.good { color: #22c55e; }
-        .bulletScore.medium { color: #f59e0b; }
-        .bulletScore.low { color: #ef4444; }
-        .bulletIssues {
-          color: var(--muted);
-          font-size: 0.875rem;
-          margin-top: 4px;
-        }
-      `}</style>
+        <section className={styles.asideSection} aria-labelledby="generations-heading">
+          <h3 className={styles.sectionTitle} id="generations-heading">
+            {t('tailored')}
+            <span className={styles.count}>{gens.length}</span>
+          </h3>
+          {gens.length ? (
+            <ul className={styles.list} aria-labelledby="generations-heading">
+              {gens.map((g) => {
+                const done = g.status === 'completed' && Boolean(g.output?.resume);
+                const state = isPending(g) ? 'processing' : done ? 'ready' : 'failed';
+                const open = openGen === g.id;
+                return (
+                  <li key={g.id} className={styles.gen}>
+                    <div className={styles.genHead}>
+                      <span className={styles.genTitle}>{g.output?.target || t('tailoredFallback')}</span>
+                      <span className={styles.status} data-status={state} role="status">
+                        <span className={styles.statusDot} aria-hidden="true" />
+                        {state === 'processing' ? t('statusWriting') : state === 'ready' ? t('statusReady') : t('statusFailed')}
+                      </span>
+                    </div>
+                    <span className={styles.genMeta}>{when(g.created_at)}</span>
+                    {state === 'processing' ? <p className={styles.genNote}>{t('writingNow')}</p> : null}
+                    {state === 'failed' ? <p className={styles.genNote}>{t('writeFailed')}</p> : null}
+                    {done && g.output.summary ? <p className={styles.genSummary}>{g.output.summary}</p> : null}
+                    {done && open ? (
+                      <div className={styles.genDetail}>
+                        {g.output.changes?.length ? (
+                          <div className={styles.keywordGroup}>
+                            <h4 className={styles.groupTitle}>{t('changed')}</h4>
+                            <ul className={styles.points}>
+                              {g.output.changes.map((change, i) => (
+                                <li key={i}>{change}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        ) : null}
+                        {g.output.keywords?.length ? (
+                          <ul className={styles.tags} aria-label={t('coveredLabel')}>
+                            {g.output.keywords.map((k) => (
+                              <li key={k} className={styles.tag}>
+                                {k}
+                              </li>
+                            ))}
+                          </ul>
+                        ) : null}
+                        <pre className={styles.tailored}>{g.output.resume}</pre>
+                      </div>
+                    ) : null}
+                    {state !== 'processing' ? (
+                      <div className={styles.genActions}>
+                        {done ? (
+                          <>
+                            <button className="button buttonSmall" type="button" onClick={() => setOpenGen(open ? null : g.id)} aria-expanded={open}>
+                              {open ? t('hide') : t('show')}
+                            </button>
+                            <button className="button buttonGhost buttonSmall" type="button" onClick={() => void copyResume(g)}>
+                              {t('copy')}
+                            </button>
+                            <button className="button buttonGhost buttonSmall" type="button" onClick={() => void downloadPdf(g)}>
+                              {t('pdf')}
+                            </button>
+                            <button className="button buttonGhost buttonSmall" type="button" onClick={() => downloadText(g)}>
+                              {t('text')}
+                            </button>
+                          </>
+                        ) : null}
+                        <button className={`button buttonGhost buttonSmall ${styles.delete}`} type="button" onClick={() => void removeGeneration(g.id)}>
+                          {t('delete')}
+                        </button>
+                      </div>
+                    ) : null}
+                  </li>
+                );
+              })}
+            </ul>
+          ) : (
+            <p className={styles.hint}>{t('noTailored')}</p>
+          )}
+        </section>
+      </aside>
     </div>
   );
 }

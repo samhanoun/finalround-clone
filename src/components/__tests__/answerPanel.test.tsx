@@ -3,7 +3,7 @@ import React from 'react';
 import { AnswerPanel } from '@/components/copilot/AnswerPanel';
 import { AnswerView, type ConnectionState, type TailLine } from '@/components/copilot/AnswerView';
 import type { CopilotAnswers } from '@/components/copilot/useCopilotAnswers';
-import { copyDocumentStyles } from '@/components/copilot/useDocumentPip';
+import { absolutizeCssUrls, copyDocumentStyles } from '@/components/copilot/useDocumentPip';
 import { IDLE_ANSWER, type AnswerState } from '@/lib/copilot/answerController';
 
 /** A tiny store like the hook's: tests can push new states while the view is mounted. */
@@ -51,10 +51,36 @@ describe('AnswerView', () => {
   const props = { onAnswerNow: jest.fn(), disabled: false, connection: LIVE, tail: TAIL, fontPx: 16, onFontPx: jest.fn() };
 
   it('explains how questions are picked up before the first one', () => {
-    render(<AnswerView answers={answers()} variant="inline" {...props} />);
+    const { rerender } = render(<AnswerView answers={answers()} variant="inline" {...props} />);
     expect(screen.getByText('Waiting for a question')).toBeInTheDocument();
     expect(screen.getByRole('status')).toHaveTextContent('Live');
+    expect(screen.getByText(/picked up automatically/)).toBeInTheDocument();
+    // In the page the transcript sits next to the card; the floating window shows the last lines itself.
+    expect(screen.queryByLabelText('Latest conversation')).not.toBeInTheDocument();
+
+    rerender(<AnswerView answers={answers()} variant="window" {...props} />);
     expect(screen.getByLabelText('Latest conversation')).toHaveTextContent('InterviewerThanks for joining.');
+  });
+
+  it('asks to start listening while no audio comes in', () => {
+    render(<AnswerView answers={answers()} variant="inline" {...props} connection={{ label: 'Not listening', tone: 'off' }} />);
+    expect(screen.getByText('Start listening and questions are picked up as they’re asked.')).toBeInTheDocument();
+  });
+
+  it('sets the opening line apart from the points, and keeps the controls in one toolbar', () => {
+    const value = answers({ status: 'answered', question: QUESTION, text: 'I shipped a bug.\n- Then fixed the process', ttftMs: 300 });
+    const { container } = render(
+      <AnswerView answers={value} variant="inline" {...props} onSolveScreen={jest.fn()} autoScreen={{ on: false, onToggle: jest.fn() }} />,
+    );
+    expect(container.querySelector('.opening')).toHaveTextContent('I shipped a bug.');
+    expect(screen.getByLabelText('Suggested answer').querySelectorAll('li')).toHaveLength(1);
+    expect(screen.getByText(QUESTION.text)).toHaveClass('questionText');
+
+    const toolbar = screen.getByRole('group', { name: 'Answer controls' });
+    for (const name of ['Answer now', 'Solve screen', 'Smaller text', 'Larger text']) {
+      expect(within(toolbar).getByRole('button', { name })).toBeInTheDocument();
+    }
+    expect(within(toolbar).getByRole('checkbox', { name: 'Auto' })).not.toBeChecked();
   });
 
   it('streams the answer in, shows the question, and stops on request', () => {
@@ -230,6 +256,22 @@ describe('AnswerPanel', () => {
     });
     unmount();
     expect(pipWindow.close).toHaveBeenCalled();
+  });
+});
+
+describe('absolutizeCssUrls', () => {
+  it('resolves relative url() references against the stylesheet, so fonts load in the floating window', () => {
+    const base = 'https://app.example.com/_next/static/chunks/main.css';
+    expect(absolutizeCssUrls('@font-face { src: url("../media/geist.woff2") format("woff2"); }', base)).toBe(
+      '@font-face { src: url("https://app.example.com/_next/static/media/geist.woff2") format("woff2"); }',
+    );
+    expect(absolutizeCssUrls(".a { background: url('/img/x.png'); }", base)).toBe('.a { background: url("https://app.example.com/img/x.png"); }');
+    expect(absolutizeCssUrls('.b { background: url(icons/y.svg); }', base)).toBe('.b { background: url("https://app.example.com/_next/static/chunks/icons/y.svg"); }');
+  });
+
+  it('leaves data, absolute and fragment URLs alone', () => {
+    const css = `.s { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3C/svg%3E"); } .t { mask: url(#m); } .u { src: url(https://cdn.example.com/f.woff2); }`;
+    expect(absolutizeCssUrls(css, 'https://app.example.com/a.css')).toBe(css);
   });
 });
 

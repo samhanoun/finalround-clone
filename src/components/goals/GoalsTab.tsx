@@ -1,12 +1,14 @@
 'use client';
 
-import { useId, useState } from 'react';
+import { useCallback, useId, useState } from 'react';
 import { Link } from '@/i18n/routing';
 import { useTranslations } from 'next-intl';
 import { createClient } from '@/lib/supabase/browser';
 import { NewPracticeButton } from '@/components/NewPracticeButton';
+import { BookIcon, FileTextIcon, LayersIcon, ResumeIcon } from '@/components/icons';
 import { GOAL_ROUNDS, type Goal, type GoalRound } from '@/lib/goalTypes';
 import type { WorkspaceData } from './GoalsWorkspace';
+import { Sheet } from './Sheet';
 import styles from './Goals.module.css';
 
 type Draft = {
@@ -67,15 +69,17 @@ function draftForJob(fromJob: string | null, data: WorkspaceData, nameFor: (titl
 export function GoalsTab({ data, reload, fromJob }: { data: WorkspaceData; reload: () => Promise<void>; fromJob: string | null }) {
   const t = useTranslations('Goals');
   const tJobs = useTranslations('Jobs');
-  // The workspace mounts this tab once its data has loaded, so a ?fromJob= link opens straight into the form.
+  // The workspace mounts this tab once its data has loaded, so a ?fromJob= link opens straight into the editor.
   const [draft, setDraft] = useState<Draft | null>(() =>
     draftForJob(fromJob, data, (title, company) => tJobs('jobAt', { title, company })),
   );
   const [showArchived, setShowArchived] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
+  const closeEditor = useCallback(() => setDraft(null), []);
 
   const goals = data.goals.filter((goal) => Boolean(goal.archived) === showArchived);
+  const hasAny = data.goals.length > 0;
 
   async function save(event: React.FormEvent) {
     event.preventDefault();
@@ -134,104 +138,139 @@ export function GoalsTab({ data, reload, fromJob }: { data: WorkspaceData; reloa
     await reload();
   }
 
-  if (draft) {
-    return <GoalForm draft={draft} setDraft={setDraft} data={data} onSubmit={save} onCancel={() => setDraft(null)} busy={busy} message={message} />;
-  }
+  const openNew = () => {
+    setMessage(null);
+    setDraft({ ...EMPTY });
+  };
 
   return (
-    <div className="stack" style={{ gap: 16 }}>
+    <div className={styles.tabBody}>
       <div className={styles.toolbar}>
-        <p className="help" style={{ margin: 0 }}>
-          {t('intro')}
-        </p>
-        <div className={styles.toolbarActions}>
-          <button type="button" className="button buttonGhost" onClick={() => setShowArchived(!showArchived)}>
-            {showArchived ? t('showActive') : t('showArchived')}
-          </button>
-          <button type="button" className="button buttonPrimary" onClick={() => setDraft({ ...EMPTY })}>
-            {t('newGoal')}
-          </button>
-        </div>
+        <p className={styles.intro}>{t('intro')}</p>
+        {hasAny ? (
+          <div className={styles.toolbarActions}>
+            <button type="button" className="button buttonGhost" onClick={() => setShowArchived(!showArchived)} aria-pressed={showArchived}>
+              {showArchived ? t('showActive') : t('showArchived')}
+            </button>
+            <button type="button" className="button buttonPrimary" onClick={openNew}>
+              {t('newGoal')}
+            </button>
+          </div>
+        ) : null}
       </div>
-      {message ? (
-        <p className="help" role="status" style={{ margin: 0 }}>
+
+      {message?.kind === 'ok' ? (
+        <p className={styles.notice} role="status">
           {message.text}
         </p>
       ) : null}
 
-      {goals.length === 0 ? (
-        <div className={`card ${styles.empty}`}>
-          <p>{showArchived ? t('noArchived') : t('empty')}</p>
-          {!showArchived ? (
-            <button type="button" className="button buttonPrimary" onClick={() => setDraft({ ...EMPTY })}>
-              {t('newGoal')}
-            </button>
-          ) : null}
+      {!hasAny ? (
+        <div className={`emptyState ${styles.empty}`}>
+          <p>{t('empty')}</p>
+          <button type="button" className="button buttonPrimary" onClick={openNew}>
+            {t('newGoal')}
+          </button>
         </div>
+      ) : goals.length === 0 ? (
+        <p className={`emptyState ${styles.empty}`}>{showArchived ? t('noArchived') : t('empty')}</p>
       ) : (
-        <ul className={styles.grid}>
+        <ul className={styles.goals}>
           {goals.map((goal) => {
             const resume = data.resumes.find((item) => item.id === goal.resume_document_id);
             const playbook = data.playbooks.find((item) => item.id === goal.playbook_id);
+            const role = goal.role?.trim();
+            const company = goal.company?.trim();
+            const who = role && company ? t('roleAt', { role, company }) : role || company || t('noRole');
             return (
-              <li key={goal.id} className={`card ${styles.goalCard}`}>
-                <div className="cardInner stack" style={{ gap: 10 }}>
-                  <div>
-                    <h3 className={styles.goalName}>{goal.name}</h3>
-                    <p className={styles.meta}>
-                      {[goal.role, goal.company].filter(Boolean).join(' · ') || t('noRole')} · {t(`rounds.${goal.round}`)}
-                    </p>
-                  </div>
-                  <ul className={styles.facts}>
-                    <li>{resume ? t('usesResume', { name: resume.filename ?? t('resume') }) : t('noResume')}</li>
-                    <li>{goal.job_description ? t('hasJob') : t('noJob')}</li>
-                    <li>{t('materialCount', { count: goal.material_ids.length })}</li>
-                    {playbook ? <li>{t('usesPlaybook', { name: playbook.name })}</li> : null}
-                  </ul>
-                  <div className={styles.cardActions}>
-                    <Link className="button buttonPrimary" href={`/copilot/live?goal=${goal.id}`}>
-                      {t('startLive')}
-                    </Link>
-                    {/* Creates the practice interview with this goal's role, company, résumé and job filled in. */}
-                    <NewPracticeButton label={t('practice')} query={`goal=${goal.id}`} />
-                    <button type="button" className="button buttonGhost" onClick={() => setDraft(draftFrom(goal))}>
-                      {t('edit')}
+              <li key={goal.id} className={styles.goal}>
+                <div className={styles.goalMain}>
+                  <h3 className={styles.goalName}>{goal.name}</h3>
+                  <p className={styles.goalMeta}>
+                    <span>{who}</span>
+                    <span>{t(`rounds.${goal.round}`)}</span>
+                  </p>
+                </div>
+
+                <ul className={styles.uses}>
+                  <li data-missing={resume ? undefined : 'true'}>
+                    <ResumeIcon size={16} />
+                    <span>{resume ? t('usesResume', { name: resume.filename ?? t('resume') }) : t('noResume')}</span>
+                  </li>
+                  <li data-missing={goal.job_description ? undefined : 'true'}>
+                    <FileTextIcon size={16} />
+                    <span>{goal.job_description ? t('hasJob') : t('noJob')}</span>
+                  </li>
+                  <li data-missing={goal.material_ids.length ? undefined : 'true'}>
+                    <LayersIcon size={16} />
+                    <span>{t('materialCount', { count: goal.material_ids.length })}</span>
+                  </li>
+                  {playbook ? (
+                    <li>
+                      <BookIcon size={16} />
+                      <span>{t('usesPlaybook', { name: playbook.name })}</span>
+                    </li>
+                  ) : null}
+                </ul>
+
+                <div className={styles.useActions}>
+                  <Link className="button buttonSmall" href={`/copilot/live?goal=${goal.id}`}>
+                    {t('startLive')}
+                  </Link>
+                  {/* Creates the practice interview with this goal's role, company, résumé and job filled in. */}
+                  <NewPracticeButton small label={t('practice')} query={`goal=${goal.id}`} />
+                </div>
+
+                <div className={styles.manageActions}>
+                  <button type="button" className="button buttonGhost buttonSmall" onClick={() => setDraft(draftFrom(goal))}>
+                    {t('edit')}
+                  </button>
+                  <button type="button" className="button buttonGhost buttonSmall" onClick={() => void setArchived(goal, !goal.archived)}>
+                    {goal.archived ? t('restore') : t('archive')}
+                  </button>
+                  {goal.archived ? (
+                    <button type="button" className="button buttonGhost buttonSmall" onClick={() => void remove(goal)}>
+                      {t('delete')}
                     </button>
-                    <button type="button" className="button buttonGhost" onClick={() => void setArchived(goal, !goal.archived)}>
-                      {goal.archived ? t('restore') : t('archive')}
-                    </button>
-                    {goal.archived ? (
-                      <button type="button" className="button buttonGhost" onClick={() => void remove(goal)}>
-                        {t('delete')}
-                      </button>
-                    ) : null}
-                  </div>
+                  ) : null}
                 </div>
               </li>
             );
           })}
         </ul>
       )}
+
+      {draft ? (
+        <GoalEditor
+          draft={draft}
+          setDraft={setDraft}
+          data={data}
+          onSubmit={save}
+          onClose={closeEditor}
+          busy={busy}
+          error={message?.kind === 'error' ? message.text : null}
+        />
+      ) : null}
     </div>
   );
 }
 
-function GoalForm({
+function GoalEditor({
   draft,
   setDraft,
   data,
   onSubmit,
-  onCancel,
+  onClose,
   busy,
-  message,
+  error,
 }: {
   draft: Draft;
   setDraft: (draft: Draft) => void;
   data: WorkspaceData;
   onSubmit: (event: React.FormEvent) => void;
-  onCancel: () => void;
+  onClose: () => void;
   busy: boolean;
-  message: { kind: 'ok' | 'error'; text: string } | null;
+  error: string | null;
 }) {
   const t = useTranslations('Goals');
   const ids = {
@@ -243,44 +282,66 @@ function GoalForm({
     job: useId(),
     jd: useId(),
     playbook: useId(),
+    playbookHelp: useId(),
     notes: useId(),
   };
   const set = (patch: Partial<Draft>) => setDraft({ ...draft, ...patch });
 
   return (
-    <form className="card" onSubmit={onSubmit}>
-      <div className="cardInner stack">
-        <h2 className="cardTitle">{draft.id ? t('editGoal') : t('newGoal')}</h2>
-        <div className="grid2">
-          <label className="label" htmlFor={ids.role}>
-            {t('role')}
-            <input id={ids.role} className="input" value={draft.role} onChange={(e) => set({ role: e.target.value })} maxLength={200} />
-          </label>
-          <label className="label" htmlFor={ids.company}>
-            {t('company')}
-            <input id={ids.company} className="input" value={draft.company} onChange={(e) => set({ company: e.target.value })} maxLength={200} />
-          </label>
-          <label className="label" htmlFor={ids.round}>
-            {t('round')}
-            <select id={ids.round} className="select" value={draft.round} onChange={(e) => set({ round: e.target.value as GoalRound })}>
-              {GOAL_ROUNDS.map((round) => (
-                <option key={round} value={round}>
-                  {t(`rounds.${round}`)}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="label" htmlFor={ids.name}>
-            {t('name')}
-            <input
-              id={ids.name}
-              className="input"
-              value={draft.name}
-              onChange={(e) => set({ name: e.target.value })}
-              placeholder={[draft.role, draft.company].filter(Boolean).join(' · ') || t('namePlaceholder')}
-              maxLength={200}
-            />
-          </label>
+    <Sheet
+      title={draft.id ? t('editGoal') : t('newGoal')}
+      onClose={onClose}
+      onSubmit={onSubmit}
+      footer={
+        <>
+          {error ? (
+            <p className={styles.sheetError} role="alert">
+              {error}
+            </p>
+          ) : null}
+          <button type="button" className="button" onClick={onClose}>
+            {t('cancel')}
+          </button>
+          <button type="submit" className="button buttonPrimary" disabled={busy}>
+            {busy ? t('saving') : t('save')}
+          </button>
+        </>
+      }
+    >
+      <div className={styles.twoCol}>
+        <label className="label" htmlFor={ids.role}>
+          {t('role')}
+          <input id={ids.role} className="input" value={draft.role} onChange={(e) => set({ role: e.target.value })} maxLength={200} />
+        </label>
+        <label className="label" htmlFor={ids.company}>
+          {t('company')}
+          <input id={ids.company} className="input" value={draft.company} onChange={(e) => set({ company: e.target.value })} maxLength={200} />
+        </label>
+        <label className="label" htmlFor={ids.round}>
+          {t('round')}
+          <select id={ids.round} className="select" value={draft.round} onChange={(e) => set({ round: e.target.value as GoalRound })}>
+            {GOAL_ROUNDS.map((round) => (
+              <option key={round} value={round}>
+                {t(`rounds.${round}`)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="label" htmlFor={ids.name}>
+          {t('name')}
+          <input
+            id={ids.name}
+            className="input"
+            value={draft.name}
+            onChange={(e) => set({ name: e.target.value })}
+            placeholder={[draft.role, draft.company].filter(Boolean).join(' · ') || t('namePlaceholder')}
+            maxLength={200}
+          />
+        </label>
+      </div>
+
+      <div className={styles.sheetGroup}>
+        <div className={styles.twoCol}>
           <label className="label" htmlFor={ids.resume}>
             {t('resume')}
             <select id={ids.resume} className="select" value={draft.resume_document_id} onChange={(e) => set({ resume_document_id: e.target.value })}>
@@ -298,7 +359,7 @@ function GoalForm({
               <option value="">{t('none')}</option>
               {data.jobs.map((job) => (
                 <option key={job.id} value={job.id}>
-                  {job.title} · {job.company}
+                  {t('roleAt', { role: job.title, company: job.company })}
                 </option>
               ))}
             </select>
@@ -317,13 +378,13 @@ function GoalForm({
             maxLength={20_000}
           />
         </label>
+      </div>
 
+      <div className={styles.sheetGroup}>
         <fieldset className={styles.fieldset}>
-          <legend className="label">{t('materials')}</legend>
+          <legend className={styles.legend}>{t('materials')}</legend>
           {data.materials.length === 0 ? (
-            <p className="help" style={{ margin: 0 }}>
-              {t('noMaterials')}
-            </p>
+            <p className={styles.help}>{t('noMaterials')}</p>
           ) : (
             <div className={styles.checks}>
               {data.materials.map((material) => (
@@ -346,39 +407,32 @@ function GoalForm({
           )}
         </fieldset>
 
-        <div className="grid2">
-          <label className="label" htmlFor={ids.playbook}>
-            {t('playbook')}
-            <select id={ids.playbook} className="select" value={draft.playbook_id} onChange={(e) => set({ playbook_id: e.target.value })}>
-              <option value="">{t('none')}</option>
-              {data.playbooks.map((playbook) => (
-                <option key={playbook.id} value={playbook.id}>
-                  {playbook.name}
-                </option>
-              ))}
-            </select>
-            <span className="help">{t('playbookHelp')}</span>
-          </label>
-          <label className="label" htmlFor={ids.notes}>
-            {t('notes')}
-            <textarea id={ids.notes} className="textarea" rows={3} value={draft.notes} onChange={(e) => set({ notes: e.target.value })} maxLength={4000} />
-          </label>
-        </div>
+        <label className="label" htmlFor={ids.playbook}>
+          {t('playbook')}
+          <select
+            id={ids.playbook}
+            className="select"
+            value={draft.playbook_id}
+            onChange={(e) => set({ playbook_id: e.target.value })}
+            aria-describedby={ids.playbookHelp}
+          >
+            <option value="">{t('none')}</option>
+            {data.playbooks.map((playbook) => (
+              <option key={playbook.id} value={playbook.id}>
+                {playbook.name}
+              </option>
+            ))}
+          </select>
+          <span id={ids.playbookHelp} className="help">
+            {t('playbookHelp')}
+          </span>
+        </label>
 
-        {message?.kind === 'error' ? (
-          <p className="help" role="alert" style={{ margin: 0 }}>
-            {message.text}
-          </p>
-        ) : null}
-        <div className={styles.cardActions} style={{ justifyContent: 'flex-end' }}>
-          <button type="button" className="button" onClick={onCancel}>
-            {t('cancel')}
-          </button>
-          <button type="submit" className="button buttonPrimary" disabled={busy}>
-            {busy ? t('saving') : t('save')}
-          </button>
-        </div>
+        <label className="label" htmlFor={ids.notes}>
+          {t('notes')}
+          <textarea id={ids.notes} className="textarea" rows={3} value={draft.notes} onChange={(e) => set({ notes: e.target.value })} maxLength={4000} />
+        </label>
       </div>
-    </form>
+    </Sheet>
   );
 }

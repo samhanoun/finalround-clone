@@ -1,0 +1,42 @@
+.icon {
+  flex-shrink: 0;
+}
+
+/* The answers are in the floating window: a quiet note where the card was. */
+.popped {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 16px;
+  padding: 20px 24px;
+  border-radius: var(--radius-panel);
+  background: var(--sunken);
+}
+
+.poppedText {
+  margin: 0;
+  max-width: 52ch;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+
+.note {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-3);
+}
+
+/* Phones never have a floating window, so the note would only be noise. */
+@media (max-width: 767px) {
+  .note {
+    display: none;
+  }
+
+  .popped {
+    padding: 16px;
+    border-radius: var(--radius-card);
+  }
+}

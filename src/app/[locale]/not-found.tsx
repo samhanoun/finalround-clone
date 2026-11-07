@@ -1,5 +1,7 @@
 import { getTranslations } from 'next-intl/server';
 import { Link } from '@/i18n/routing';
+import { ApexMark } from '@/components/ApexMark';
+import styles from '../notFound.module.css';
 
 /**
  * 404 in the page's language for pages that call notFound(), such as Admin for
@@ -8,18 +10,15 @@ import { Link } from '@/i18n/routing';
 export default async function NotFound() {
   const t = await getTranslations('NotFound');
   return (
-    <main id="main-content" style={{ minHeight: '70vh', display: 'grid', placeItems: 'center', padding: '48px 16px' }}>
-      <div className="stack" style={{ maxWidth: 440, textAlign: 'center', gap: 12 }}>
-        <p className="help" style={{ margin: 0 }}>404</p>
-        <h1 className="pageTitle" style={{ margin: 0 }}>
-          {t('title')}
-        </h1>
-        <p style={{ margin: 0 }}>{t('body')}</p>
-        <div>
-          <Link className="button buttonPrimary" href="/dashboard">
-            {t('home')}
-          </Link>
-        </div>
+    <main id="main-content" className={styles.page} tabIndex={-1}>
+      <div className={styles.box}>
+        <ApexMark size={32} />
+        <p className={styles.code}>404</p>
+        <h1 className="pageTitle">{t('title')}</h1>
+        <p className={styles.body}>{t('body')}</p>
+        <Link className={`button buttonPrimary ${styles.action}`} href="/dashboard">
+          {t('home')}
+        </Link>
       </div>
     </main>
   );

@@ -1,28 +1,111 @@
+/* The running session, quietly: live dot, time in session, title, one muted
+   line of details, and Stop session. */
 .bar {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    'main stop'
+    'details stop';
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding-bottom: 4px;
+  column-gap: 16px;
+  row-gap: 4px;
 }
 
-.titleBlock {
-  display: grid;
-  gap: 10px;
+.main {
+  grid-area: main;
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
   min-width: 0;
 }
 
-.title {
+.live {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 8px;
   margin: 0;
-  font-size: 21px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  overflow-wrap: anywhere;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--text-2);
 }
 
-.chips {
+.dot {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--positive);
+  align-self: center;
+}
+
+.clock {
+  font-variant-numeric: tabular-nums;
+}
+
+.title {
+  min-width: 0;
+  margin: 0;
+  outline: none;
+  overflow: hidden;
+  font-size: 20px;
+  font-weight: 500;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.details {
+  grid-area: details;
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 0 8px;
+  min-width: 0;
+  margin: 0;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--text-3);
+}
+
+.details > * + *::before {
+  content: '·';
+  margin-right: 8px;
+}
+
+.stop {
+  grid-area: stop;
+}
+
+@media (max-width: 767px) {
+  .bar {
+    column-gap: 12px;
+    row-gap: 0;
+  }
+
+  .main {
+    gap: 8px;
+  }
+
+  .title {
+    font-size: 16px;
+  }
+
+  .details {
+    flex-wrap: nowrap;
+    overflow: hidden;
+    font-size: 12px;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  .details > span {
+    flex-shrink: 0;
+  }
+
+  .details > span:last-child {
+    flex-shrink: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
 }

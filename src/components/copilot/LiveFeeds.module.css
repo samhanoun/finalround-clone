@@ -1,0 +1,281 @@
+/* Transcript and answers: one card, quiet underline tabs, two columns
+   divided by a hairline. */
+.section {
+  min-width: 0;
+}
+
+.sectionHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0 24px;
+  min-height: 52px;
+  padding: 0 24px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.sectionTitle {
+  margin: 0;
+  padding: 14px 0;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+.tabs {
+  display: flex;
+  align-self: stretch;
+  gap: 20px;
+}
+
+.tab {
+  position: relative;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-2);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color var(--dur-fast) var(--ease);
+}
+
+.tab:hover {
+  color: var(--text-1);
+}
+
+.tab[aria-pressed='true'] {
+  color: var(--text-1);
+}
+
+.tab[aria-pressed='true']::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  bottom: -1px;
+  left: 0;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--text-1);
+}
+
+.grid {
+  display: grid;
+  min-width: 0;
+}
+
+.grid[data-layout='split'] {
+  grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+}
+
+.grid[data-layout='split'] > .feed + .feed {
+  border-left: 1px solid var(--hairline);
+}
+
+.feed {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  min-width: 0;
+  padding: 20px 24px 24px;
+}
+
+.feedHeader {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.feedTitle {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+  color: var(--text-2);
+}
+
+.count {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.empty {
+  margin: 0;
+  padding: 16px;
+  border-radius: var(--radius-row);
+  background: var(--sunken);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+
+.list {
+  display: grid;
+  max-height: 480px;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  list-style: none;
+}
+
+.list:empty {
+  display: none;
+}
+
+/* A transcript line: the speaker with a tick in their voice colour */
+.line,
+.entry {
+  display: grid;
+  gap: 4px;
+  padding: 12px 0;
+  border-top: 1px solid var(--hairline);
+}
+
+.line:first-child,
+.entry:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--text-3);
+}
+
+.speaker {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-2);
+  font-weight: 500;
+}
+
+.speaker::before {
+  content: '';
+  flex-shrink: 0;
+  width: 3px;
+  height: 12px;
+  border-radius: 2px;
+  background: var(--voice-them);
+}
+
+.line[data-voice='you'] .speaker::before {
+  background: var(--voice-you);
+}
+
+.time {
+  font-family: var(--font-code);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.text {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--text-1);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* A saved answer: the question in Ice, then what was suggested */
+.entry {
+  gap: 8px;
+  padding: 16px 0;
+}
+
+.category {
+  color: var(--text-2);
+  font-weight: 500;
+}
+
+.question {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--voice-them-text);
+}
+
+.answer {
+  --answer-font: 14px;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--text-1);
+  overflow-wrap: anywhere;
+}
+
+.note {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+
+.noteLabel {
+  color: var(--text-1);
+  font-weight: 500;
+}
+
+.extra {
+  display: grid;
+  gap: 4px;
+}
+
+.extraTitle {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-1);
+}
+
+.points {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+
+@media (max-width: 899px) {
+  .grid[data-layout='split'] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .grid[data-layout='split'] > .feed + .feed {
+    border-top: 1px solid var(--hairline);
+    border-left: 0;
+  }
+}
+
+@media (max-width: 767px) {
+  .sectionHeader {
+    padding: 0 16px;
+  }
+
+  .tabs {
+    gap: 16px;
+  }
+
+  .feed {
+    padding: 16px;
+  }
+
+  .list {
+    max-height: 360px;
+  }
+}

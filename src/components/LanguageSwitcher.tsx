@@ -4,10 +4,12 @@ import { useLocale, useTranslations } from 'next-intl';
 import { usePathname, useRouter } from '@/i18n/routing';
 import { ChangeEvent, useTransition } from 'react';
 import { LOCALES } from '@/i18n/locales';
+import { SettingRow } from '@/app/[locale]/settings/SettingsUI';
 
 /**
- * Settings → App language. The choice is also saved to the account, so
- * emails and notifications come in the same language.
+ * Settings → Language & region → App language. The page switches at once;
+ * the choice is also saved to the account, so emails and notifications come
+ * in the same language.
  */
 export function LanguageSwitcher() {
   const t = useTranslations('settings');
@@ -25,29 +27,19 @@ export function LanguageSwitcher() {
       body: JSON.stringify({ language: nextLocale }),
     }).catch(() => undefined);
     startTransition(() => {
-      router.replace(pathname, { locale: nextLocale });
+      router.replace(`${pathname}#language`, { locale: nextLocale });
     });
   };
 
   return (
-    <div className="languageSwitcher">
-      <label htmlFor="language-select" className="srOnly">
-        {t('language')}
-      </label>
-      <select id="language-select" className="select" defaultValue={locale} onChange={onSelectChange} disabled={isPending}>
+    <SettingRow label={t('language')} help={t('languageDescription')} htmlFor="language-select">
+      <select id="language-select" className="select" defaultValue={locale} onChange={onSelectChange} disabled={isPending} lang={locale}>
         {LOCALES.map((code) => (
-          <option key={code} value={code}>
+          <option key={code} value={code} lang={code}>
             {t(`languages.${code}`)}
           </option>
         ))}
       </select>
-      <style jsx>{`
-        .languageSwitcher {
-          display: flex;
-          flex-direction: column;
-          gap: 0.5rem;
-        }
-      `}</style>
-    </div>
+    </SettingRow>
   );
 }

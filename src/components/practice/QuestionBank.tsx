@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useId, useState } from 'react';
 import { useFormatter, useTranslations } from 'next-intl';
 import { NewPracticeButton } from '@/components/NewPracticeButton';
+import { ChevronLeftIcon, PlusIcon } from '@/components/icons';
 import { BANK_QUESTION_TYPES, type BankQuestion, type SharedQuestion } from '@/lib/questionBank';
 import styles from './QuestionBank.module.css';
 
@@ -12,7 +13,8 @@ type Bank = { company: string; mine: BankQuestion[]; shared: SharedQuestion[] };
 /**
  * Company question banks: find a company, see the questions asked there (yours
  * and ones other candidates shared), add one you were asked, and practise
- * with them.
+ * with them. Wide screens show the companies beside the open bank; phones
+ * show one or the other.
  */
 export function QuestionBank({ initialCompany = '' }: { initialCompany?: string }) {
   const t = useTranslations('QuestionBank');
@@ -20,8 +22,9 @@ export function QuestionBank({ initialCompany = '' }: { initialCompany?: string 
   const [companies, setCompanies] = useState<CompanyEntry[]>([]);
   const [bank, setBank] = useState<Bank | null>(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
   const searchId = useId();
+  const listId = useId();
 
   const search = query.trim();
   useEffect(() => {
@@ -37,25 +40,22 @@ export function QuestionBank({ initialCompany = '' }: { initialCompany?: string 
     };
   }, [search]);
 
-  const open = useCallback(
-    async (company: string) => {
-      const name = company.trim();
-      if (!name) return;
-      setLoading(true);
-      setError(null);
-      try {
-        const res = await fetch(`/api/question-bank?company=${encodeURIComponent(name)}`);
-        const json = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error();
-        setBank({ company: name, mine: json.mine ?? [], shared: json.shared ?? [] });
-      } catch {
-        setError(t('loadFailed'));
-      } finally {
-        setLoading(false);
-      }
-    },
-    [t],
-  );
+  const open = useCallback(async (company: string) => {
+    const name = company.trim();
+    if (!name) return;
+    setLoading(true);
+    setFailed(false);
+    try {
+      const res = await fetch(`/api/question-bank?company=${encodeURIComponent(name)}`);
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error();
+      setBank({ company: name, mine: json.mine ?? [], shared: json.shared ?? [] });
+    } catch {
+      setFailed(true);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     // A link from practice setup opens that company straight away.
@@ -64,78 +64,89 @@ export function QuestionBank({ initialCompany = '' }: { initialCompany?: string 
   }, [initialCompany, open]);
 
   const exact = companies.some((entry) => entry.company.trim().toLowerCase() === search.toLowerCase());
+  const current = bank?.company.trim().toLowerCase() ?? null;
 
   return (
-    <div className={styles.layout}>
-      <section className="card" aria-labelledby={`${searchId}-title`}>
-        <div className="cardInner stack">
-          <div>
-            <h2 className="cardTitle" id={`${searchId}-title`}>
-              {t('findTitle')}
-            </h2>
-            <p className="cardDesc">{t('findDesc')}</p>
-          </div>
-          <form
-            className={styles.searchRow}
-            onSubmit={(event) => {
-              event.preventDefault();
-              void open(search);
-            }}
-          >
-            <label className="srOnly" htmlFor={searchId}>
-              {t('company')}
-            </label>
-            <input
-              id={searchId}
-              className="input"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder={t('companyPlaceholder')}
-              maxLength={120}
-            />
-            <button type="submit" className="button buttonPrimary" disabled={!search || loading}>
-              {t('open')}
-            </button>
-          </form>
-          {companies.length ? (
-            <ul className={styles.companies} aria-label={t('companies')}>
-              {companies.map((entry) => (
+    <div className={styles.layout} data-open={bank ? 'true' : undefined}>
+      <section className={styles.companiesPane} aria-labelledby={`${listId}-title`}>
+        <h2 className="srOnly" id={`${listId}-title`}>
+          {t('companies')}
+        </h2>
+        <form
+          className={styles.search}
+          onSubmit={(event) => {
+            event.preventDefault();
+            void open(search);
+          }}
+        >
+          <label className="srOnly" htmlFor={searchId}>
+            {t('company')}
+          </label>
+          <input
+            id={searchId}
+            className="input"
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder={t('companyPlaceholder')}
+            maxLength={120}
+            autoComplete="off"
+          />
+          <button type="submit" className="button" disabled={!search || loading}>
+            {t('open')}
+          </button>
+        </form>
+        {failed ? (
+          <p className={styles.error} role="alert">
+            {t('loadFailed')}
+          </p>
+        ) : null}
+        {companies.length ? (
+          <ul className={styles.companies} aria-label={t('companies')}>
+            {companies.map((entry) => {
+              const count = entry.mine + entry.shared;
+              return (
                 <li key={entry.company}>
                   <button
                     type="button"
                     className={styles.company}
-                    aria-current={bank?.company.toLowerCase() === entry.company.trim().toLowerCase() ? 'true' : undefined}
+                    aria-current={current === entry.company.trim().toLowerCase() ? 'true' : undefined}
                     onClick={() => {
                       setQuery(entry.company);
                       void open(entry.company);
                     }}
                   >
-                    <span>{entry.company}</span>
-                    <span className={styles.companyCount}>{t('companyCount', { count: entry.mine + entry.shared })}</span>
+                    <span className={styles.companyName}>{entry.company}</span>{' '}
+                    <span className="srOnly">{t('companyCount', { count })}</span>
+                    <span className={styles.companyCount} aria-hidden="true">
+                      {count}
+                    </span>
                   </button>
                 </li>
-              ))}
-            </ul>
-          ) : search && !exact ? (
-            <p className="help">{t('noCompanies')}</p>
-          ) : null}
-          {error ? (
-            <p className="error" role="alert">
-              {error}
-            </p>
-          ) : null}
-        </div>
+              );
+            })}
+          </ul>
+        ) : search && !exact ? (
+          <p className={styles.hint}>{t('noCompanies')}</p>
+        ) : null}
       </section>
 
-      {bank ? <CompanyBank key={bank.company.toLowerCase()} bank={bank} onChange={setBank} /> : null}
+      {bank ? (
+        <CompanyBank key={bank.company.toLowerCase()} bank={bank} onChange={setBank} onBack={() => setBank(null)} />
+      ) : (
+        <div className={`emptyState ${styles.intro}`}>
+          <p>{loading ? t('loading') : t('findDesc')}</p>
+        </div>
+      )}
     </div>
   );
 }
 
-function CompanyBank({ bank, onChange }: { bank: Bank; onChange: (bank: Bank) => void }) {
+function CompanyBank({ bank, onChange, onBack }: { bank: Bank; onChange: (bank: Bank) => void; onBack: () => void }) {
   const t = useTranslations('QuestionBank');
   const format = useFormatter();
   const [error, setError] = useState<string | null>(null);
+  const headingId = useId();
   const total = bank.mine.length + bank.shared.length;
   const query = `company=${encodeURIComponent(bank.company)}&bank=1`;
 
@@ -165,74 +176,97 @@ function CompanyBank({ bank, onChange }: { bank: Bank; onChange: (bank: Bank) =>
   }
 
   return (
-    <section className="card" aria-labelledby="bank-company">
-      <div className="cardInner stack">
-        <div className={styles.bankHeader}>
-          <div>
-            <h2 className="cardTitle" id="bank-company">
-              {bank.company}
-            </h2>
-            <p className="cardDesc">{t('bankCount', { count: total })}</p>
-          </div>
-          {total > 0 ? <NewPracticeButton primary label={t('practice')} query={query} /> : null}
+    <section className={styles.bank} aria-labelledby={headingId}>
+      <button type="button" className={`button buttonGhost buttonSmall ${styles.back}`} onClick={onBack}>
+        <ChevronLeftIcon size={16} />
+        {t('allCompanies')}
+      </button>
+
+      <header className={styles.bankHeader}>
+        <div className={styles.bankTitleGroup}>
+          <h2 className={styles.bankTitle} id={headingId}>
+            {bank.company}
+          </h2>
+          <p className={styles.bankCount}>{t('bankCount', { count: total })}</p>
         </div>
+        {total > 0 ? <NewPracticeButton primary label={t('practice')} query={query} /> : null}
+      </header>
 
-        <ReportForm company={bank.company} onAdded={(question) => onChange({ ...bank, mine: [question, ...bank.mine] })} />
+      <ReportForm company={bank.company} onAdded={(question) => onChange({ ...bank, mine: [question, ...bank.mine] })} />
 
-        {error ? (
-          <p className="error" role="alert">
-            {error}
-          </p>
-        ) : null}
+      {error ? (
+        <p className={styles.error} role="alert">
+          {error}
+        </p>
+      ) : null}
 
-        <div className={styles.group}>
-          <h3 className={styles.groupTitle}>{t('mine')}</h3>
-          {bank.mine.length ? (
-            <ul className={styles.questions}>
-              {bank.mine.map((question) => (
-                <li key={question.id} className={styles.question}>
+      <section className={styles.group} aria-label={t('mine')}>
+        <h3 className={styles.groupTitle}>
+          {t('mine')}
+          <span className={styles.groupCount}>{bank.mine.length}</span>
+        </h3>
+        {bank.mine.length ? (
+          <ul className={styles.questions}>
+            {bank.mine.map((question) => (
+              <li key={question.id} className={styles.question}>
+                <div className={styles.questionMain}>
                   <p className={styles.questionText}>{question.question_text}</p>
-                  <div className={styles.questionMeta}>
-                    <span className="badge">{t(`types.${question.question_type}`)}</span>
+                  <p className={styles.questionMeta}>
+                    <span>{t(`types.${question.question_type}`)}</span>
                     <span>{question.source === 'reported' ? t('sourceReported') : t('sourcePractice')}</span>
                     {question.role ? <span>{question.role}</span> : null}
-                    <span className={styles.questionActions}>
-                      <button type="button" className="button buttonGhost" aria-pressed={question.shared} onClick={() => void toggleShare(question)}>
-                        {question.shared ? t('shared') : t('share')}
-                      </button>
-                      <button type="button" className="button buttonGhost" onClick={() => void remove(question)}>
-                        {t('remove')}
-                      </button>
+                  </p>
+                </div>
+                <div className={styles.questionActions}>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={question.shared}
+                    aria-label={t('shareLabel')}
+                    className={styles.shareSwitch}
+                    onClick={() => void toggleShare(question)}
+                  >
+                    <span className={styles.shareTrack} aria-hidden="true">
+                      <span className={styles.shareThumb} />
                     </span>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="help">{t('mineEmpty')}</p>
-          )}
-        </div>
+                    <span className={styles.shareText}>{t('share')}</span>
+                  </button>
+                  <button type="button" className="button buttonGhost buttonSmall" onClick={() => void remove(question)}>
+                    {t('remove')}
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className={styles.hint}>{t('mineEmpty')}</p>
+        )}
+      </section>
 
-        <div className={styles.group}>
-          <h3 className={styles.groupTitle}>{t('others')}</h3>
-          {bank.shared.length ? (
-            <ul className={styles.questions}>
-              {bank.shared.map((question) => (
-                <li key={question.question_text} className={styles.question}>
+      <section className={styles.group} aria-label={t('others')}>
+        <h3 className={styles.groupTitle}>
+          {t('others')}
+          <span className={styles.groupCount}>{bank.shared.length}</span>
+        </h3>
+        {bank.shared.length ? (
+          <ul className={styles.questions}>
+            {bank.shared.map((question) => (
+              <li key={question.question_text} className={styles.question}>
+                <div className={styles.questionMain}>
                   <p className={styles.questionText}>{question.question_text}</p>
-                  <div className={styles.questionMeta}>
-                    <span className="badge">{t(`types.${question.question_type}`)}</span>
+                  <p className={styles.questionMeta}>
+                    <span>{t(`types.${question.question_type}`)}</span>
                     <span>{t('reports', { count: question.reports })}</span>
                     <span>{format.dateTime(new Date(question.last_reported_at), { dateStyle: 'medium' })}</span>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="help">{t('othersEmpty')}</p>
-          )}
-        </div>
-      </div>
+                  </p>
+                </div>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className={styles.hint}>{t('othersEmpty')}</p>
+        )}
+      </section>
     </section>
   );
 }
@@ -271,8 +305,11 @@ function ReportForm({ company, onAdded }: { company: string; onAdded: (question:
 
   return (
     <details className={styles.report}>
-      <summary>{t('addTitle')}</summary>
-      <form className="stack" onSubmit={save}>
+      <summary className={styles.reportSummary}>
+        <PlusIcon size={16} />
+        {t('addTitle')}
+      </summary>
+      <form className={styles.reportForm} onSubmit={save}>
         <label className="label" htmlFor={ids.question}>
           {t('question')}
           <textarea
@@ -303,17 +340,17 @@ function ReportForm({ company, onAdded }: { company: string; onAdded: (question:
             <input id={ids.role} className="input" value={role} onChange={(e) => setRole(e.target.value)} maxLength={120} />
           </label>
         </div>
-        <label className={styles.check}>
+        <label className={`checkbox-label ${styles.check}`}>
           <input type="checkbox" checked={share} onChange={(e) => setShare(e.target.checked)} />
           <span>{t('shareHelp')}</span>
         </label>
         {error ? (
-          <p className="error" role="alert">
+          <p className={styles.error} role="alert">
             {error}
           </p>
         ) : null}
         <div className={styles.formActions}>
-          <button type="submit" className="button buttonPrimary" disabled={saving || question.trim().length < 8}>
+          <button type="submit" className="button" disabled={saving || question.trim().length < 8}>
             {saving ? t('saving') : t('add')}
           </button>
         </div>

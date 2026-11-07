@@ -27,6 +27,9 @@ const unbounded = Unbounded({
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
+  // Lets the tab bar sit above the home indicator on phones (env(safe-area-inset-*)).
+  viewportFit: 'cover',
+  themeColor: '#141415',
 };
 
 export async function generateMetadata({ params }: { params: Promise<{ locale: string }> }): Promise<Metadata> {
@@ -84,7 +87,7 @@ export default async function RootLayout({
     <html lang={locale} dir={isRTL ? 'rtl' : 'ltr'} suppressHydrationWarning>
       <head>
         <meta name="color-scheme" content="dark" />
-        <meta name="theme-color" content="#0b1324" />
+        <meta name="theme-color" content="#141415" />
       </head>
       <body className={`${geistSans.variable} ${geistMono.variable} ${unbounded.variable}`}>
         {/* Skip to main content link for keyboard users */}
@@ -103,7 +106,7 @@ export default async function RootLayout({
         <DesktopFrame title={tBrand('name')} />
 
         <NextIntlClientProvider messages={messages}>
-          {/* Toasts: DashboardClient, JobsClient, ResumeClient and SettingsClient call useToast. */}
+          {/* Toasts: components across the app call useToast. */}
           <ClientProviders>{children}</ClientProviders>
         </NextIntlClientProvider>
       </body>

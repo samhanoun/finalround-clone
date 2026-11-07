@@ -6,6 +6,7 @@ import { Link, useRouter } from '@/i18n/routing';
 import { useFormatter, useTranslations } from 'next-intl';
 import { notificationText } from '@/lib/notificationText';
 import { BellIcon, CalendarIcon, JobsIcon, SparkIcon } from './icons';
+import styles from './NotificationBell.module.css';
 
 interface Notification {
   id: string;
@@ -18,7 +19,7 @@ interface Notification {
   created_at: string;
 }
 
-/** `placement="side"`: in the navigation rail, the list opens to the right. */
+/** `placement="side"`: in the desktop sidebar, the list opens to the right. On phones it spans the screen. */
 export function NotificationBell({ placement = 'below' }: { placement?: 'below' | 'side' } = {}) {
   const supabase = createClient();
   const router = useRouter();
@@ -155,166 +156,64 @@ export function NotificationBell({ placement = 'below' }: { placement?: 'below' 
   }
 
   return (
-    <div className="notification-bell" ref={dropdownRef} style={{ position: 'relative' }}>
+    <div className={`notification-bell ${styles.bell}`} ref={dropdownRef}>
       <button
+        type="button"
         onClick={toggleDropdown}
-        className="button buttonGhost"
+        className="iconButton"
         aria-label={unreadCount > 0 ? t('labelUnread', { count: unreadCount }) : t('label')}
-        style={{ padding: 0, width: 44, position: 'relative' }}
+        aria-expanded={isOpen}
       >
-        <BellIcon size={20} />
-        {unreadCount > 0 && (
-          <span
-            style={{
-              position: 'absolute',
-              top: 4,
-              right: 4,
-              background: 'var(--ember)',
-              color: 'var(--midnight)',
-              borderRadius: '50%',
-              width: 18,
-              height: 18,
-              fontSize: '0.7rem',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontWeight: 'bold',
-            }}
-          >
-            {unreadCount > 9 ? '9+' : unreadCount}
-          </span>
-        )}
+        <BellIcon size={18} />
+        {unreadCount > 0 ? <span className={styles.unreadDot} aria-hidden="true" /> : null}
       </button>
 
       {isOpen && (
-        <div
-          className="notification-dropdown"
-          style={{
-            position: 'absolute',
-            ...(placement === 'side'
-              ? { left: '100%', bottom: 0, marginLeft: 12 }
-              : { top: '100%', right: 0, marginTop: 8 }),
-            width: 'min(360px, calc(100vw - 32px))',
-            maxHeight: 480,
-            overflow: 'auto',
-            background: 'var(--deck)',
-            border: '1px solid var(--line-strong)',
-            borderRadius: 14,
-            boxShadow: 'var(--float)',
-            zIndex: 100,
-          }}
-        >
-          <div
-            style={{
-              padding: '12px 16px',
-              borderBottom: '1px solid var(--border)',
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-            }}
-          >
-            <h3 style={{ margin: 0, fontSize: '1rem' }}>{t('title')}</h3>
+        <div className={`notification-dropdown ${styles.panel} ${placement === 'side' ? styles.side : styles.below}`}>
+          <div className={styles.header}>
+            <h2 className={styles.title}>{t('title')}</h2>
             {unreadCount > 0 && (
-              <button
-                onClick={markAllAsRead}
-                className="button buttonGhost"
-                style={{ minHeight: 32, padding: '0 10px', fontSize: 13 }}
-              >
+              <button type="button" onClick={markAllAsRead} className="button buttonGhost buttonSmall">
                 {t('markAllRead')}
               </button>
             )}
           </div>
 
           {loading ? (
-            <div style={{ padding: 24, textAlign: 'center', color: 'var(--fgMuted)' }}>
-              {t('loading')}
-            </div>
+            <div className={styles.note}>{t('loading')}</div>
           ) : notifications.length === 0 ? (
-            <div style={{ padding: 24, textAlign: 'center', color: 'var(--fgMuted)' }}>
-              {t('empty')}
-            </div>
+            <div className={styles.note}>{t('empty')}</div>
           ) : (
-            <div>
-              {notifications.map((notification) => (
-                <div
-                  key={notification.id}
-                  role={linkOf(notification) ? 'link' : undefined}
-                  tabIndex={linkOf(notification) || !notification.read ? 0 : undefined}
-                  onClick={() => openNotification(notification)}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter') openNotification(notification);
-                  }}
-                  style={{
-                    padding: '12px 16px',
-                    borderBottom: '1px solid var(--border)',
-                    cursor: linkOf(notification) || !notification.read ? 'pointer' : 'default',
-                    background: notification.read ? 'transparent' : 'var(--bgElevated)',
-                    transition: 'background 0.15s',
-                  }}
-                >
-                  <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-                    <span style={{ display: 'inline-flex', color: 'var(--mist)' }}>{getTypeIcon(notification.type)}</span>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div
-                        style={{
-                          fontWeight: notification.read ? 'normal' : '600',
-                          marginBottom: 4,
-                        }}
-                      >
-                        {notificationText(notification, tn, format).title}
-                      </div>
-                      <div
-                        style={{
-                          fontSize: '0.85rem',
-                          color: 'var(--fgMuted)',
-                          overflow: 'hidden',
-                          display: '-webkit-box',
-                          WebkitLineClamp: 2,
-                          WebkitBoxOrient: 'vertical',
-                        }}
-                      >
-                        {notificationText(notification, tn, format).message}
-                      </div>
-                      <div
-                        style={{
-                          fontSize: '0.75rem',
-                          color: 'var(--fgMuted)',
-                          marginTop: 4,
-                        }}
-                      >
-                        {formatTimeAgo(notification.created_at)}
-                      </div>
+            <div className={styles.list}>
+              {notifications.map((notification) => {
+                const text = notificationText(notification, tn, format);
+                const actionable = Boolean(linkOf(notification)) || !notification.read;
+                return (
+                  <div
+                    key={notification.id}
+                    role={linkOf(notification) ? 'link' : undefined}
+                    tabIndex={actionable ? 0 : undefined}
+                    onClick={() => openNotification(notification)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') openNotification(notification);
+                    }}
+                    className={`${styles.item} ${actionable ? styles.actionable : ''} ${notification.read ? '' : styles.unread}`}
+                  >
+                    <span className={styles.icon}>{getTypeIcon(notification.type)}</span>
+                    <div className={styles.body}>
+                      <div className={styles.itemTitle}>{text.title}</div>
+                      <div className={styles.message}>{text.message}</div>
+                      <div className={styles.time}>{formatTimeAgo(notification.created_at)}</div>
                     </div>
-                    {!notification.read && (
-                      <span
-                        style={{
-                          width: 8,
-                          height: 8,
-                          borderRadius: '50%',
-                          background: 'var(--blue)',
-                          flexShrink: 0,
-                          marginTop: 6,
-                        }}
-                      />
-                    )}
+                    {!notification.read ? <span className={styles.itemDot} aria-hidden="true" /> : null}
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
 
-          <div
-            style={{
-              padding: '12px 16px',
-              borderTop: '1px solid var(--border)',
-              textAlign: 'center',
-            }}
-          >
-            <Link
-              href="/settings"
-              scroll={false}
-              style={{ fontSize: 14, color: 'var(--ice)' }}
-            >
+          <div className={styles.footer}>
+            <Link href="/settings#notifications" className={styles.settingsLink} onClick={() => setIsOpen(false)}>
               {t('settings')}
             </Link>
           </div>

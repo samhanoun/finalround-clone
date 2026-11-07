@@ -1,18 +1,16 @@
-/* The interviewer is drawn in Ice, like every interviewer voice in the app. */
+/* The interviewer is drawn in Ice. Nothing moves unless the interviewer is
+   actually speaking. */
 .avatar {
-  position: relative;
   flex-shrink: 0;
-  width: 72px;
-  height: 72px;
-  border-radius: 26px;
-  box-shadow: 0 0 0 1px var(--line);
-  transition: box-shadow 200ms ease;
+  width: var(--avatar-size, 48px);
+  height: var(--avatar-size, 48px);
+  border-radius: 36%;
+  box-shadow: 0 0 0 1px var(--hairline);
+  transition: box-shadow var(--dur-menu) var(--ease);
 }
 
 .avatar[data-state='speaking'] {
-  box-shadow:
-    0 0 0 1px var(--ice),
-    0 0 22px -4px var(--ice);
+  box-shadow: 0 0 0 1px var(--voice-them);
 }
 
 .face {
@@ -22,33 +20,32 @@
 }
 
 .head {
-  fill: var(--well);
-  stroke: var(--line-strong);
+  fill: var(--raised);
+  stroke: var(--hairline-strong);
   stroke-width: 1.5;
 }
 
 .eyes rect {
-  fill: var(--ice);
+  fill: var(--voice-them-text);
   transform-box: fill-box;
   transform-origin: center;
-  animation: blink 5.5s infinite;
+  transition: transform var(--dur-menu) var(--ease);
 }
 
-/* Listening: eyes narrow a little, attentive. */
+/* Listening: the eyes narrow a little and stay that way. */
 .avatar[data-state='listening'] .eyes rect {
   transform: scaleY(0.7);
-  animation: none;
 }
 
 .bar {
-  fill: var(--ice);
+  fill: var(--voice-them);
   transform-box: fill-box;
   transform-origin: center;
   transform: scaleY(0.3);
 }
 
 .avatar[data-state='speaking'] .bar {
-  animation: talk 420ms ease-in-out infinite alternate;
+  animation: talk 420ms var(--ease) infinite alternate;
 }
 
 @keyframes talk {
@@ -60,24 +57,9 @@
   }
 }
 
-@keyframes blink {
-  0%,
-  94%,
-  100% {
-    transform: scaleY(1);
-  }
-  97% {
-    transform: scaleY(0.1);
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .eyes rect,
   .avatar[data-state='speaking'] .bar {
     animation: none;
-  }
-
-  .avatar[data-state='speaking'] .bar {
     transform: scaleY(0.9);
   }
 }

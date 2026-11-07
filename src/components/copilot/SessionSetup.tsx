@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { useFormatter, useTranslations } from 'next-intl';
 import { Link } from '@/i18n/routing';
 import { createClient } from '@/lib/supabase/browser';
+import { ChevronDownIcon } from '@/components/icons';
 import styles from './SessionSetup.module.css';
 import { detectMeetingPlatform, meetingUrl, PLATFORM_LABEL } from '@/lib/meetingSettings';
 import {
@@ -60,6 +61,7 @@ export const EMPTY_SETUP: SessionSetupValue = {
 
 const STORAGE_KEY = 'apex.sessionSetup.v1';
 const MODES: CopilotMode[] = ['general', 'coding', 'phone', 'video'];
+const ROUNDS = ['screen', 'behavioral', 'technical', 'system_design', 'final', 'other'];
 
 type ResumeOption = { id: string; filename: string | null; created_at: string };
 type GoalOption = {
@@ -70,6 +72,7 @@ type GoalOption = {
   round: string;
   resume_document_id: string | null;
   job_description: string | null;
+  playbook_id: string | null;
 };
 type ModelOption = { id: string; label: string };
 type PlaybookOption = { id: string; name: string };
@@ -141,10 +144,46 @@ export function setupStartBody(value: SessionSetupValue, titles: StartTitles) {
   };
 }
 
+/** A checkbox with its label, and a help line read as its description. */
+function Check({
+  checked,
+  onChange,
+  disabled,
+  label,
+  help,
+}: {
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  disabled: boolean;
+  label: string;
+  help: string;
+}) {
+  const id = useId();
+  return (
+    <div className={styles.check}>
+      <input
+        id={id}
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        disabled={disabled}
+        aria-describedby={`${id}-help`}
+      />
+      <label htmlFor={id} className={styles.checkLabel}>
+        {label}
+      </label>
+      <p id={`${id}-help`} className={styles.checkHelp}>
+        {help}
+      </p>
+    </div>
+  );
+}
+
 /**
- * The pre-session setup step: a goal (or the interview by hand), the résumé,
- * the job, and this session's choices. All optional; the server turns it into
- * the context pack.
+ * Before a session: pick a goal (its company, role, résumé, materials and
+ * playbook come along) or set the interview up by hand, choose this
+ * session's options, and start. All optional; the server turns it into the
+ * context pack.
  */
 export function SessionSetup({
   value,
@@ -154,6 +193,7 @@ export function SessionSetup({
   askForLink = false,
   autoStartListening = false,
   initialGoalId = null,
+  error = null,
 }: {
   value: SessionSetupValue;
   onChange: (next: SessionSetupValue) => void;
@@ -164,6 +204,8 @@ export function SessionSetup({
   autoStartListening?: boolean;
   /** /copilot/live?goal=… from the Goals page. */
   initialGoalId?: string | null;
+  /** Why the last start (or session) failed, shown next to Start session. */
+  error?: ReactNode;
 }) {
   const t = useTranslations('SessionSetup');
   const format = useFormatter();
@@ -171,6 +213,10 @@ export function SessionSetup({
   const [goals, setGoals] = useState<GoalOption[] | null>(null);
   const [models, setModels] = useState<ModelOption[]>([]);
   const [playbooks, setPlaybooks] = useState<PlaybookOption[]>([]);
+  const [materialCounts, setMaterialCounts] = useState<Record<string, number>>({});
+  const [editOpen, setEditOpen] = useState(false);
+  const editId = useId();
+  const linkHelpId = useId();
   const latest = useRef({ value, onChange });
   useEffect(() => {
     latest.current = { value, onChange };
@@ -180,7 +226,7 @@ export function SessionSetup({
     let cancelled = false;
     const supabase = createClient();
     void (async () => {
-      const [resumeRows, goalRows, modelRes, playbookRows] = await Promise.all([
+      const [resumeRows, goalRows, modelRes, playbookRows, goalMaterialRows] = await Promise.all([
         supabase
           .from('resume_documents')
           .select('id, filename, created_at')
@@ -189,12 +235,13 @@ export function SessionSetup({
           .limit(20),
         supabase
           .from('goals')
-          .select('id, name, company, role, round, resume_document_id, job_description')
+          .select('id, name, company, role, round, resume_document_id, job_description, playbook_id')
           .eq('archived', false)
           .order('updated_at', { ascending: false })
           .limit(50),
         fetch('/api/settings/llm').catch(() => null),
         supabase.from('playbooks').select('id, name').order('updated_at', { ascending: false }).limit(50),
+        supabase.from('goal_materials').select('goal_id').limit(2000),
       ]);
       if (cancelled) return;
       const list = (resumeRows.data as ResumeOption[] | null) ?? [];
@@ -203,6 +250,11 @@ export function SessionSetup({
       setGoals(goalList);
       const playbookList = (playbookRows.data as PlaybookOption[] | null) ?? [];
       setPlaybooks(playbookList);
+      const counts: Record<string, number> = {};
+      for (const row of (goalMaterialRows.data as Array<{ goal_id: string }> | null) ?? []) {
+        counts[row.goal_id] = (counts[row.goal_id] ?? 0) + 1;
+      }
+      setMaterialCounts(counts);
       const modelJson = modelRes?.ok ? await modelRes.json().catch(() => null) : null;
       if (!cancelled && modelJson?.options) setModels(modelJson.options as ModelOption[]);
 
@@ -228,185 +280,213 @@ export function SessionSetup({
   const titlePlaceholder =
     [value.role.trim(), value.company.trim() && t('at', { company: value.company.trim() })].filter(Boolean).join(' ') ||
     t('titlePlaceholder');
+  const goal = value.goalId ? (goals?.find((item) => item.id === value.goalId) ?? null) : null;
+  const goalPlaybook = goal?.playbook_id ? (playbooks.find((item) => item.id === goal.playbook_id) ?? null) : null;
 
   function pickGoal(goalId: string) {
-    const goal = goals?.find((item) => item.id === goalId);
-    onChange(goal ? withGoal(value, goal) : { ...value, goalId: '' });
+    const picked = goals?.find((item) => item.id === goalId);
+    onChange(picked ? withGoal(value, picked) : { ...value, goalId: '' });
   }
 
-  return (
-    <section className="card" aria-label={t('label')}>
-      <div className="cardInner stack" style={{ gap: 16 }}>
-        <div className="stack" style={{ gap: 4 }}>
-          <h2 className="cardTitle">{t('title')}</h2>
-          <p className="small" style={{ margin: 0 }}>
-            {t('intro')}
-          </p>
-        </div>
-
+  const interviewFields = (
+    <>
+      <div className={styles.fields}>
         <label className="label">
-          {t('goal')}
-          <select className="select" value={value.goalId} onChange={(e) => pickGoal(e.target.value)} disabled={starting || goals === null}>
-            <option value="">{goals === null ? t('loading') : t('noGoal')}</option>
-            {(goals ?? []).map((goal) => (
-              <option key={goal.id} value={goal.id}>
-                {goal.name}
+          {t('mode')}
+          <select className="select" value={value.mode} onChange={(e) => set({ mode: e.target.value as CopilotMode })} disabled={starting}>
+            {MODES.map((mode) => (
+              <option key={mode} value={mode}>
+                {t(`modes.${mode}`)}
               </option>
             ))}
           </select>
-          <span className="help">
-            {value.goalId ? (
-              t('goalHelp')
-            ) : (
-              <>
-                {t('noGoalHelp')} <Link href="/goals">{t('manageGoals')}</Link>
-              </>
-            )}
-          </span>
         </label>
+        <label className="label">
+          {t('company')}
+          <input
+            className="input"
+            value={value.company}
+            onChange={(e) => set({ company: e.target.value })}
+            placeholder={t('companyPlaceholder')}
+            maxLength={200}
+            disabled={starting}
+          />
+        </label>
+        <label className="label">
+          {t('role')}
+          <input
+            className="input"
+            value={value.role}
+            onChange={(e) => set({ role: e.target.value })}
+            placeholder={t('rolePlaceholder')}
+            maxLength={200}
+            disabled={starting}
+          />
+        </label>
+        <label className="label">
+          {t('sessionTitle')}
+          <input
+            className="input"
+            value={value.title}
+            onChange={(e) => set({ title: e.target.value })}
+            placeholder={titlePlaceholder}
+            maxLength={200}
+            disabled={starting}
+          />
+        </label>
+      </div>
+      {value.mode === 'coding' ? (
+        <Check
+          checked={value.noFullCode}
+          onChange={(checked) => set({ noFullCode: checked })}
+          disabled={starting}
+          label={t('hintsOnly')}
+          help={t('hintsOnlyHelp')}
+        />
+      ) : null}
+    </>
+  );
 
-        <ol className={styles.steps}>
-          <li className={styles.step}>
-            <h3 className={styles.stepTitle}>{t('stepInterview')}</h3>
-            <div className="grid2">
-              <label className="label">
-                {t('mode')}
-                <select
-                  className="select"
-                  value={value.mode}
-                  onChange={(e) => set({ mode: e.target.value as CopilotMode })}
-                  disabled={starting}
-                >
-                  {MODES.map((mode) => (
-                    <option key={mode} value={mode}>
-                      {t(`modes.${mode}`)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="label">
-                {t('company')}
-                <input
-                  className="input"
-                  value={value.company}
-                  onChange={(e) => set({ company: e.target.value })}
-                  placeholder={t('companyPlaceholder')}
-                  maxLength={200}
-                  disabled={starting}
-                />
-              </label>
-              <label className="label">
-                {t('role')}
-                <input
-                  className="input"
-                  value={value.role}
-                  onChange={(e) => set({ role: e.target.value })}
-                  placeholder={t('rolePlaceholder')}
-                  maxLength={200}
-                  disabled={starting}
-                />
-              </label>
-              <label className="label">
-                {t('sessionTitle')}
-                <input
-                  className="input"
-                  value={value.title}
-                  onChange={(e) => set({ title: e.target.value })}
-                  placeholder={titlePlaceholder}
-                  maxLength={200}
-                  disabled={starting}
-                />
-              </label>
-            </div>
-            {askForLink ? (
-              <label className="label">
-                {t('meetingLink')}
-                <input
-                  className="input"
-                  type="url"
-                  inputMode="url"
-                  value={value.meetingUrl}
-                  onChange={(e) => set({ meetingUrl: e.target.value })}
-                  placeholder={t('meetingLinkPlaceholder')}
-                  maxLength={2000}
-                  disabled={starting}
-                />
-                <span className="help">
-                  {!value.meetingUrl.trim()
-                    ? t('meetingLinkHelp')
-                    : linkPlatform
-                      ? t('meetingLinkFound', { app: PLATFORM_LABEL[linkPlatform] })
-                      : linkIsValid
-                        ? t('meetingLinkOther')
-                        : t('meetingLinkInvalid')}
-                </span>
-              </label>
-            ) : null}
-            <label className={styles.checkbox}>
-              <input type="checkbox" checked={value.singleMic} onChange={(e) => set({ singleMic: e.target.checked })} disabled={starting} />
-              <span>
-                <strong>{t('singleMic')}</strong> {t('singleMicHelp')}
-              </span>
-            </label>
-            {value.mode === 'coding' ? (
-              <label className={styles.checkbox}>
-                <input
-                  type="checkbox"
-                  checked={value.noFullCode}
-                  onChange={(e) => set({ noFullCode: e.target.checked })}
-                  disabled={starting}
-                />
-                <span>
-                  <strong>{t('hintsOnly')}</strong> {t('hintsOnlyHelp')}
-                </span>
-              </label>
-            ) : null}
-          </li>
+  const resumeField = (
+    <>
+      <label className="label">
+        {t('resume')}
+        <select
+          className="select"
+          value={value.resumeDocumentId}
+          onChange={(e) => set({ resumeDocumentId: e.target.value })}
+          disabled={starting || resumes === null}
+        >
+          <option value="">{resumes === null ? t('loading') : t('none')}</option>
+          {(resumes ?? []).map((resume) => (
+            <option key={resume.id} value={resume.id}>
+              {resume.filename ?? t('untitled')} · {format.dateTime(new Date(resume.created_at), { dateStyle: 'medium' })}
+            </option>
+          ))}
+        </select>
+      </label>
+      {resumes !== null && resumes.length === 0 ? (
+        <p className="help" style={{ margin: 0 }}>
+          {t('noResumes')} <Link href="/resume">{t('uploadResume')}</Link>
+        </p>
+      ) : null}
+    </>
+  );
 
-          <li className={styles.step}>
-            <h3 className={styles.stepTitle}>{t('stepResume')}</h3>
+  const jobField = (
+    <label className="label">
+      {t('jobDescription')}
+      <textarea
+        className="textarea"
+        rows={5}
+        value={value.jobDescription}
+        onChange={(e) => set({ jobDescription: e.target.value })}
+        placeholder={t('jobDescriptionPlaceholder')}
+        maxLength={20_000}
+        disabled={starting}
+      />
+    </label>
+  );
+
+  return (
+    <section className={styles.setup} aria-label={t('label')}>
+      <div className={styles.layout}>
+        <div className={`card ${styles.main}`}>
+          <header className={styles.header}>
+            <h2 className={styles.title}>{t('title')}</h2>
+            <p className={styles.intro}>{t('intro')}</p>
+          </header>
+
+          <div className={styles.goal}>
             <label className="label">
-              {t('resume')}
-              <select
-                className="select"
-                value={value.resumeDocumentId}
-                onChange={(e) => set({ resumeDocumentId: e.target.value })}
-                disabled={starting || resumes === null}
-              >
-                <option value="">{resumes === null ? t('loading') : t('none')}</option>
-                {(resumes ?? []).map((resume) => (
-                  <option key={resume.id} value={resume.id}>
-                    {resume.filename ?? t('untitled')} · {format.dateTime(new Date(resume.created_at), { dateStyle: 'medium' })}
+              {t('goal')}
+              <select className="select" value={value.goalId} onChange={(e) => pickGoal(e.target.value)} disabled={starting || goals === null}>
+                <option value="">{goals === null ? t('loading') : t('noGoal')}</option>
+                {(goals ?? []).map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name}
                   </option>
                 ))}
               </select>
             </label>
-            {resumes !== null && resumes.length === 0 ? (
-              <p className="small" style={{ margin: 0 }}>
-                {t('noResumes')} <Link href="/resume">{t('uploadResume')}</Link>
-              </p>
-            ) : null}
-          </li>
+            <p className="help" style={{ margin: 0 }}>
+              {value.goalId ? t('goalHelp') : t('noGoalHelp')} <Link href="/goals">{t('manageGoals')}</Link>
+            </p>
+          </div>
 
-          <li className={styles.step}>
-            <h3 className={styles.stepTitle}>{t('stepJob')}</h3>
-            <label className="label">
-              {t('jobDescription')}
-              <textarea
-                className="textarea"
-                rows={5}
-                value={value.jobDescription}
-                onChange={(e) => set({ jobDescription: e.target.value })}
-                placeholder={t('jobDescriptionPlaceholder')}
-                maxLength={20_000}
-                disabled={starting}
-              />
-            </label>
-          </li>
+          {value.goalId ? (
+            <div className={styles.goalPicked}>
+              <dl className={styles.summary} aria-label={t('summaryLabel')}>
+                <div>
+                  <dt>{t('company')}</dt>
+                  <dd>{value.company.trim() || t('notSet')}</dd>
+                </div>
+                <div>
+                  <dt>{t('role')}</dt>
+                  <dd>{value.role.trim() || t('notSet')}</dd>
+                </div>
+                <div>
+                  <dt>{t('round')}</dt>
+                  <dd>{goal ? t(`rounds.${ROUNDS.includes(goal.round) ? goal.round : 'other'}`) : t('notSet')}</dd>
+                </div>
+                <div>
+                  <dt>{t('resume')}</dt>
+                  <dd>
+                    {value.resumeDocumentId
+                      ? (resumes?.find((resume) => resume.id === value.resumeDocumentId)?.filename ?? t('untitled'))
+                      : t('none')}
+                  </dd>
+                </div>
+                <div>
+                  <dt>{t('materials')}</dt>
+                  <dd className="tnum">{goal && materialCounts[goal.id] ? materialCounts[goal.id] : t('none')}</dd>
+                </div>
+                <div>
+                  <dt>{t('playbook')}</dt>
+                  <dd>{(playbooks.find((item) => item.id === value.playbookId) ?? goalPlaybook)?.name ?? t('none')}</dd>
+                </div>
+              </dl>
 
-          <li className={styles.step}>
-            <h3 className={styles.stepTitle}>{t('stepChoices')}</h3>
-            <div className="grid2">
+              <button
+                type="button"
+                className={styles.disclosure}
+                aria-expanded={editOpen}
+                aria-controls={editId}
+                onClick={() => setEditOpen((open) => !open)}
+              >
+                <ChevronDownIcon size={16} className={styles.chevron} />
+                {t('editForSession')}
+              </button>
+              {editOpen ? (
+                <div id={editId} className={styles.editBody}>
+                  {interviewFields}
+                  {resumeField}
+                  {jobField}
+                </div>
+              ) : null}
+            </div>
+          ) : (
+            <ol className={styles.steps}>
+              <li className={styles.step}>
+                <h3 className={styles.stepTitle}>{t('stepInterview')}</h3>
+                {interviewFields}
+              </li>
+              <li className={styles.step}>
+                <h3 className={styles.stepTitle}>{t('stepResume')}</h3>
+                {resumeField}
+              </li>
+              <li className={styles.step}>
+                <h3 className={styles.stepTitle}>{t('stepJob')}</h3>
+                {jobField}
+              </li>
+            </ol>
+          )}
+        </div>
+
+        <div className={`card ${styles.side}`}>
+          <div className={styles.group}>
+            <h3 className={styles.sideTitle}>{t('stepChoices')}</h3>
+            <div className={styles.choices}>
               <label className="label">
                 {t('answerModel')}
                 <select className="select" value={value.answerModel} onChange={(e) => set({ answerModel: e.target.value })} disabled={starting}>
@@ -453,7 +533,7 @@ export function SessionSetup({
               <label className="label">
                 {t('playbook')}
                 <select className="select" value={value.playbookId} onChange={(e) => set({ playbookId: e.target.value })} disabled={starting}>
-                  <option value="">{value.goalId ? t('goalPlaybook') : t('none')}</option>
+                  <option value="">{goalPlaybook ? t('fromGoal', { name: goalPlaybook.name }) : t('none')}</option>
                   {playbooks.map((playbook) => (
                     <option key={playbook.id} value={playbook.id}>
                       {playbook.name}
@@ -462,14 +542,58 @@ export function SessionSetup({
                 </select>
               </label>
             </div>
-          </li>
-        </ol>
+          </div>
 
-        <div className="row" style={{ gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-          <button className="button buttonPrimary" type="button" onClick={onStart} disabled={starting}>
-            {starting ? t('starting') : t('start')}
-          </button>
-          <span className="small">{autoStartListening ? t('nextAuto') : t('next')}</span>
+          <div className={styles.meeting}>
+            {askForLink ? (
+              <div className={styles.field}>
+                <label className="label">
+                  {t('meetingLink')}
+                  <input
+                    className="input"
+                    type="url"
+                    inputMode="url"
+                    value={value.meetingUrl}
+                    onChange={(e) => set({ meetingUrl: e.target.value })}
+                    placeholder={t('meetingLinkPlaceholder')}
+                    maxLength={2000}
+                    disabled={starting}
+                    aria-describedby={linkHelpId}
+                  />
+                </label>
+                <p id={linkHelpId} className="help" style={{ margin: 0 }}>
+                  {!value.meetingUrl.trim()
+                    ? t('meetingLinkHelp')
+                    : linkPlatform
+                      ? t('meetingLinkFound', { app: PLATFORM_LABEL[linkPlatform] })
+                      : linkIsValid
+                        ? t('meetingLinkOther')
+                        : t('meetingLinkInvalid')}
+                </p>
+              </div>
+            ) : null}
+            <Check
+              checked={value.singleMic}
+              onChange={(checked) => set({ singleMic: checked })}
+              disabled={starting}
+              label={t('singleMic')}
+              help={t('singleMicHelp')}
+            />
+          </div>
+
+          <div className={styles.start}>
+            {error ? (
+              <div className="error" role="status" aria-live="polite">
+                {error}
+              </div>
+            ) : null}
+            <button className={`button buttonPrimary buttonLarge ${styles.startButton}`} type="button" onClick={onStart} disabled={starting}>
+              {starting ? t('starting') : t('start')}
+            </button>
+            <p className="help" style={{ margin: 0 }}>
+              {autoStartListening ? t('nextAuto') : t('next')}
+            </p>
+          </div>
         </div>
       </div>
     </section>

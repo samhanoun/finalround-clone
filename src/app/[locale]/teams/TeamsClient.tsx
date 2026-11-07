@@ -4,6 +4,9 @@ import { useCallback, useEffect, useId, useState } from 'react';
 import { Link } from '@/i18n/routing';
 import { useFormatter, useTranslations } from 'next-intl';
 import { createClient } from '@/lib/supabase/browser';
+import { CheckIcon, CopyIcon } from '@/components/icons';
+import { Skeleton } from '@/components/Skeleton';
+import { Segmented } from '@/app/[locale]/settings/SettingsUI';
 import type { Organization, OrganizationMember, OrganizationInvitation, OrganizationRole } from '@/lib/organizations';
 import styles from './TeamsClient.module.css';
 
@@ -11,10 +14,6 @@ interface TeamsClientProps {
   initialOrganization: Organization | null;
   role: OrganizationRole | null;
 }
-
-type TabType = 'members' | 'invitations' | 'settings' | 'sso';
-
-const TABS: TabType[] = ['members', 'invitations', 'settings', 'sso'];
 
 type T = ReturnType<typeof useTranslations>;
 
@@ -27,12 +26,28 @@ type TeamInvitation = OrganizationInvitation & { invitePath?: string };
 type InviteForMe = { teamName: string; role: string; expiresAt: string; invitePath: string };
 type InviteSent = { email: string; emailSent: boolean; link: string };
 
+type SsoView = {
+  enabled: boolean;
+  domains: string[];
+  metadataUrl: string | null;
+  manageable: boolean;
+  serviceProvider: { entityId: string; metadataUrl: string; acsUrl: string; nameIdFormat: string } | null;
+};
+
+/** A DNS TXT record that proves the team owns a domain (src/lib/ssoVerification.ts). */
+type DomainRecord = { domain: string; type: 'TXT'; name: string; value: string };
+
 function absoluteLink(path: string) {
   return typeof window === 'undefined' ? path : `${window.location.origin}${path}`;
 }
+
+/**
+ * Teams: the team at a glance, its members and their roles, invitations,
+ * single sign-on, the team's details and, for the owner, a danger zone.
+ * Without a team: invitations sent to you and a way to start one.
+ */
 export default function TeamsClient({ initialOrganization, role }: TeamsClientProps) {
   const t = useTranslations('Teams');
-  const [activeTab, setActiveTab] = useState<TabType>('members');
   const [organization, setOrganization] = useState<Organization | null>(initialOrganization);
   const [myRole, setMyRole] = useState<OrganizationRole | null>(role);
   const [members, setMembers] = useState<OrganizationMember[]>([]);
@@ -48,36 +63,43 @@ export default function TeamsClient({ initialOrganization, role }: TeamsClientPr
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [showInviteModal, setShowInviteModal] = useState(false);
-  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [sso, setSso] = useState<SsoView | null>(null);
 
-  // The first load shows "Loading…" (loading starts true); reloads after an action refresh in place.
-  const loadData = useCallback(async (org: Organization) => {
-    try {
-      const [membersRes, statsRes] = await Promise.all([
-        fetch(`/api/teams/${org.id}/members`),
-        fetch(`/api/teams/${org.id}/analytics`),
-      ]);
-      const membersData = await membersRes.json().catch(() => ({}));
-      const statsData = await statsRes.json().catch(() => ({}));
-      if (membersData.members) setMembers(membersData.members);
-      if (statsData.stats) setStats(statsData.stats);
-    } catch {
-      setError(t('errors.load'));
-    } finally {
-      setLoading(false);
-    }
-  }, [t]);
+  const canManage = myRole === 'owner' || myRole === 'admin';
 
-  const loadInvitations = useCallback(async (org: Organization) => {
-    try {
-      const res = await fetch(`/api/teams/${org.id}/invitations`);
-      const data = await res.json().catch(() => ({}));
-      if (data.invitations) setInvitations(data.invitations);
-    } catch {
-      setError(t('errors.invitations'));
-    }
-  }, [t]);
+  // The first load shows placeholders (loading starts true); reloads after an action refresh in place.
+  const loadData = useCallback(
+    async (org: Organization) => {
+      try {
+        const [membersRes, statsRes] = await Promise.all([
+          fetch(`/api/teams/${org.id}/members`),
+          fetch(`/api/teams/${org.id}/analytics`),
+        ]);
+        const membersData = await membersRes.json().catch(() => ({}));
+        const statsData = await statsRes.json().catch(() => ({}));
+        if (membersData.members) setMembers(membersData.members);
+        if (statsData.stats) setStats(statsData.stats);
+      } catch {
+        setError(t('errors.load'));
+      } finally {
+        setLoading(false);
+      }
+    },
+    [t],
+  );
+
+  const loadInvitations = useCallback(
+    async (org: Organization) => {
+      try {
+        const res = await fetch(`/api/teams/${org.id}/invitations`);
+        const data = await res.json().catch(() => ({}));
+        if (data.invitations) setInvitations(data.invitations);
+      } catch {
+        setError(t('errors.invitations'));
+      }
+    },
+    [t],
+  );
 
   // Invitations sent to this user's address, from any team.
   useEffect(() => {
@@ -126,6 +148,27 @@ export default function TeamsClient({ initialOrganization, role }: TeamsClientPr
     };
   }, [organization, loadData]);
 
+  // Owners and admins: the pending invitations and the single sign-on setup.
+  const orgId = organization?.id ?? null;
+  useEffect(() => {
+    if (!orgId || !canManage) return;
+    let cancelled = false;
+    void (async () => {
+      const [invitesRes, ssoRes] = await Promise.all([
+        fetch(`/api/teams/${orgId}/invitations`).catch(() => null),
+        fetch(`/api/teams/${orgId}/sso`).catch(() => null),
+      ]);
+      const invites = invitesRes?.ok ? await invitesRes.json().catch(() => null) : null;
+      const view = ssoRes?.ok ? ((await ssoRes.json().catch(() => null)) as SsoView | null) : null;
+      if (cancelled) return;
+      if (invites?.invitations) setInvitations(invites.invitations);
+      if (view) setSso(view);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [orgId, canManage]);
+
   async function call(url: string, init: RequestInit, failure: string) {
     setError(null);
     try {
@@ -139,7 +182,7 @@ export default function TeamsClient({ initialOrganization, role }: TeamsClientPr
   }
 
   async function handleInvite(email: string, inviteRole: string) {
-    if (!organization) return;
+    if (!organization) return false;
     setError(null);
     const res = await fetch(`/api/teams/${organization.id}/invitations`, {
       method: 'POST',
@@ -148,16 +191,13 @@ export default function TeamsClient({ initialOrganization, role }: TeamsClientPr
     }).catch(() => null);
     const data = res ? await res.json().catch(() => ({})) : {};
     if (!res?.ok) {
-      setError(
-        data?.error === 'already_member' ? t('errors.alreadyMember', { email }) : t('errors.invite'),
-      );
-      return;
+      setError(data?.error === 'already_member' ? t('errors.alreadyMember', { email }) : t('errors.invite'));
+      return false;
     }
-    setShowInviteModal(false);
     setInviteSent({ email, emailSent: Boolean(data.emailSent), link: absoluteLink(data.invitation.invitePath) });
-    setActiveTab('invitations');
     void loadInvitations(organization);
     void loadData(organization);
+    return true;
   }
 
   async function handleCancelInvitation(invitationId: string) {
@@ -206,7 +246,6 @@ export default function TeamsClient({ initialOrganization, role }: TeamsClientPr
     const data = await res.json();
     setOrganization(data.organization);
     setMyRole('owner');
-    setShowCreateModal(false);
   }
 
   async function handleRename(name: string) {
@@ -223,93 +262,106 @@ export default function TeamsClient({ initialOrganization, role }: TeamsClientPr
   }
 
   const forMe = invitesForMe.length ? <InvitesForMe invites={invitesForMe} /> : null;
+  const errorLine = error ? (
+    <p className={styles.error} role="alert">
+      {error}
+    </p>
+  ) : null;
 
   if (loading && !organization) {
-    return <p className="help">{t('loadingTeam')}</p>;
+    return (
+      <div className={styles.page} role="status" aria-label={t('loadingTeam')}>
+        <Skeleton width="240px" height="20px" borderRadius="6px" />
+        <Skeleton width="100%" height="200px" borderRadius="var(--radius-card)" />
+      </div>
+    );
   }
 
   if (!organization) {
     return (
-      <>
+      <div className={styles.page}>
         {forMe}
-        <section className={`card ${styles.empty}`}>
-          <div className="cardInner stack">
-            <h2 className="cardTitle">{t('emptyTitle')}</h2>
-            <p className="cardDesc">{t('emptyDesc')}</p>
-            {error ? <p className={styles.error} role="alert">{error}</p> : null}
-            <div>
-              <button type="button" className="button buttonPrimary" onClick={() => setShowCreateModal(true)}>
-                {t('create')}
-              </button>
-            </div>
-          </div>
-        </section>
-        {showCreateModal ? <CreateTeamModal onClose={() => setShowCreateModal(false)} onCreate={handleCreateTeam} /> : null}
-      </>
+        {errorLine}
+        <CreateTeam onCreate={handleCreateTeam} />
+      </div>
     );
   }
-
-  const canManage = myRole === 'owner' || myRole === 'admin';
 
   return (
     <div className={styles.page}>
       {forMe}
-      <header className={styles.header}>
-        <div>
+
+      <header className={styles.overview}>
+        <div className={styles.identity}>
           <h2 className={styles.teamName}>{organization.name}</h2>
-          <div className={styles.badges}>
-            <span className="badge">{t('plan', { plan: label(t, 'plans', organization.plan) })}</span>
-            {myRole ? <span className="badge badgeIce">{t('youAre', { role: label(t, 'roles', myRole) })}</span> : null}
-          </div>
+          <p className={styles.teamMeta}>
+            {t('plan', { plan: label(t, 'plans', organization.plan) })}
+            {myRole ? <> · {t('youAre', { role: label(t, 'roles', myRole) })}</> : null}
+          </p>
         </div>
-        {canManage ? (
-          <button type="button" className="button buttonPrimary" onClick={() => setShowInviteModal(true)}>
-            {t('invite')}
-          </button>
-        ) : null}
+        <dl className={styles.stats}>
+          <Stat label={t('stats.members')} value={stats.totalMembers} />
+          <Stat label={t('stats.active')} value={stats.activeMembers} />
+          <Stat label={t('stats.interviews')} value={stats.totalInterviews} />
+          <Stat label={t('stats.thisMonth')} value={stats.interviewsThisMonth} />
+        </dl>
       </header>
 
-      <dl className={styles.stats}>
-        <Stat label={t('stats.members')} value={stats.totalMembers} />
-        <Stat label={t('stats.active')} value={stats.activeMembers} />
-        <Stat label={t('stats.interviews')} value={stats.totalInterviews} />
-        <Stat label={t('stats.thisMonth')} value={stats.interviewsThisMonth} />
-      </dl>
+      {errorLine}
 
-      <nav className={styles.tabs} aria-label={t('sections')}>
-        {TABS.map((tab) => (
-          <button
-            key={tab}
-            type="button"
-            className={styles.tab}
-            aria-current={activeTab === tab ? 'page' : undefined}
-            onClick={() => {
-              setActiveTab(tab);
-              if (tab === 'invitations') void loadInvitations(organization);
-            }}
-          >
-            {t(`tabs.${tab}`)}
-            {tab === 'invitations' && stats.pendingInvitations ? <span className={styles.count}>{stats.pendingInvitations}</span> : null}
-          </button>
-        ))}
-      </nav>
+      <section className={styles.section} aria-labelledby="team-members">
+        <h3 className={styles.sectionTitle} id="team-members">
+          {t('tabs.members')}
+          {!loading ? <span className={styles.count}>{members.length}</span> : null}
+        </h3>
+        {loading ? (
+          <div className={styles.group} aria-hidden="true">
+            {[0, 1].map((i) => (
+              <div key={i} className={styles.skeletonRow}>
+                <Skeleton width="28px" height="28px" borderRadius="50%" />
+                <Skeleton width="40%" height="14px" />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <MembersList members={members} canManage={canManage} onRemove={handleRemoveMember} onUpdateRole={handleUpdateRole} />
+        )}
+      </section>
 
-      {error ? <p className={styles.error} role="alert">{error}</p> : null}
-      {inviteSent ? <InviteSentNote sent={inviteSent} onDismiss={() => setInviteSent(null)} /> : null}
+      {canManage ? (
+        <section className={styles.section} aria-labelledby="team-invitations">
+          <h3 className={styles.sectionTitle} id="team-invitations">
+            {t('tabs.invitations')}
+            {invitations.length ? <span className={styles.count}>{invitations.length}</span> : null}
+          </h3>
+          <div className={styles.group}>
+            <InviteForm onInvite={handleInvite} />
+            {inviteSent ? <InviteSentNote sent={inviteSent} onDismiss={() => setInviteSent(null)} /> : null}
+            <InvitationsList invitations={invitations} onCancel={handleCancelInvitation} />
+          </div>
+        </section>
+      ) : null}
 
-      {loading ? (
-        <p className="help">{t('loading')}</p>
-      ) : activeTab === 'members' ? (
-        <MembersTab members={members} canManage={canManage} onRemove={handleRemoveMember} onUpdateRole={handleUpdateRole} />
-      ) : activeTab === 'invitations' ? (
-        <InvitationsTab invitations={invitations} canManage={canManage} onCancel={handleCancelInvitation} onInvite={() => setShowInviteModal(true)} />
-      ) : activeTab === 'settings' ? (
-        <SettingsTab organization={organization} canEdit={myRole === 'owner'} onRename={handleRename} />
-      ) : (
-        <SSOTab organization={organization} canEdit={myRole === 'owner'} />
-      )}
+      {canManage ? (
+        <SsoSection organization={organization} canEdit={myRole === 'owner'} view={sso} onView={setSso} />
+      ) : null}
 
-      {showInviteModal ? <InviteModal onClose={() => setShowInviteModal(false)} onInvite={handleInvite} /> : null}
+      <DetailsSection organization={organization} canEdit={myRole === 'owner'} onRename={handleRename} />
+
+      {myRole === 'owner' ? (
+        <DangerZone
+          organization={organization}
+          ssoEnabled={Boolean(sso?.enabled)}
+          onView={setSso}
+          onDeleted={() => {
+            setOrganization(null);
+            setMyRole(null);
+            setMembers([]);
+            setInvitations([]);
+            setSso(null);
+          }}
+        />
+      ) : null}
     </div>
   );
 }
@@ -327,7 +379,7 @@ function initials(member: OrganizationMember) {
   return (member.user_full_name?.[0] || member.user_email?.[0] || '?').toUpperCase();
 }
 
-function MembersTab({
+function MembersList({
   members,
   canManage,
   onRemove,
@@ -341,78 +393,74 @@ function MembersTab({
   const t = useTranslations('Teams');
   const format = useFormatter();
   if (members.length === 0) {
-    return <p className={`card ${styles.note}`}>{t('noMembers')}</p>;
+    return <p className="emptyState">{t('noMembers')}</p>;
   }
   return (
-    <div className={`card ${styles.tableCard}`}>
-      <table className={styles.table}>
-        <thead>
-          <tr>
-            <th scope="col">{t('member')}</th>
-            <th scope="col">{t('role')}</th>
-            <th scope="col">{t('status')}</th>
-            <th scope="col">{t('joined')}</th>
-            {canManage ? <th scope="col" aria-label={t('actions')} /> : null}
-          </tr>
-        </thead>
-        <tbody>
-          {members.map((member) => (
-            <tr key={member.id}>
-              <td>
-                <div className={styles.person}>
-                  <span className={styles.avatar} aria-hidden="true">
-                    {initials(member)}
-                  </span>
-                  <span>
-                    <span className={styles.personName}>{member.user_full_name || member.user_email || t('unknown')}</span>
-                    {member.user_full_name ? <span className={styles.personEmail}>{member.user_email}</span> : null}
-                  </span>
-                </div>
-              </td>
-              <td>
-                {canManage && member.role !== 'owner' ? (
-                  <select
-                    className={`select ${styles.roleSelect}`}
-                    value={member.role}
-                    aria-label={t('roleFor', { member: member.user_email ?? t('member') })}
-                    onChange={(e) => onUpdateRole(member.id, e.target.value)}
-                  >
-                    <option value="admin">{t('roles.admin')}</option>
-                    <option value="member">{t('roles.member')}</option>
-                    <option value="viewer">{t('roles.viewer')}</option>
-                  </select>
-                ) : (
-                  <span className="badge">{label(t, 'roles', member.role)}</span>
-                )}
-              </td>
-              <td>
-                <span className={`badge ${member.status === 'active' ? 'badgeLive' : ''}`}>{label(t, 'statuses', member.status)}</span>
-              </td>
-              <td className={styles.muted}>{member.joined_at ? format.dateTime(new Date(member.joined_at), { dateStyle: 'medium' }) : '—'}</td>
-              {canManage ? (
-                <td className={styles.actionsCell}>
-                  {member.role !== 'owner' ? (
-                    <button type="button" className="button buttonGhost" onClick={() => onRemove(member.id)}>
-                      {t('remove')}
-                    </button>
-                  ) : null}
-                </td>
-              ) : null}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <ul className={`${styles.group} ${styles.list}`}>
+      {members.map((member) => (
+        <li key={member.id} className={styles.memberRow}>
+          <div className={styles.person}>
+            <span className={styles.avatar} aria-hidden="true">
+              {initials(member)}
+            </span>
+            <span className={styles.personText}>
+              <span className={styles.personName}>{member.user_full_name || member.user_email || t('unknown')}</span>
+              <span className={styles.personMeta}>
+                {member.user_full_name ? member.user_email : null}
+                {member.status !== 'active' ? (
+                  <>
+                    {member.user_full_name ? ' · ' : null}
+                    {label(t, 'statuses', member.status)}
+                  </>
+                ) : null}
+              </span>
+            </span>
+          </div>
+          <div className={styles.memberRole}>
+            {canManage && member.role !== 'owner' ? (
+              <select
+                className={`select ${styles.roleSelect}`}
+                value={member.role}
+                aria-label={t('roleFor', { member: member.user_email ?? t('member') })}
+                onChange={(e) => onUpdateRole(member.id, e.target.value)}
+              >
+                <option value="admin">{t('roles.admin')}</option>
+                <option value="member">{t('roles.member')}</option>
+                <option value="viewer">{t('roles.viewer')}</option>
+              </select>
+            ) : (
+              <span className={styles.roleText}>{label(t, 'roles', member.role)}</span>
+            )}
+          </div>
+          <span className={styles.memberJoined}>
+            {member.joined_at ? t('joinedOn', { date: format.dateTime(new Date(member.joined_at), { dateStyle: 'medium' }) }) : null}
+          </span>
+          <div className={styles.rowActions}>
+            {canManage && member.role !== 'owner' ? (
+              <button
+                type="button"
+                className="button buttonGhost buttonSmall"
+                onClick={() => onRemove(member.id)}
+                aria-label={t('removeMember', { member: member.user_full_name || member.user_email || t('member') })}
+              >
+                {t('remove')}
+              </button>
+            ) : null}
+          </div>
+        </li>
+      ))}
+    </ul>
   );
 }
 
-function CopyButton({ text, label: buttonLabel }: { text: string; label?: string }) {
+function CopyButton({ text, label: buttonLabel, describedBy }: { text: string; label?: string; describedBy?: string }) {
   const t = useTranslations('Teams');
   const [copied, setCopied] = useState(false);
   return (
     <button
       type="button"
-      className="button buttonGhost"
+      className="button buttonGhost buttonSmall"
+      aria-describedby={describedBy}
       onClick={async () => {
         try {
           await navigator.clipboard.writeText(text);
@@ -423,20 +471,36 @@ function CopyButton({ text, label: buttonLabel }: { text: string; label?: string
         }
       }}
     >
-      {copied ? t('copied') : (buttonLabel ?? t('copyLink'))}
+      {copied ? <CheckIcon size={16} /> : <CopyIcon size={16} />}
+      <span aria-live="polite">{copied ? t('copied') : (buttonLabel ?? t('copyLink'))}</span>
     </button>
+  );
+}
+
+/** A value to paste somewhere else (a link, a DNS record): mono, selectable, with Copy. */
+function CopyValue({ name, value }: { name: string; value: string }) {
+  const t = useTranslations('Teams');
+  const id = useId();
+  return (
+    <div className={styles.copyRow}>
+      <span className={styles.copyName} id={id}>
+        {name}
+      </span>
+      <code className={styles.copyValue}>{value}</code>
+      <CopyButton text={value} label={t('copy')} describedBy={id} />
+    </div>
   );
 }
 
 function InviteSentNote({ sent, onDismiss }: { sent: InviteSent; onDismiss: () => void }) {
   const t = useTranslations('Teams');
   return (
-    <div className={`card ${styles.note}`} role="status">
-      <p>{sent.emailSent ? t('inviteEmailed', { email: sent.email }) : t('inviteCreated', { email: sent.email })}</p>
+    <div className={styles.block} role="status">
+      <p className={styles.blockText}>{sent.emailSent ? t('inviteEmailed', { email: sent.email }) : t('inviteCreated', { email: sent.email })}</p>
       <div className={styles.linkRow}>
-        <code className={styles.link}>{sent.link}</code>
+        <code className={styles.copyValue}>{sent.link}</code>
         <CopyButton text={sent.link} />
-        <button type="button" className="button buttonGhost" onClick={onDismiss}>
+        <button type="button" className="button buttonGhost buttonSmall" onClick={onDismiss}>
           {t('done')}
         </button>
       </div>
@@ -447,19 +511,21 @@ function InviteSentNote({ sent, onDismiss }: { sent: InviteSent; onDismiss: () =
 function InvitesForMe({ invites }: { invites: InviteForMe[] }) {
   const t = useTranslations('Teams');
   return (
-    <section className={`card ${styles.note}`} aria-label={t('forYou')}>
-      <h2 className="cardTitle">{t('forYou')}</h2>
-      <ul className={styles.inviteList}>
+    <section className={styles.section} aria-labelledby="team-for-you">
+      <h2 className={styles.sectionTitle} id="team-for-you">
+        {t('forYou')}
+      </h2>
+      <ul className={`${styles.group} ${styles.list}`}>
         {invites.map((invite) => (
-          <li key={invite.invitePath}>
-            <span>
+          <li key={invite.invitePath} className={styles.simpleRow}>
+            <span className={styles.blockText}>
               {t.rich('invitedYou', {
                 team: invite.teamName,
                 role: label(t, 'roles', invite.role),
-                strong: (chunks) => <strong>{chunks}</strong>,
+                strong: (chunks) => <strong className={styles.strong}>{chunks}</strong>,
               })}
             </span>
-            <Link className="button buttonPrimary" href={invite.invitePath}>
+            <Link className="button buttonSmall" href={invite.invitePath}>
               {t('viewInvitation')}
             </Link>
           </li>
@@ -469,69 +535,92 @@ function InvitesForMe({ invites }: { invites: InviteForMe[] }) {
   );
 }
 
-function InvitationsTab({
-  invitations,
-  canManage,
-  onCancel,
-  onInvite,
-}: {
-  invitations: TeamInvitation[];
-  canManage: boolean;
-  onCancel: (id: string) => void;
-  onInvite: () => void;
-}) {
+function InviteForm({ onInvite }: { onInvite: (email: string, role: string) => Promise<boolean> }) {
   const t = useTranslations('Teams');
-  const format = useFormatter();
-  if (invitations.length === 0) {
-    return (
-      <div className={`card ${styles.note}`}>
-        <p>{t('noInvitations')}</p>
-        {canManage ? (
-          <button type="button" className="button" onClick={onInvite}>
-            {t('invite')}
-          </button>
-        ) : null}
-      </div>
-    );
-  }
+  const [email, setEmail] = useState('');
+  const [inviteRole, setInviteRole] = useState('member');
+  const [sending, setSending] = useState(false);
+  const ids = { email: useId(), role: useId(), title: useId() };
   return (
-    <div className={`card ${styles.tableCard}`}>
-      <table className={styles.table}>
-        <thead>
-          <tr>
-            <th scope="col">{t('email')}</th>
-            <th scope="col">{t('role')}</th>
-            <th scope="col">{t('status')}</th>
-            <th scope="col">{t('expires')}</th>
-            {canManage ? <th scope="col" aria-label={t('actions')} /> : null}
-          </tr>
-        </thead>
-        <tbody>
-          {invitations.map((inv) => (
-            <tr key={inv.id}>
-              <td>{inv.email}</td>
-              <td>{label(t, 'roles', inv.role)}</td>
-              <td>
-                <span className="badge">{label(t, 'statuses', inv.status)}</span>
-              </td>
-              <td className={styles.muted}>{format.dateTime(new Date(inv.expires_at), { dateStyle: 'medium' })}</td>
-              {canManage ? (
-                <td className={styles.actionsCell}>
-                  {inv.invitePath ? <CopyButton text={absoluteLink(inv.invitePath)} /> : null}
-                  <button type="button" className="button buttonGhost" onClick={() => onCancel(inv.id)}>
-                    {t('cancel')}
-                  </button>
-                </td>
-              ) : null}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <form
+      className={styles.inviteForm}
+      aria-labelledby={ids.title}
+      onSubmit={async (e) => {
+        e.preventDefault();
+        setSending(true);
+        const ok = await onInvite(email.trim(), inviteRole);
+        setSending(false);
+        if (ok) setEmail('');
+      }}
+    >
+      <span className={styles.inviteTitle} id={ids.title}>
+        {t('invite')}
+      </span>
+      <div className={styles.inviteFields}>
+        <label className="srOnly" htmlFor={ids.email}>
+          {t('email')}
+        </label>
+        <input
+          id={ids.email}
+          className="input"
+          type="email"
+          autoComplete="off"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder={t('emailPlaceholder')}
+          required
+        />
+        <label className="srOnly" htmlFor={ids.role}>
+          {t('role')}
+        </label>
+        <select id={ids.role} className={`select ${styles.inviteRole}`} value={inviteRole} onChange={(e) => setInviteRole(e.target.value)}>
+          <option value="member">{t('roles.member')}</option>
+          <option value="admin">{t('roleAdminHelp')}</option>
+          <option value="viewer">{t('roleViewerHelp')}</option>
+        </select>
+        <button type="submit" className="button buttonPrimary" disabled={!email.trim() || sending}>
+          {sending ? t('sending') : t('sendInvitation')}
+        </button>
+      </div>
+    </form>
   );
 }
 
-function SettingsTab({
+function InvitationsList({ invitations, onCancel }: { invitations: TeamInvitation[]; onCancel: (id: string) => void }) {
+  const t = useTranslations('Teams');
+  const format = useFormatter();
+  if (invitations.length === 0) {
+    return <p className={`${styles.block} ${styles.quiet}`}>{t('noInvitations')}</p>;
+  }
+  return (
+    <ul className={styles.list}>
+      {invitations.map((inv) => (
+        <li key={inv.id} className={styles.inviteRow}>
+          <span className={styles.personText}>
+            <span className={styles.personName}>{inv.email}</span>
+            <span className={styles.personMeta}>
+              {label(t, 'roles', inv.role)} · {label(t, 'statuses', inv.status)} ·{' '}
+              {t('expiresOn', { date: format.dateTime(new Date(inv.expires_at), { dateStyle: 'medium' }) })}
+            </span>
+          </span>
+          <div className={styles.rowActions}>
+            {inv.invitePath ? <CopyButton text={absoluteLink(inv.invitePath)} /> : null}
+            <button
+              type="button"
+              className="button buttonGhost buttonSmall"
+              onClick={() => onCancel(inv.id)}
+              aria-label={t('cancelInvitation', { email: inv.email })}
+            >
+              {t('cancel')}
+            </button>
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function DetailsSection({
   organization,
   canEdit,
   onRename,
@@ -556,103 +645,107 @@ function SettingsTab({
   }
 
   return (
-    <form className="card" onSubmit={save}>
-      <div className="cardInner stack">
-        <h3 className="cardTitle">{t('details')}</h3>
-        <label className="label" htmlFor={nameId}>
-          {t('name')}
-          <input
-            id={nameId}
-            className="input"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            disabled={!canEdit}
-            maxLength={100}
-          />
-        </label>
-        <div className={styles.readOnly}>
-          <span>{t('address')}</span>
-          <code>{organization.slug}</code>
+    <section className={styles.section} aria-labelledby="team-details">
+      <h3 className={styles.sectionTitle} id="team-details">
+        {t('details')}
+      </h3>
+      <form className={styles.group} onSubmit={save}>
+        <div className={styles.fieldRow}>
+          {canEdit ? (
+            <>
+              <label className={styles.fieldLabel} htmlFor={nameId}>
+                {t('name')}
+              </label>
+              <div className={styles.inlineField}>
+                <input
+                  id={nameId}
+                  className="input"
+                  value={name}
+                  onChange={(e) => {
+                    setName(e.target.value);
+                    setSaved(false);
+                  }}
+                  maxLength={100}
+                />
+                <button type="submit" className="button" disabled={saving || !name.trim() || name.trim() === organization.name}>
+                  {saving ? t('saving') : t('saveName')}
+                </button>
+                <span className={styles.savedNote} role="status">
+                  {saved ? (
+                    <>
+                      <CheckIcon size={14} />
+                      {t('saved')}
+                    </>
+                  ) : null}
+                </span>
+              </div>
+            </>
+          ) : (
+            <>
+              <span className={styles.fieldLabel}>{t('name')}</span>
+              <span className={styles.fieldValue}>{organization.name}</span>
+            </>
+          )}
         </div>
-        <div className={styles.readOnly}>
-          <span>{t('planLabel')}</span>
-          <span>{label(t, 'plans', organization.plan)}</span>
+        <div className={styles.fieldRow}>
+          <span className={styles.fieldLabel}>{t('address')}</span>
+          <code className={styles.fieldValueMono}>{organization.slug}</code>
         </div>
-        {canEdit ? (
-          <div className={styles.formActions}>
-            {saved ? <span className={styles.saved}>{t('saved')}</span> : null}
-            <button type="submit" className="button buttonPrimary" disabled={saving || !name.trim() || name.trim() === organization.name}>
-              {saving ? t('saving') : t('saveName')}
-            </button>
-          </div>
-        ) : (
-          <p className="help">{t('ownerOnly')}</p>
-        )}
-      </div>
-    </form>
+        <div className={styles.fieldRow}>
+          <span className={styles.fieldLabel}>{t('planLabel')}</span>
+          <span className={styles.fieldValue}>{label(t, 'plans', organization.plan)}</span>
+        </div>
+        {canEdit ? null : <p className={`${styles.block} ${styles.quiet}`}>{t('ownerOnly')}</p>}
+      </form>
+    </section>
   );
 }
 
-type SsoView = {
-  enabled: boolean;
-  domains: string[];
-  metadataUrl: string | null;
-  manageable: boolean;
-  serviceProvider: { entityId: string; metadataUrl: string; acsUrl: string; nameIdFormat: string } | null;
-};
-
-/** A DNS TXT record that proves the team owns a domain (src/lib/ssoVerification.ts). */
-type DomainRecord = { domain: string; type: 'TXT'; name: string; value: string };
-
-function SSOTab({ organization, canEdit }: { organization: Organization; canEdit: boolean }) {
+function SsoSection({
+  organization,
+  canEdit,
+  view,
+  onView,
+}: {
+  organization: Organization;
+  canEdit: boolean;
+  view: SsoView | null;
+  onView: (view: SsoView) => void;
+}) {
   const t = useTranslations('Teams');
-  const [view, setView] = useState<SsoView | null>(null);
-  const [domains, setDomains] = useState('');
+  const [domains, setDomains] = useState<string | null>(null);
   const [source, setSource] = useState<'url' | 'xml'>('url');
-  const [metadataUrl, setMetadataUrl] = useState('');
+  const [metadataUrl, setMetadataUrl] = useState<string | null>(null);
   const [metadataXml, setMetadataXml] = useState('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
   const [records, setRecords] = useState<DomainRecord[]>([]);
-  const ids = { domains: useId(), url: useId(), xml: useId() };
+  const ids = { domains: useId(), domainsHelp: useId(), url: useId(), xml: useId(), source: useId() };
 
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      const res = await fetch(`/api/teams/${organization.id}/sso`).catch(() => null);
-      const data = res?.ok ? ((await res.json()) as SsoView) : null;
-      if (cancelled || !data) return;
-      setView(data);
-      setDomains(data.domains.join(', '));
-      setMetadataUrl(data.metadataUrl ?? '');
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [organization.id]);
+  // The form starts from what is saved; once edited, it keeps the edits.
+  const domainsValue = domains ?? view?.domains.join(', ') ?? '';
+  const urlValue = metadataUrl ?? view?.metadataUrl ?? '';
 
-  async function send(method: 'PUT' | 'DELETE') {
+  async function save(event: React.FormEvent) {
+    event.preventDefault();
     setBusy(true);
     setMessage(null);
     try {
       const res = await fetch(`/api/teams/${organization.id}/sso`, {
-        method,
+        method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body:
-          method === 'PUT'
-            ? JSON.stringify({
-                domains: domains.split(/[\s,]+/).filter(Boolean),
-                ...(source === 'url' ? { metadataUrl: metadataUrl.trim() } : { metadataXml: metadataXml.trim() }),
-              })
-            : undefined,
+        body: JSON.stringify({
+          domains: domainsValue.split(/[\s,]+/).filter(Boolean),
+          ...(source === 'url' ? { metadataUrl: urlValue.trim() } : { metadataXml: metadataXml.trim() }),
+        }),
       });
       const data = await res.json().catch(() => ({}));
       setRecords(data?.error === 'domain_unverified' && Array.isArray(data.records) ? (data.records as DomainRecord[]) : []);
       if (!res.ok) {
         throw new Error(typeof data?.error === 'string' && t.has(`sso.errors.${data.error}`) ? t(`sso.errors.${data.error}`) : t('sso.failed'));
       }
-      setView(data as SsoView);
-      setMessage({ kind: 'ok', text: method === 'PUT' ? t('sso.on') : t('sso.off') });
+      onView(data as SsoView);
+      setMessage({ kind: 'ok', text: t('sso.on') });
     } catch (e) {
       setMessage({ kind: 'error', text: e instanceof Error ? e.message : t('sso.failed') });
     } finally {
@@ -660,277 +753,332 @@ function SSOTab({ organization, canEdit }: { organization: Organization; canEdit
     }
   }
 
-  if (!view) return <p className="help">{t('loading')}</p>;
-  const sp = view.serviceProvider;
-  const metadataReady = source === 'url' ? metadataUrl.trim().startsWith('https://') : metadataXml.trim().length > 50;
+  const sp = view?.serviceProvider ?? null;
+  const metadataReady = source === 'url' ? urlValue.trim().startsWith('https://') : metadataXml.trim().length > 50;
 
   return (
-    <div className="card">
-      <div className="cardInner stack">
-        <div className={styles.ssoRow}>
-          <div>
-            <h3 className="cardTitle">{t('sso.title')}</h3>
-            <p className="help">{t('sso.desc')}</p>
-          </div>
-          <span className={`badge ${view.enabled ? 'badgeLive' : ''}`}>{view.enabled ? t('sso.badgeOn') : t('sso.badgeOff')}</span>
-        </div>
+    <section className={styles.section} aria-labelledby="team-sso">
+      <div className={styles.sectionHeadRow}>
+        <h3 className={styles.sectionTitle} id="team-sso">
+          {t('tabs.sso')}
+        </h3>
+        {view ? (
+          <span className={styles.state} data-on={view.enabled}>
+            <span className={styles.dot} aria-hidden="true" />
+            {view.enabled ? t('sso.badgeOn') : t('sso.badgeOff')}
+          </span>
+        ) : null}
+      </div>
+      <p className={styles.sectionDesc}>{t('sso.desc')}</p>
 
-        {!view.manageable ? (
-          <p className={styles.note} role="status">
-            {t('sso.errors.not_configured')} {t('sso.askAdmin')}
+      {!view ? (
+        <div className={styles.group} aria-hidden="true">
+          <div className={styles.skeletonRow}>
+            <Skeleton width="50%" height="14px" />
+          </div>
+        </div>
+      ) : (
+        <div className={styles.group}>
+          {!view.manageable ? (
+            <p className={`${styles.block} ${styles.quiet}`} role="status">
+              {t('sso.errors.not_configured')} {t('sso.askAdmin')}
+            </p>
+          ) : null}
+
+          {sp ? (
+            <div className={styles.block}>
+              <p className={styles.blockTitle}>{t('sso.forProvider')}</p>
+              <div className={styles.copyList}>
+                <CopyValue name={t('sso.entityId')} value={sp.entityId} />
+                <CopyValue name={t('sso.acsUrl')} value={sp.acsUrl} />
+                <CopyValue name={t('sso.metadata')} value={sp.metadataUrl} />
+              </div>
+              <p className={styles.quiet}>{t('sso.nameId')}</p>
+            </div>
+          ) : null}
+
+          {canEdit ? (
+            <form className={styles.block} onSubmit={save}>
+              <div className={styles.ssoForm}>
+                <label className="label" htmlFor={ids.domains}>
+                  {t('sso.domains')}
+                  <input
+                    id={ids.domains}
+                    className="input"
+                    value={domainsValue}
+                    onChange={(e) => setDomains(e.target.value)}
+                    placeholder={t('sso.domainsPlaceholder')}
+                    aria-describedby={ids.domainsHelp}
+                    disabled={busy}
+                  />
+                  <span className="help" id={ids.domainsHelp}>
+                    {t('sso.domainsHelp')}
+                  </span>
+                </label>
+
+                <div className={styles.field}>
+                  <span className="label" id={ids.source}>
+                    {t('sso.metadataChoice')}
+                  </span>
+                  <div className={styles.sourceChoice}>
+                    <Segmented
+                      name={ids.source}
+                      value={source}
+                      labelledBy={ids.source}
+                      disabled={busy}
+                      options={[
+                        { value: 'url', label: t('sso.metadataUrl') },
+                        { value: 'xml', label: t('sso.metadataXml') },
+                      ]}
+                      onChange={setSource}
+                    />
+                  </div>
+                </div>
+
+                {source === 'url' ? (
+                  <label className="label" htmlFor={ids.url}>
+                    {t('sso.metadataUrlLabel')}
+                    <input
+                      id={ids.url}
+                      className="input"
+                      type="url"
+                      value={urlValue}
+                      onChange={(e) => setMetadataUrl(e.target.value)}
+                      placeholder={t('sso.metadataUrlPlaceholder')}
+                      disabled={busy}
+                    />
+                  </label>
+                ) : (
+                  <label className="label" htmlFor={ids.xml}>
+                    {t('sso.metadataXmlLabel')}
+                    <textarea
+                      id={ids.xml}
+                      className={`textarea ${styles.mono}`}
+                      rows={5}
+                      value={metadataXml}
+                      onChange={(e) => setMetadataXml(e.target.value)}
+                      placeholder={t('sso.metadataXmlPlaceholder')}
+                      disabled={busy}
+                    />
+                  </label>
+                )}
+
+                {/* Live: the DNS records appear here when a save needs proof of the domain. */}
+                <div aria-live="polite" className={styles.liveBlock}>
+                  {records.length ? (
+                    <div className={styles.records}>
+                      <p className={styles.blockTitle}>{t('sso.verifyTitle')}</p>
+                      <p className={styles.quiet}>{t('sso.verifyHelp')}</p>
+                      {records.map((record) => (
+                        <div key={record.name} className={styles.record}>
+                          <span className={styles.recordDomain}>{record.domain}</span>
+                          <div className={styles.copyList}>
+                            <CopyValue name={t('sso.recordType')} value={record.type} />
+                            <CopyValue name={t('sso.recordName')} value={record.name} />
+                            <CopyValue name={t('sso.recordValue')} value={record.value} />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                  <p className={styles.quiet}>{t('sso.separateAccounts')}</p>
+                </div>
+
+                <div className={styles.formActions}>
+                  {message ? (
+                    <span className={message.kind === 'error' ? styles.errorText : styles.quiet} role={message.kind === 'error' ? 'alert' : 'status'}>
+                      {message.text}
+                    </span>
+                  ) : null}
+                  <button
+                    type="submit"
+                    className="button"
+                    disabled={busy || !view.manageable || !domainsValue.trim() || !metadataReady}
+                  >
+                    {busy ? t('saving') : view.enabled ? t('sso.save') : t('sso.turnOn')}
+                  </button>
+                </div>
+              </div>
+            </form>
+          ) : (
+            <p className={`${styles.block} ${styles.quiet}`}>{t('sso.ownerOnly')}</p>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
+/** Owner only: turning single sign-on off (while it's on) and deleting the team. */
+function DangerZone({
+  organization,
+  ssoEnabled,
+  onView,
+  onDeleted,
+}: {
+  organization: Organization;
+  ssoEnabled: boolean;
+  onView: (view: SsoView) => void;
+  onDeleted: () => void;
+}) {
+  const t = useTranslations('Teams');
+  const [busy, setBusy] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function deleteTeam() {
+    if (!window.confirm(t('confirmDeleteTeam', { team: organization.name }))) return;
+    setDeleting(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/teams/${organization.id}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error(t('deleteTeamFailed'));
+      onDeleted();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t('deleteTeamFailed'));
+      setDeleting(false);
+    }
+  }
+
+  async function turnOff() {
+    if (!window.confirm(t('sso.confirmOff', { team: organization.name }))) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/teams/${organization.id}/sso`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' } });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(typeof data?.error === 'string' && t.has(`sso.errors.${data.error}`) ? t(`sso.errors.${data.error}`) : t('sso.failed'));
+      }
+      onView(data as SsoView);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t('sso.failed'));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className={styles.section} aria-labelledby="team-danger">
+      <h3 className={styles.sectionTitle} id="team-danger">
+        {t('dangerZone')}
+      </h3>
+      <div className={`${styles.group} ${styles.groupDanger}`}>
+        {ssoEnabled ? (
+          <div className={styles.dangerRow}>
+            <div className={styles.personText}>
+              <span className={styles.personName}>{t('sso.turnOffTitle')}</span>
+              <span className={styles.quiet}>{t('sso.turnOffHelp')}</span>
+            </div>
+            <button type="button" className="button buttonDanger" onClick={() => void turnOff()} disabled={busy || deleting}>
+              {busy ? t('saving') : t('sso.turnOff')}
+            </button>
+          </div>
+        ) : null}
+        <div className={styles.dangerRow}>
+          <div className={styles.personText}>
+            <span className={styles.personName}>{t('deleteTeam')}</span>
+            <span className={styles.quiet}>{t('deleteTeamHelp')}</span>
+          </div>
+          <button type="button" className="button buttonDanger" onClick={() => void deleteTeam()} disabled={busy || deleting}>
+            {deleting ? t('deletingTeam') : t('deleteTeam')}
+          </button>
+        </div>
+        {error ? (
+          <p className={`${styles.block} ${styles.errorText}`} role="alert">
+            {error}
           </p>
         ) : null}
-
-        {sp ? (
-          <div className="stack" style={{ gap: 8 }}>
-            <span className="label">{t('sso.forProvider')}</span>
-            {[
-              [t('sso.entityId'), sp.entityId],
-              [t('sso.acsUrl'), sp.acsUrl],
-              [t('sso.metadata'), sp.metadataUrl],
-            ].map(([name, value]) => (
-              <div key={name} className={styles.linkRow}>
-                <span className={styles.muted} style={{ minWidth: 120 }}>{name}</span>
-                <code className={styles.link}>{value}</code>
-                <CopyButton text={value} label={t('copy')} />
-              </div>
-            ))}
-            <span className="help">{t('sso.nameId')}</span>
-          </div>
-        ) : null}
-
-        {canEdit ? (
-          <form
-            className="stack"
-            onSubmit={(e) => {
-              e.preventDefault();
-              void send('PUT');
-            }}
-          >
-            <label className="label" htmlFor={ids.domains}>
-              {t('sso.domains')}
-              <input
-                id={ids.domains}
-                className="input"
-                value={domains}
-                onChange={(e) => setDomains(e.target.value)}
-                placeholder={t('sso.domainsPlaceholder')}
-                disabled={busy}
-              />
-              <span className="help">{t('sso.domainsHelp')}</span>
-            </label>
-            <div className="row" role="radiogroup" aria-label={t('sso.metadataChoice')} style={{ gap: 16 }}>
-              <label className="checkbox-label">
-                <input type="radio" checked={source === 'url'} onChange={() => setSource('url')} disabled={busy} />
-                <span>{t('sso.metadataUrl')}</span>
-              </label>
-              <label className="checkbox-label">
-                <input type="radio" checked={source === 'xml'} onChange={() => setSource('xml')} disabled={busy} />
-                <span>{t('sso.metadataXml')}</span>
-              </label>
-            </div>
-            {source === 'url' ? (
-              <label className="label" htmlFor={ids.url}>
-                {t('sso.metadataUrlLabel')}
-                <input
-                  id={ids.url}
-                  className="input"
-                  type="url"
-                  value={metadataUrl}
-                  onChange={(e) => setMetadataUrl(e.target.value)}
-                  placeholder={t('sso.metadataUrlPlaceholder')}
-                  disabled={busy}
-                />
-              </label>
-            ) : (
-              <label className="label" htmlFor={ids.xml}>
-                {t('sso.metadataXmlLabel')}
-                <textarea
-                  id={ids.xml}
-                  className="textarea"
-                  rows={5}
-                  value={metadataXml}
-                  onChange={(e) => setMetadataXml(e.target.value)}
-                  placeholder={t('sso.metadataXmlPlaceholder')}
-                  disabled={busy}
-                />
-              </label>
-            )}
-            {records.length ? (
-              <div className="stack" style={{ gap: 8 }} aria-live="polite">
-                <span className="label">{t('sso.verifyTitle')}</span>
-                <span className="help">{t('sso.verifyHelp')}</span>
-                {records.map((record) => (
-                  <div key={record.name} className="stack" style={{ gap: 4 }}>
-                    <strong>{record.domain}</strong>
-                    {[
-                      [t('sso.recordType'), record.type],
-                      [t('sso.recordName'), record.name],
-                      [t('sso.recordValue'), record.value],
-                    ].map(([name, value]) => (
-                      <div key={name} className={styles.linkRow}>
-                        <span className={styles.muted} style={{ minWidth: 120 }}>{name}</span>
-                        <code className={styles.link}>{value}</code>
-                        <CopyButton text={value} label={t('copy')} />
-                      </div>
-                    ))}
-                  </div>
-                ))}
-              </div>
-            ) : null}
-            <p className="help" style={{ margin: 0 }}>
-              {t('sso.separateAccounts')}
-            </p>
-            <div className={styles.formActions}>
-              {message ? (
-                <span className="help" role={message.kind === 'error' ? 'alert' : 'status'}>
-                  {message.text}
-                </span>
-              ) : null}
-              {view.enabled ? (
-                <button type="button" className="button" onClick={() => void send('DELETE')} disabled={busy}>
-                  {t('sso.turnOff')}
-                </button>
-              ) : null}
-              <button type="submit" className="button buttonPrimary" disabled={busy || !view.manageable || !domains.trim() || !metadataReady}>
-                {busy ? t('saving') : view.enabled ? t('sso.save') : t('sso.turnOn')}
-              </button>
-            </div>
-          </form>
-        ) : (
-          <p className="help">{t('sso.ownerOnly')}</p>
-        )}
       </div>
-    </div>
+    </section>
   );
 }
 
-function Modal(props: { title: string; onClose: () => void; children: React.ReactNode }) {
-  const titleId = useId();
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') props.onClose();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [props]);
-  return (
-    <div className={styles.backdrop} onClick={props.onClose}>
-      <div className={styles.modal} role="dialog" aria-modal="true" aria-labelledby={titleId} onClick={(e) => e.stopPropagation()}>
-        <h3 id={titleId} className="cardTitle">
-          {props.title}
-        </h3>
-        {props.children}
-      </div>
-    </div>
-  );
-}
-
-function InviteModal({ onClose, onInvite }: { onClose: () => void; onInvite: (email: string, role: string) => void }) {
+function CreateTeam({ onCreate }: { onCreate: (name: string, slug: string) => Promise<void> }) {
   const t = useTranslations('Teams');
-  const [email, setEmail] = useState('');
-  const [inviteRole, setInviteRole] = useState('member');
-  const ids = { email: useId(), role: useId() };
-  return (
-    <Modal title={t('invite')} onClose={onClose}>
-      <form
-        className="stack"
-        onSubmit={(e) => {
-          e.preventDefault();
-          onInvite(email.trim(), inviteRole);
-        }}
-      >
-        <label className="label" htmlFor={ids.email}>
-          {t('email')}
-          <input
-            id={ids.email}
-            className="input"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder={t('emailPlaceholder')}
-            required
-            autoFocus
-          />
-        </label>
-        <label className="label" htmlFor={ids.role}>
-          {t('role')}
-          <select id={ids.role} className="select" value={inviteRole} onChange={(e) => setInviteRole(e.target.value)}>
-            <option value="member">{t('roles.member')}</option>
-            <option value="admin">{t('roleAdminHelp')}</option>
-            <option value="viewer">{t('roleViewerHelp')}</option>
-          </select>
-        </label>
-        <div className={styles.formActions}>
-          <button type="button" className="button" onClick={onClose}>
-            {t('cancel')}
-          </button>
-          <button type="submit" className="button buttonPrimary" disabled={!email.trim()}>
-            {t('sendInvitation')}
-          </button>
-        </div>
-      </form>
-    </Modal>
-  );
-}
-
-function CreateTeamModal({ onClose, onCreate }: { onClose: () => void; onCreate: (name: string, slug: string) => void }) {
-  const t = useTranslations('Teams');
+  const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const [slug, setSlug] = useState('');
   const [slugEdited, setSlugEdited] = useState(false);
-  const ids = { name: useId(), slug: useId() };
-  const toSlug = (value: string) => value.toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 48);
+  const [creating, setCreating] = useState(false);
+  const ids = { name: useId(), slug: useId(), slugHelp: useId(), title: useId() };
+  const toSlug = (value: string) =>
+    value
+      .toLowerCase()
+      .replace(/[^a-z0-9-]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 48);
+
+  if (!open) {
+    return (
+      <div className="emptyState">
+        <span>{t('emptyDesc')}</span>
+        <button type="button" className="button buttonPrimary" onClick={() => setOpen(true)}>
+          {t('create')}
+        </button>
+      </div>
+    );
+  }
 
   return (
-    <Modal title={t('create')} onClose={onClose}>
-      <form
-        className="stack"
-        onSubmit={(e) => {
-          e.preventDefault();
-          onCreate(name.trim(), slug);
-        }}
-      >
-        <label className="label" htmlFor={ids.name}>
-          {t('name')}
-          <input
-            id={ids.name}
-            className="input"
-            value={name}
-            onChange={(e) => {
-              setName(e.target.value);
-              if (!slugEdited) setSlug(toSlug(e.target.value));
-            }}
-            placeholder={t('namePlaceholder')}
-            required
-            autoFocus
-            maxLength={100}
-          />
-        </label>
-        <label className="label" htmlFor={ids.slug}>
-          {t('address')}
-          <input
-            id={ids.slug}
-            className="input"
-            value={slug}
-            onChange={(e) => {
-              setSlugEdited(true);
-              setSlug(toSlug(e.target.value));
-            }}
-            placeholder={t('addressPlaceholder')}
-            required
-          />
-          <span className="help">{t('addressHelp')}</span>
-        </label>
-        <div className={styles.formActions}>
-          <button type="button" className="button" onClick={onClose}>
-            {t('cancel')}
-          </button>
-          <button type="submit" className="button buttonPrimary" disabled={!name.trim() || !slug}>
-            {t('createTeam')}
-          </button>
-        </div>
-      </form>
-    </Modal>
+    <form
+      className={`${styles.group} ${styles.createForm}`}
+      aria-labelledby={ids.title}
+      onSubmit={async (e) => {
+        e.preventDefault();
+        setCreating(true);
+        await onCreate(name.trim(), slug);
+        setCreating(false);
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') setOpen(false);
+      }}
+    >
+      <h2 className={styles.sectionTitle} id={ids.title}>
+        {t('create')}
+      </h2>
+      <label className="label" htmlFor={ids.name}>
+        {t('name')}
+        <input
+          id={ids.name}
+          className="input"
+          value={name}
+          onChange={(e) => {
+            setName(e.target.value);
+            if (!slugEdited) setSlug(toSlug(e.target.value));
+          }}
+          placeholder={t('namePlaceholder')}
+          required
+          autoFocus
+          maxLength={100}
+        />
+      </label>
+      <label className="label" htmlFor={ids.slug}>
+        {t('address')}
+        <input
+          id={ids.slug}
+          className={`input ${styles.mono}`}
+          value={slug}
+          onChange={(e) => {
+            setSlugEdited(true);
+            setSlug(toSlug(e.target.value));
+          }}
+          placeholder={t('addressPlaceholder')}
+          aria-describedby={ids.slugHelp}
+          required
+        />
+        <span className="help" id={ids.slugHelp}>
+          {t('addressHelp')}
+        </span>
+      </label>
+      <div className={styles.formActions}>
+        <button type="button" className="button buttonGhost" onClick={() => setOpen(false)}>
+          {t('cancel')}
+        </button>
+        <button type="submit" className="button buttonPrimary" disabled={!name.trim() || !slug || creating}>
+          {creating ? t('saving') : t('createTeam')}
+        </button>
+      </div>
+    </form>
   );
 }

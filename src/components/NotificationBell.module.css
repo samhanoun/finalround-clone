@@ -1,0 +1,167 @@
+.bell {
+  position: relative;
+}
+
+.unreadDot {
+  position: absolute;
+  top: 9px;
+  right: 9px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 2px var(--sunken);
+}
+
+.panel {
+  position: absolute;
+  z-index: 100;
+  width: min(360px, calc(100vw - 32px));
+  max-height: min(480px, calc(100vh - 96px));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--surface);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-card);
+  box-shadow: var(--float);
+  animation: panelIn var(--dur-menu) var(--ease);
+}
+
+.side {
+  left: calc(100% + 8px);
+  top: 0;
+}
+
+.below {
+  top: calc(100% + 8px);
+  right: 0;
+}
+
+@keyframes panelIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (max-width: 1023px) {
+  .panel {
+    position: fixed;
+    top: calc(64px + env(safe-area-inset-top) + var(--titlebar, 0px));
+    left: 16px;
+    right: 16px;
+    width: auto;
+  }
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 48px;
+  padding: 0 8px 0 16px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.note {
+  padding: 24px 16px;
+  color: var(--text-2);
+  font-size: 14px;
+}
+
+.list {
+  overflow-y: auto;
+}
+
+.item {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--hairline);
+  transition: background-color var(--dur-fast) var(--ease);
+}
+
+.item:last-child {
+  border-bottom: 0;
+}
+
+.actionable {
+  cursor: pointer;
+}
+
+.actionable:hover {
+  background: rgba(237, 237, 237, 0.03);
+}
+
+.icon {
+  display: inline-flex;
+  margin-top: 1px;
+  color: var(--text-3);
+}
+
+.body {
+  flex: 1;
+  min-width: 0;
+}
+
+.itemTitle {
+  font-size: 14px;
+  color: var(--text-1);
+}
+
+.unread .itemTitle {
+  font-weight: 500;
+}
+
+.message {
+  margin-top: 2px;
+  font-size: 13px;
+  color: var(--text-2);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.time {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+.itemDot {
+  width: 6px;
+  height: 6px;
+  margin-top: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex-shrink: 0;
+}
+
+.footer {
+  padding: 12px 16px;
+  border-top: 1px solid var(--hairline);
+}
+
+.settingsLink {
+  font-size: 13px;
+  color: var(--text-2);
+  text-decoration: none;
+}
+
+.settingsLink:hover {
+  color: var(--text-1);
+}

@@ -50,12 +50,28 @@ export function JoinTeam({
     }
   }
 
+  // Nothing to accept: one way on, to Teams or to the home page.
+  const onward = (
+    <div className={styles.actions}>
+      {signedInAs === null ? (
+        <Link className="button buttonPrimary buttonLarge" href="/">
+          {t('goHome')}
+        </Link>
+      ) : (
+        <Link className="button buttonPrimary buttonLarge" href="/teams">
+          {t('openTeams')}
+        </Link>
+      )}
+    </div>
+  );
+
   let body: React.ReactNode;
   if (!invitation) {
     body = (
       <>
         <h1 className={styles.title}>{t('invalidTitle')}</h1>
         <p className={styles.text}>{t('invalidBody')}</p>
+        {onward}
       </>
     );
   } else if (declined) {
@@ -63,6 +79,7 @@ export function JoinTeam({
       <>
         <h1 className={styles.title}>{t('declinedTitle')}</h1>
         <p className={styles.text}>{t('declinedBody', { team: invitation.teamName })}</p>
+        {onward}
       </>
     );
   } else if (invitation.status !== 'pending') {
@@ -72,6 +89,7 @@ export function JoinTeam({
         <p className={styles.text}>
           {invitation.status === 'expired' ? t('errors.expired') : t('errors.not_pending')}
         </p>
+        {onward}
       </>
     );
   } else {
@@ -90,29 +108,39 @@ export function JoinTeam({
         </p>
         {signedInAs === null ? (
           <div className={styles.actions}>
-            <Link className="button buttonPrimary" href={`/auth?next=${encodeURIComponent(here)}`}>
+            <Link className="button buttonPrimary buttonLarge" href={`/auth?next=${encodeURIComponent(here)}`}>
               {t('signIn')}
             </Link>
-            <Link className="button" href={`/auth?mode=signup&next=${encodeURIComponent(here)}`}>
+            <Link className="button buttonLarge" href={`/auth?mode=signup&next=${encodeURIComponent(here)}`}>
               {t('signUp')}
             </Link>
           </div>
         ) : wrongAccount ? (
-          <p className={styles.warning} role="alert">
+          <p className={`error ${styles.alert}`} role="alert">
             {t('signedInAs', { email: signedInAs })} {t('errors.wrong_account')}
           </p>
         ) : (
           <div className={styles.actions}>
-            <button className="button buttonPrimary" type="button" disabled={busy !== null} onClick={() => void respond('accept')}>
+            <button
+              className="button buttonPrimary buttonLarge"
+              type="button"
+              disabled={busy !== null}
+              onClick={() => void respond('accept')}
+            >
               {busy === 'accept' ? t('joining') : t('join', { team: invitation.teamName })}
             </button>
-            <button className="button" type="button" disabled={busy !== null} onClick={() => void respond('decline')}>
+            <button
+              className="button buttonLarge"
+              type="button"
+              disabled={busy !== null}
+              onClick={() => void respond('decline')}
+            >
               {busy === 'decline' ? t('declining') : t('decline')}
             </button>
           </div>
         )}
         {error ? (
-          <p className={styles.warning} role="alert">
+          <p className={`error ${styles.alert}`} role="alert">
             {error}
           </p>
         ) : null}
@@ -122,8 +150,12 @@ export function JoinTeam({
 
   return (
     <section className={`card ${styles.card}`}>
-      <div className="cardInner stack">
-        {signedInAs === null ? <ApexMark size={32} /> : null}
+      <div className={`cardInner ${styles.body}`}>
+        {signedInAs === null ? (
+          <span className={styles.mark}>
+            <ApexMark size={32} />
+          </span>
+        ) : null}
         {body}
       </div>
     </section>

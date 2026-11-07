@@ -1,8 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type ComponentType } from 'react';
 import { useFormatter, useTranslations } from 'next-intl';
 import { ShareMenu } from './SocialShareButton';
+import { ClockIcon, CloseIcon, JobsIcon, LiveIcon, PracticeIcon, ResumeIcon, UsersIcon, type IconProps } from './icons';
+import styles from './BadgesList.module.css';
 
 type Badge = {
   id: string;
@@ -14,32 +16,59 @@ type Badge = {
   metadata: Record<string, unknown>;
 };
 
-const badgeIcons: Record<string, string> = {
-  first_interview: 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z',
-  five_sessions: 'M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z',
-  ten_sessions: 'M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 14l-5-5 1.41-1.41L12 14.17l4.59-4.58L18 11l-6 6z',
-  first_offer: 'M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z',
-  streak_week: 'M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z',
-  streak_month: 'M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z',
-  resume_optimized: 'M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z',
-  job_applied: 'M20 6h-4V4c0-1.11-.89-2-2-2h-4c-1.11 0-2 .89-2 2v2H4c-1.11 0-1.99.89-1.99 2L2 19c0 1.11.89 2 2 2h16c1.11 0 2-.89 2-2V8c0-1.11-.89-2-2-2zm-6 0h-4V4h4v2z',
-  referral_signup: 'M15 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm-9-2V7H4v3H1v2h3v3h2v-3h3v-2H6zm9 4c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z',
-  referral_conversion: 'M19 5h-2V3H7v2H5c-1.1 0-2 .9-2 2v1c0 2.55 1.92 4.63 4.39 4.94.63 1.5 1.98 2.63 3.61 2.96V19H7v2h10v-2h-4v-3.1c1.63-.33 2.98-1.46 3.61-2.96C19.08 12.63 21 10.55 21 8V7c0-1.1-.9-2-2-2zM5 8V7h2v3.82C5.84 10.4 5 9.3 5 8zm14 0c0 1.3-.84 2.4-2 2.82V7h2v1z',
-  share: 'M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.61 1.31 2.92 2.92 2.92s2.92-1.31 2.92-2.92-1.31-2.92-2.92-2.92z',
-};
+/** Line glyphs in the icons.tsx style for the badges it has no icon for. */
+function Glyph({ size = 18, children }: { size?: number; children: React.ReactNode }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.7}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
+      {children}
+    </svg>
+  );
+}
 
-const badgeColors: Record<string, string> = {
-  first_interview: 'var(--live)',
-  five_sessions: '#2196F3',
-  ten_sessions: '#9C27B0',
-  first_offer: '#FFD700',
-  streak_week: '#FF9800',
-  streak_month: '#F44336',
-  resume_optimized: '#00BCD4',
-  job_applied: '#8BC34A',
-  referral_signup: '#E91E63',
-  referral_conversion: '#FF5722',
-  share: '#3F51B5',
+const StarIcon = ({ size }: IconProps) => (
+  <Glyph size={size}>
+    <path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.8-5.2 2.8 1-5.8-4.3-4.1 5.9-.9z" />
+  </Glyph>
+);
+
+const TrophyIcon = ({ size }: IconProps) => (
+  <Glyph size={size}>
+    <path d="M8 4h8v5a4 4 0 0 1-8 0zM8 6H5.5a3 3 0 0 0 3 4M16 6h2.5a3 3 0 0 1-3 4M12 13v4M8.5 20.5h7M10 17h4" />
+  </Glyph>
+);
+
+const ShareIcon = ({ size }: IconProps) => (
+  <Glyph size={size}>
+    <circle cx="17.5" cy="5.5" r="2.5" />
+    <circle cx="6.5" cy="12" r="2.5" />
+    <circle cx="17.5" cy="18.5" r="2.5" />
+    <path d="M8.7 10.8l6.6-4M8.7 13.2l6.6 4" />
+  </Glyph>
+);
+
+const BADGE_ICONS: Record<string, ComponentType<IconProps>> = {
+  first_interview: PracticeIcon,
+  five_sessions: LiveIcon,
+  ten_sessions: LiveIcon,
+  first_offer: StarIcon,
+  streak_week: ClockIcon,
+  streak_month: ClockIcon,
+  resume_optimized: ResumeIcon,
+  job_applied: JobsIcon,
+  referral_signup: UsersIcon,
+  referral_conversion: TrophyIcon,
+  share: ShareIcon,
 };
 
 export function BadgesList() {
@@ -71,7 +100,7 @@ export function BadgesList() {
 
   const handleShare = async (platform: string) => {
     if (!selectedBadge) return;
-    
+
     try {
       await fetch('/api/social/shares', {
         method: 'POST',
@@ -88,93 +117,71 @@ export function BadgesList() {
     }
   };
 
-  if (loading) {
-    return <div className="small">{t('loading')}</div>;
-  }
-
-  if (!badges.length) {
-    return (
-      <div className="card">
-        <div className="cardInner stack">
-          <h3 className="cardTitle">{t('title')}</h3>
-          <p className="small muted">{t('empty')}</p>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="card">
-      <div className="cardInner stack">
-        <h3 className="cardTitle">{t('title')}</h3>
-        <div className="badges-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))', gap: '16px' }}>
-          {badges.map((badge) => (
-            <button
-              key={badge.id}
-              onClick={() => setSelectedBadge(badge)}
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '12px',
-                background: 'rgba(255,255,255,0.04)',
-                border: selectedBadge?.id === badge.id ? `2px solid ${badgeColors[badge.badge_type] || 'var(--mist)'}` : '2px solid transparent',
-                borderRadius: '12px',
-                cursor: 'pointer',
-                transition: 'all 0.2s ease',
-              }}
-              aria-label={t('badgeLabel', { badge: titleOf(badge) })}
-            >
-              <div
-                style={{
-                  width: '48px',
-                  height: '48px',
-                  borderRadius: '50%',
-                  backgroundColor: badgeColors[badge.badge_type] || 'var(--mist)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="#fff">
-                  <path d={badgeIcons[badge.badge_type] || badgeIcons.share} />
-                </svg>
-              </div>
-              <span className="small" style={{ textAlign: 'center' }}>{titleOf(badge)}</span>
-            </button>
-          ))}
+    <section className="card" aria-labelledby="badges-heading">
+      <div className={`cardInner ${styles.inner}`}>
+        <div className={styles.head}>
+          <h2 className="cardTitle" id="badges-heading">
+            {t('title')}
+          </h2>
+          {badges.length ? <span className={styles.count}>{format.number(badges.length)}</span> : null}
         </div>
 
-        {selectedBadge && (
-          <div className="badge-share-modal" style={{ marginTop: '16px', padding: '16px', background: 'rgba(255,255,255,0.04)', borderRadius: '8px' }}>
-            <div className="row" style={{ justifyContent: 'space-between', marginBottom: '12px' }}>
-              <h4 style={{ margin: 0 }}>{titleOf(selectedBadge)}</h4>
-              <button 
-                onClick={() => setSelectedBadge(null)}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px' }}
-                aria-label={t('close')}
-              >
-                ✕
-              </button>
-            </div>
-            <p className="small muted" style={{ marginBottom: '12px' }}>{descriptionOf(selectedBadge)}</p>
-            <p className="small mono muted">
-              {t('awarded', { date: format.dateTime(new Date(selectedBadge.awarded_at), { dateStyle: 'medium' }) })}
-            </p>
-            <div style={{ marginTop: '12px' }}>
-              <p className="small" style={{ marginBottom: '8px' }}>{t('share')}</p>
-              <ShareMenu
-                content={{
-                  title: t('shareTitle', { badge: titleOf(selectedBadge) }),
-                  summary: descriptionOf(selectedBadge) || t('shareSummary'),
-                }}
-                onShare={handleShare}
-              />
-            </div>
-          </div>
+        {loading ? (
+          <p className={styles.note}>{t('loading')}</p>
+        ) : !badges.length ? (
+          <p className={styles.note}>{t('empty')}</p>
+        ) : (
+          <>
+            <ul className={styles.grid}>
+              {badges.map((badge) => {
+                const Icon = BADGE_ICONS[badge.badge_type] ?? ShareIcon;
+                return (
+                  <li key={badge.id}>
+                    <button
+                      type="button"
+                      className={styles.badge}
+                      onClick={() => setSelectedBadge(selectedBadge?.id === badge.id ? null : badge)}
+                      aria-pressed={selectedBadge?.id === badge.id}
+                      aria-label={t('badgeLabel', { badge: titleOf(badge) })}
+                    >
+                      <span className={styles.badgeIcon}>
+                        <Icon size={18} />
+                      </span>
+                      <span className={styles.badgeName}>{titleOf(badge)}</span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+
+            {selectedBadge && (
+              <div className={styles.detail}>
+                <div className={styles.detailHead}>
+                  <h3 className={styles.detailTitle}>{titleOf(selectedBadge)}</h3>
+                  <button type="button" className="iconButton" onClick={() => setSelectedBadge(null)} aria-label={t('close')}>
+                    <CloseIcon size={16} />
+                  </button>
+                </div>
+                {descriptionOf(selectedBadge) ? <p className={styles.detailText}>{descriptionOf(selectedBadge)}</p> : null}
+                <p className={styles.awarded}>
+                  {t('awarded', { date: format.dateTime(new Date(selectedBadge.awarded_at), { dateStyle: 'medium' }) })}
+                </p>
+                <div className={styles.share}>
+                  <span className={styles.shareLabel}>{t('share')}</span>
+                  <ShareMenu
+                    content={{
+                      title: t('shareTitle', { badge: titleOf(selectedBadge) }),
+                      summary: descriptionOf(selectedBadge) || t('shareSummary'),
+                    }}
+                    onShare={handleShare}
+                  />
+                </div>
+              </div>
+            )}
+          </>
         )}
       </div>
-    </div>
+    </section>
   );
 }

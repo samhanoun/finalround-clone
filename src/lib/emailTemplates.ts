@@ -1,10 +1,10 @@
 /** Plain, inline-styled emails (most mail apps ignore <style> blocks). */
 
-const MIDNIGHT = '#0B1324';
-const DECK = '#111B30';
+const MIDNIGHT = '#141415';
+const DECK = '#19191B';
 const EMBER = '#FFB547';
-const PAPER = '#F4F6FB';
-const MUTED = '#9AA6BF';
+const PAPER = '#EDEDED';
+const MUTED = '#A1A1A6';
 
 export function appUrl(): string {
   return (process.env.NEXT_PUBLIC_APP_URL ?? '').replace(/\/+$/, '');
@@ -52,8 +52,8 @@ export function renderEmail({
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${MIDNIGHT};padding:32px 16px;">
 <tr><td align="center">
 <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:${DECK};border-radius:14px;padding:28px;font-family:Segoe UI,Helvetica,Arial,sans-serif;color:${PAPER};">
-<tr><td style="font-size:13px;letter-spacing:.04em;color:${EMBER};font-weight:600;padding-bottom:18px;">Apex Round</td></tr>
-<tr><td style="font-size:20px;font-weight:600;line-height:1.3;padding-bottom:12px;">${escapeHtml(title)}</td></tr>
+<tr><td style="font-size:14px;color:${PAPER};font-weight:600;padding-bottom:18px;">Apex Round</td></tr>
+<tr><td style="font-size:20px;font-weight:500;line-height:1.3;padding-bottom:12px;">${escapeHtml(title)}</td></tr>
 ${paragraphs.map((p) => `<tr><td style="font-size:15px;line-height:1.55;color:${PAPER};padding-bottom:12px;">${escapeHtml(p)}</td></tr>`).join('\n')}
 ${sections
   .map(

@@ -1,65 +1,65 @@
-import { getTranslations } from 'next-intl/server';
-import { createClient } from '@/lib/supabase/server';
+import { getFormatter, getTranslations } from 'next-intl/server';
+import type { HomeStats } from '@/app/[locale]/dashboard/homeData';
 import styles from './DashboardStats.module.css';
 
-interface Stats {
-  totalInterviews: number;
-  avgScore: number | null;
-  applicationsSubmitted: number;
-}
-
-export async function DashboardStats() {
+/** Home's four figures. Each change says what it compares to, and only appears where it can be worked out honestly. */
+export async function DashboardStats({ stats }: { stats: HomeStats }) {
   const t = await getTranslations('Home');
-  const supabase = await createClient();
-  const { data: userData } = await supabase.auth.getUser();
-  
-  if (!userData.user) {
-    return null;
-  }
+  const format = await getFormatter();
+  const signed = (n: number) => format.number(n, { signDisplay: 'exceptZero' });
 
-  const userId = userData.user.id;
-  const [{ count: totalInterviews }, { data: reports }, { count: applicationsSubmitted }] = await Promise.all([
-    supabase.from('interview_sessions').select('*', { count: 'exact', head: true }).eq('user_id', userId),
-    supabase.from('interview_reports').select('overall_score').eq('user_id', userId),
-    // Sent = on the Jobs board and past "Saved" (applied, assessment, interview, offer or rejected).
-    supabase
-      .from('job_applications')
-      .select('*', { count: 'exact', head: true })
-      .eq('user_id', userId)
-      .eq('status', 'active')
-      .neq('stage', 'saved'),
-  ]);
+  const { score, liveMinutes } = stats;
+  let scoreNote: { text: string; tone?: 'up' | 'down' };
+  if (score.change.kind === 'none') scoreNote = { text: t('stats.scoreNone') };
+  else if (score.change.kind === 'new') scoreNote = { text: t('stats.scoreNew') };
+  else if (score.change.diff === 0) scoreNote = { text: t('stats.scoreSame') };
+  else scoreNote = { text: t('stats.scoreChange', { diff: signed(score.change.diff) }), tone: score.change.diff > 0 ? 'up' : 'down' };
 
-  const scores = (reports ?? [])
-    .map((r: { overall_score: number | null }) => r.overall_score)
-    .filter((score): score is number => typeof score === 'number');
-  const avgScore = scores.length > 0 ? Math.round(scores.reduce((sum, score) => sum + score, 0) / scores.length) : null;
+  const liveNote =
+    liveMinutes.change === null ? null : liveMinutes.change === 0 ? t('stats.liveSame') : t('stats.liveChange', { diff: signed(liveMinutes.change) });
 
-  const stats: Stats = {
-    totalInterviews: totalInterviews || 0,
-    avgScore,
-    applicationsSubmitted: applicationsSubmitted || 0,
-  };
+  const items: Array<{ key: string; label: string; value: React.ReactNode; note: string | null; tone?: 'up' | 'down' }> = [
+    {
+      key: 'practice',
+      label: t('statInterviews'),
+      value: format.number(stats.practice.total),
+      note: t('stats.thisMonth', { count: stats.practice.thisMonth }),
+    },
+    {
+      key: 'score',
+      label: t('statScore'),
+      value:
+        score.average === null ? (
+          '—'
+        ) : (
+          <>
+            {format.number(score.average)}
+            <span className={styles.unit}>/100</span>
+          </>
+        ),
+      note: scoreNote.text,
+      tone: scoreNote.tone,
+    },
+    {
+      key: 'applications',
+      label: t('statApplications'),
+      value: format.number(stats.applications.total),
+      note: t('stats.thisMonth', { count: stats.applications.thisMonth }),
+    },
+    { key: 'live', label: t('statLiveMinutes'), value: format.number(liveMinutes.thisMonth), note: liveNote },
+  ];
 
   return (
-    <section id="stats" className="card">
-      <div className="cardInner">
-        <h2 className="cardTitle" style={{ marginBottom: 16 }}>{t('progress')}</h2>
-        <div className={styles.statsGrid}>
-          <div className={styles.statItem}>
-            <div className={styles.statValue}>{stats.totalInterviews}</div>
-            <div className={styles.statLabel}>{t('statInterviews')}</div>
+    <section id="stats" className={styles.stats} aria-label={t('progress')}>
+      <dl className={styles.grid}>
+        {items.map((item) => (
+          <div key={item.key} className={styles.stat}>
+            <dt className={styles.label}>{item.label}</dt>
+            <dd className={styles.value}>{item.value}</dd>
+            <dd className={`${styles.note} ${item.tone ? styles[item.tone] : ''}`}>{item.note ?? ' '}</dd>
           </div>
-          <div className={styles.statItem}>
-            <div className={styles.statValue}>{stats.avgScore !== null ? `${stats.avgScore}%` : '—'}</div>
-            <div className={styles.statLabel}>{t('statScore')}</div>
-          </div>
-          <div className={styles.statItem}>
-            <div className={styles.statValue}>{stats.applicationsSubmitted}</div>
-            <div className={styles.statLabel}>{t('statApplications')}</div>
-          </div>
-        </div>
-      </div>
+        ))}
+      </dl>
     </section>
   );
 }

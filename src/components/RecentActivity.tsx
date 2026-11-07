@@ -1,103 +1,65 @@
 import { Link } from '@/i18n/routing';
 import { getFormatter, getTranslations } from 'next-intl/server';
-import { createClient } from '@/lib/supabase/server';
-import { ChartIcon, LiveIcon, PracticeIcon, ResumeIcon } from './icons';
+import type { HomeCopilot, HomeResume, HomeSession } from '@/app/[locale]/dashboard/homeData';
+import { LiveIcon, PracticeIcon, ResumeIcon } from './icons';
 import styles from './RecentActivity.module.css';
 
 interface Activity {
   id: string;
-  type: 'interview' | 'report' | 'resume' | 'copilot';
+  type: 'interview' | 'resume' | 'copilot';
   title: string;
   description: string;
   timestamp: string;
-  href?: string;
+  href: string;
 }
 
-export async function RecentActivity() {
+const ICONS = { interview: PracticeIcon, resume: ResumeIcon, copilot: LiveIcon } as const;
+const SHOWN = 6;
+
+/** Home → Recent activity: practice interviews, résumés and live sessions, newest first. */
+export async function RecentActivity({
+  sessions,
+  resumes,
+  copilot,
+}: {
+  sessions: HomeSession[];
+  resumes: HomeResume[];
+  copilot: HomeCopilot[];
+}) {
   const t = await getTranslations('Home');
   const format = await getFormatter();
-  const supabase = await createClient();
-  const { data: userData } = await supabase.auth.getUser();
-  
-  if (!userData.user) {
-    return null;
-  }
 
-  const activities: Activity[] = [];
-
-  // Fetch recent interview sessions
-  const { data: sessions } = await supabase
-    .from('interview_sessions')
-    .select('id, title, status, created_at')
-    .eq('user_id', userData.user.id)
-    .order('created_at', { ascending: false })
-    .limit(5);
-
-  if (sessions) {
-    sessions.forEach((session) => {
-      activities.push({
-        id: session.id,
-        type: 'interview',
-        title: session.title || t('untitledPractice'),
-        description: session.status === 'completed' ? t('practiceFinished') : t('practiceInterview'),
-        timestamp: session.created_at,
-        href: `/interview/${session.id}`,
-      });
-    });
-  }
-
-  // Fetch recent resume uploads
-  const { data: resumes } = await supabase
-    .from('resume_documents')
-    .select('id, filename, created_at')
-    .eq('user_id', userData.user.id)
-    .order('created_at', { ascending: false })
-    .limit(3);
-
-  if (resumes) {
-    resumes.forEach((resume) => {
-      activities.push({
-        id: `resume-${resume.id}`,
-        type: 'resume',
-        title: resume.filename || t('resume'),
-        description: t('resumeUploaded'),
-        timestamp: resume.created_at,
-        href: '/resume',
-      });
-    });
-  }
-
-  // Fetch recent copilot sessions
-  const { data: copilotSessions } = await supabase
-    .from('copilot_sessions')
-    .select('id, title, status, created_at')
-    .eq('user_id', userData.user.id)
-    .order('created_at', { ascending: false })
-    .limit(3);
-
-  if (copilotSessions) {
-    copilotSessions.forEach((session) => {
-      activities.push({
-        id: `copilot-${session.id}`,
-        type: 'copilot',
-        title: session.title || t('liveSession'),
-        description: session.status === 'active' ? t('liveRunning') : t('liveSession'),
-        timestamp: session.created_at,
-        href: '/copilot/live',
-      });
-    });
-  }
-
-  // Sort all activities by timestamp (most recent first)
-  activities.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-
-  // Take top 8 activities
-  const recentActivities = activities.slice(0, 8);
-
-  const ICONS = { interview: PracticeIcon, report: ChartIcon, resume: ResumeIcon, copilot: LiveIcon } as const;
+  const activities: Activity[] = [
+    ...sessions.map((session) => ({
+      id: session.id,
+      type: 'interview' as const,
+      title: session.title || t('untitledPractice'),
+      description: session.status === 'completed' ? t('practiceFinished') : t('practiceInterview'),
+      timestamp: session.created_at,
+      href: `/interview/${session.id}`,
+    })),
+    ...resumes.map((resume) => ({
+      id: `resume-${resume.id}`,
+      type: 'resume' as const,
+      title: resume.filename || t('resume'),
+      description: t('resumeUploaded'),
+      timestamp: resume.created_at,
+      href: '/resume',
+    })),
+    ...copilot.map((session) => ({
+      id: `copilot-${session.id}`,
+      type: 'copilot' as const,
+      title: session.title || t('liveSession'),
+      description: session.status === 'active' ? t('liveRunning') : t('liveSession'),
+      timestamp: session.created_at,
+      href: '/copilot/live',
+    })),
+  ]
+    .sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp))
+    .slice(0, SHOWN);
 
   const now = new Date();
-  const formatTimeAgo = (timestamp: string) => {
+  const timeAgo = (timestamp: string) => {
     const date = new Date(timestamp);
     const minutes = Math.floor((now.getTime() - date.getTime()) / 60000);
     if (minutes < 1) return t('justNow');
@@ -107,35 +69,33 @@ export async function RecentActivity() {
   };
 
   return (
-    <section id="activity" className="card">
+    <section id="activity" className="card" aria-labelledby="activity-heading">
       <div className="cardInner">
-        <h2 className="cardTitle" style={{ marginBottom: 16 }}>{t('activity')}</h2>
-        {recentActivities.length > 0 ? (
-          <ul className={styles.activityList}>
-            {recentActivities.map((activity) => (
-              <li key={activity.id} className={styles.activityItem}>
-                <span className={styles.activityIcon} data-type={activity.type} aria-hidden="true">
-                  {(() => {
-                    const Icon = ICONS[activity.type];
-                    return <Icon size={18} />;
-                  })()}
-                </span>
-                <div className={styles.activityContent}>
-                  {activity.href ? (
-                    <Link href={activity.href} className={styles.activityTitle}>
+        <h2 className={`cardTitle ${styles.heading}`} id="activity-heading">
+          {t('activity')}
+        </h2>
+        {activities.length > 0 ? (
+          <ul className={styles.list}>
+            {activities.map((activity) => {
+              const Icon = ICONS[activity.type];
+              return (
+                <li key={activity.id} className={styles.item}>
+                  <Icon size={16} className={styles.icon} />
+                  <div className={styles.body}>
+                    <Link href={activity.href} className={styles.titleLink}>
                       {activity.title}
                     </Link>
-                  ) : (
-                    <span className={styles.activityTitle}>{activity.title}</span>
-                  )}
-                  <span className={styles.activityDesc}>{activity.description}</span>
-                </div>
-                <span className={styles.activityTime}>{formatTimeAgo(activity.timestamp)}</span>
-              </li>
-            ))}
+                    <span className={styles.desc}>{activity.description}</span>
+                  </div>
+                  <time className={styles.time} dateTime={activity.timestamp}>
+                    {timeAgo(activity.timestamp)}
+                  </time>
+                </li>
+              );
+            })}
           </ul>
         ) : (
-          <p className="small">{t('activityEmpty')}</p>
+          <p className={styles.empty}>{t('activityEmpty')}</p>
         )}
       </div>
     </section>

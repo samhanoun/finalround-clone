@@ -91,22 +91,29 @@ export function GoalsWorkspace() {
   }, [apply]);
 
   return (
-    <div className="stack" style={{ gap: 20 }}>
+    <div className={styles.workspace}>
       <nav className={styles.tabs} aria-label={t('sections')}>
-        {TABS.map((id) => (
-          <button key={id} type="button" className={styles.tab} aria-current={tab === id ? 'page' : undefined} onClick={() => setTab(id)}>
-            {t(`tabs.${id}`)}
-            {data ? <span className={styles.count}>{countFor(id, data)}</span> : null}
-          </button>
-        ))}
+        <div className={styles.tabList}>
+          {TABS.map((id) => (
+            <button key={id} type="button" className={styles.tab} aria-current={tab === id ? 'page' : undefined} onClick={() => setTab(id)}>
+              {t(`tabs.${id}`)}
+              {data ? (
+                <>
+                  {' '}
+                  <span className={styles.count}>{countFor(id, data)}</span>
+                </>
+              ) : null}
+            </button>
+          ))}
+        </div>
       </nav>
 
       {failed ? (
-        <p className="card help" style={{ padding: 20 }}>
+        <p className="emptyState" role="alert">
           {t('loadFailed')}
         </p>
       ) : !data ? (
-        <p className="help">{t('loading')}</p>
+        <p className={styles.loading}>{t('loading')}</p>
       ) : tab === 'goals' ? (
         <GoalsTab data={data} reload={load} fromJob={sp.get('fromJob')} />
       ) : tab === 'materials' ? (

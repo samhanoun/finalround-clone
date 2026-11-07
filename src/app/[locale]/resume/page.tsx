@@ -10,16 +10,15 @@ export default async function ResumePage() {
   const supabase = await createClient();
   const { data: userData } = await supabase.auth.getUser();
 
+  const actions = (
+    <Link className="button" href="/cover-letters">
+      {tPage('coverLetters')}
+    </Link>
+  );
+
   if (!userData.user) {
     return (
-      <AppShell
-      title={tPage('resume')}
-      actions={
-        <Link className="button" href="/cover-letters">
-          {tPage('coverLetters')}
-        </Link>
-      }
-    >
+      <AppShell title={tPage('resume')} actions={actions}>
         <RequireAuth>
           <div />
         </RequireAuth>
@@ -27,34 +26,18 @@ export default async function ResumePage() {
     );
   }
 
-  const { data: docs } = await supabase
-    .from('resume_documents')
-    .select('id,filename,created_at')
-    .order('created_at', { ascending: false })
-    .limit(30);
-
-  const { data: generations } = await supabase
-    .from('resume_generations')
-    .select('id,status,created_at,input,output,document_id')
-    .order('created_at', { ascending: false })
-    .limit(30);
+  const [{ data: docs }, { data: generations }] = await Promise.all([
+    supabase.from('resume_documents').select('id,filename,created_at').order('created_at', { ascending: false }).limit(30),
+    supabase.from('resume_generations').select('id,status,created_at,input,output,document_id').order('created_at', { ascending: false }).limit(30),
+  ]);
 
   return (
-    <AppShell
-      title={tPage('resume')}
-      actions={
-        <Link className="button" href="/cover-letters">
-          {tPage('coverLetters')}
-        </Link>
-      }
-    >
+    <AppShell title={tPage('resume')} actions={actions}>
       <RequireAuth>
-        <div className="stack">
-          <ResumeClient
-            initialDocs={(docs ?? []) as unknown as Parameters<typeof ResumeClient>[0]['initialDocs']}
-            initialGenerations={(generations ?? []) as unknown as Parameters<typeof ResumeClient>[0]['initialGenerations']}
-          />
-        </div>
+        <ResumeClient
+          initialDocs={(docs ?? []) as unknown as Parameters<typeof ResumeClient>[0]['initialDocs']}
+          initialGenerations={(generations ?? []) as unknown as Parameters<typeof ResumeClient>[0]['initialGenerations']}
+        />
       </RequireAuth>
     </AppShell>
   );

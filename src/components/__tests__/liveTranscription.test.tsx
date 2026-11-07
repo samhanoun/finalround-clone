@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import React from 'react';
 import { AudioSourcesPanel } from '@/components/copilot/AudioSourcesPanel';
 import type { AudioCapture } from '@/components/copilot/useAudioCapture';
@@ -56,6 +56,33 @@ describe('AudioSourcesPanel with live transcription', () => {
     expect(screen.getByText('You have used all your copilot minutes for now.')).toBeInTheDocument();
   });
 
+  it('draws one live trace per voice from the level subscription', () => {
+    const live = capture('live');
+    let push: (levels: { interviewer: number; candidate: number }) => void = () => undefined;
+    (live.subscribeLevels as jest.Mock).mockImplementation((listener) => {
+      push = listener;
+      return () => undefined;
+    });
+    const { container } = render(<AudioSourcesPanel capture={live} transcription={transcription()} disabled={false} />);
+    const interviewer = screen.getByRole('meter', { name: 'Interviewer level' });
+    const you = screen.getByRole('meter', { name: 'You level' });
+    expect(interviewer).toHaveAttribute('aria-valuenow', '0');
+
+    act(() => push({ interviewer: 0.1, candidate: 0 }));
+    expect(interviewer).toHaveAttribute('aria-valuenow', '67');
+    expect(interviewer).toHaveAttribute('aria-valuetext', 'Hearing audio');
+    expect(you).toHaveAttribute('aria-valuetext', 'Quiet');
+    const [interviewerPath, youPath] = Array.from(container.querySelectorAll('svg path'));
+    expect(interviewerPath.getAttribute('d')).not.toBe(youPath.getAttribute('d'));
+  });
+
+  it('keeps the share steps one click away while not listening', () => {
+    render(<AudioSourcesPanel capture={capture('idle')} transcription={transcription()} disabled={false} />);
+    expect(screen.getByText('How to share the meeting audio')).toBeInTheDocument();
+    expect(screen.getByText(/Share tab audio/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Start listening' })).toBeEnabled();
+  });
+
   it('hides captions until audio is live', () => {
     render(<AudioSourcesPanel capture={capture('idle')} transcription={transcription()} disabled={false} />);
     expect(screen.queryByLabelText('Live captions')).not.toBeInTheDocument();
@@ -82,8 +109,8 @@ describe('AudioSourcesPanel in phone / in-person mode', () => {
     const { rerender } = render(
       <AudioSourcesPanel capture={capture('idle')} transcription={transcription()} disabled={false} voiceSample={sample} />,
     );
-    expect(screen.getByRole('meter', { name: 'Microphone (both of you) level' })).toBeInTheDocument();
-    expect(screen.queryByRole('meter', { name: 'Interviewer (shared audio) level' })).not.toBeInTheDocument();
+    expect(screen.getByRole('meter', { name: 'Both of you level' })).toBeInTheDocument();
+    expect(screen.queryByRole('meter', { name: 'Interviewer level' })).not.toBeInTheDocument();
     expect(screen.getByText(/Put your phone on speaker/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Record my voice' })).toBeDisabled();
 

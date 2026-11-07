@@ -1,0 +1,348 @@
+/* The answer card arriving over a call: the one bright element of the landing
+   hero. Ice is the interviewer's voice, Ember is yours; nothing else is coloured. */
+
+.moment {
+  position: relative;
+  margin: 0;
+  display: grid;
+  min-width: 0;
+}
+
+/* The interviewer's video tile: a recessed screen, camera off, speaking. */
+.tile {
+  position: relative;
+  width: 86%;
+  aspect-ratio: 16 / 9;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-panel);
+  border: 1px solid var(--hairline);
+  background: var(--sunken);
+  overflow: hidden;
+}
+
+.avatar {
+  /* Sits a little above the centre, as a face does in a frame. */
+  margin-bottom: 18%;
+  display: grid;
+  place-items: center;
+  width: 84px;
+  height: 84px;
+  border-radius: 50%;
+  background: var(--raised);
+  color: var(--text-2);
+  font-size: 26px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  /* The meeting's active-speaker ring, in the interviewer's voice. */
+  outline: 2px solid var(--voice-them);
+  outline-offset: 5px;
+}
+
+.clock {
+  position: absolute;
+  top: 14px;
+  right: 16px;
+  font-family: var(--font-code);
+  font-size: 12px;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.nameTag {
+  position: absolute;
+  left: 14px;
+  bottom: 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--bg) 82%, transparent);
+  color: var(--text-1);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.bars {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 12px;
+}
+
+.bars i {
+  display: block;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--voice-them);
+}
+
+.bars i:nth-child(1) {
+  height: 5px;
+}
+
+.bars i:nth-child(2) {
+  height: 11px;
+}
+
+.bars i:nth-child(3) {
+  height: 8px;
+}
+
+.bars i:nth-child(4) {
+  height: 4px;
+}
+
+/* The answer card: set like a prompter. */
+.card {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  min-width: 0;
+  padding: 20px 24px;
+  border-radius: var(--radius-card);
+  border: 1px solid var(--hairline-strong);
+  background: var(--surface);
+}
+
+.hero .card {
+  width: 74%;
+  margin: -104px 0 0 auto;
+  box-shadow: var(--float);
+}
+
+/* Who spoke: the two-voice trace. */
+.track {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 4px 12px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.voice {
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+}
+
+.voice[data-voice='them'] {
+  color: var(--voice-them-text);
+}
+
+.voice[data-voice='you'] {
+  color: var(--accent-text);
+}
+
+.trace {
+  display: block;
+  width: 100%;
+  height: 16px;
+  overflow: visible;
+}
+
+.trace path {
+  fill: none;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.traceThem {
+  stroke: var(--voice-them);
+}
+
+.traceYou {
+  stroke: var(--voice-you);
+}
+
+.question {
+  margin: 16px 0 0;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.45;
+  color: var(--voice-them-text);
+}
+
+.lead {
+  margin: 12px 0 0;
+  font-size: 20px;
+  line-height: 1.45;
+  color: var(--text-1);
+  text-wrap: pretty;
+}
+
+.points {
+  margin: 16px 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 8px;
+}
+
+.points li {
+  position: relative;
+  padding-left: 18px;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+
+/* Your voice: what you will say. */
+.points li::before {
+  content: '';
+  position: absolute;
+  left: 2px;
+  top: 0.62em;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--voice-you);
+}
+
+.foot {
+  margin: 20px 0 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--hairline);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 16px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--text-3);
+}
+
+.source {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.source svg {
+  flex-shrink: 0;
+}
+
+.timing {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Beside the sign-in form: the same card, smaller, still. */
+.compact .card {
+  padding: 20px;
+}
+
+.compact .lead {
+  font-size: 17px;
+}
+
+.compact .points li {
+  font-size: 14px;
+}
+
+.compact .points li:nth-child(3) {
+  display: none;
+}
+
+/* The one entrance on the landing page: the question's trace finishes while
+   the answer settles into place. Nothing starts hidden, so the first frame
+   (and the frame without motion) is the finished card. */
+@media (prefers-reduced-motion: no-preference) {
+  .hero .traceThem {
+    stroke-dasharray: 1;
+    animation: finish 640ms var(--ease) both;
+  }
+
+  .hero .lead,
+  .hero .points li,
+  .hero .foot {
+    animation: settle 420ms var(--ease) both;
+  }
+
+  .hero .lead {
+    animation-delay: 200ms;
+  }
+
+  .hero .points li:nth-child(1) {
+    animation-delay: 260ms;
+  }
+
+  .hero .points li:nth-child(2) {
+    animation-delay: 320ms;
+  }
+
+  .hero .points li:nth-child(3) {
+    animation-delay: 380ms;
+  }
+
+  .hero .foot {
+    animation-delay: 440ms;
+  }
+}
+
+@keyframes finish {
+  from {
+    stroke-dashoffset: 0.24;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes settle {
+  from {
+    transform: translateY(6px);
+  }
+  to {
+    transform: none;
+  }
+}
+
+/* Phones: the same moment, fewer lines, never scaled down. */
+@media (max-width: 639px) {
+  .tile {
+    width: 100%;
+  }
+
+  .avatar {
+    margin-bottom: 0;
+    width: 64px;
+    height: 64px;
+    font-size: 20px;
+  }
+
+  .hero .card {
+    width: calc(100% - 16px);
+    margin-top: -48px;
+    padding: 16px;
+  }
+
+  /* The card covers the tile's lower edge here, so the name moves up. */
+  .nameTag {
+    top: 12px;
+    bottom: auto;
+    left: 12px;
+  }
+
+  .clock {
+    top: 18px;
+  }
+
+  .lead {
+    font-size: 17px;
+  }
+
+  .points li {
+    font-size: 14px;
+  }
+
+  .hero .points li:nth-child(3) {
+    display: none;
+  }
+}

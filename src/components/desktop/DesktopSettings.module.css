@@ -1,0 +1,136 @@
+/* Settings → Desktop app. Rows and groups come from Settings (SettingsUI);
+   this styles the shortcut fields and keycaps inside them. */
+
+.shortcutsHead {
+  display: grid;
+  gap: 4px;
+  margin-top: 12px;
+}
+
+.shortcutsTitle {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.45;
+  color: var(--text-1);
+}
+
+.shortcutsDesc {
+  margin: 0;
+  max-width: 64ch;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+
+/* A shortcut: the field, then the reset button (or the space it takes, so fields line up). */
+.shortcut {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.field {
+  display: inline-flex;
+  align-items: center;
+  width: 216px;
+  min-height: 40px;
+  padding: 0 11px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-control);
+  background: var(--field);
+  color: var(--text-1);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color var(--dur-fast) var(--ease),
+    box-shadow var(--dur-fast) var(--ease);
+}
+
+.field:hover {
+  border-color: var(--hairline-hover);
+}
+
+/* Recording: the same Ember ring as a focused input. */
+.field[aria-pressed='true'] {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(255, 181, 71, 0.16);
+}
+
+.field[data-problem]:not([aria-pressed='true']) {
+  border-color: rgba(229, 72, 77, 0.6);
+}
+
+.field:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.keys {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+/* The four arrows in one keycap: the mono face draws them too small. */
+.arrowKeys {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  letter-spacing: 0.08em;
+}
+
+.prompt {
+  color: var(--text-2);
+}
+
+.empty {
+  color: var(--text-3);
+}
+
+/* Fixed shortcuts: keycaps where the field's keycaps sit, without a field. */
+.fixed {
+  display: inline-flex;
+  align-items: center;
+  width: 216px;
+  min-height: 40px;
+  padding: 0 12px;
+}
+
+.reset {
+  flex: none;
+  color: var(--text-3);
+}
+
+.resetSlot {
+  flex: none;
+  width: 40px;
+  height: 40px;
+}
+
+.problem {
+  color: var(--negative-text);
+}
+
+@media (pointer: coarse) {
+  .field,
+  .fixed {
+    min-height: 44px;
+  }
+
+  .resetSlot {
+    width: 44px;
+    height: 44px;
+  }
+}
+
+@media (max-width: 559px) {
+  .field,
+  .fixed {
+    width: 184px;
+  }
+}

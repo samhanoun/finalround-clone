@@ -5,13 +5,20 @@ import { useId, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { useToastHook } from '@/components/Toast';
 
-/** Creates a practice interview and opens it; `query` fills in its setup (e.g. "company=Acme&bank=1"). */
+/**
+ * Creates a practice interview and opens its setup; `query` fills that setup
+ * in (e.g. "company=Acme&bank=1", or "goal=<id>" for everything a goal knows).
+ * Opening the setup is the confirmation, so only a failure shows a toast.
+ */
 export function NewPracticeButton({
   primary = false,
+  small = false,
   label,
   query,
 }: {
   primary?: boolean;
+  /** The 32px size, for buttons inside list rows. */
+  small?: boolean;
   label?: string;
   query?: string;
 }) {
@@ -35,7 +42,6 @@ export function NewPracticeButton({
       if (!res.ok) throw new Error(t('failed'));
 
       const json = await res.json();
-      toast.success(t('createdTitle'), t('createdBody'));
       router.push(`/interview/${json.session.id}${query ? `?${query}` : ''}`);
       router.refresh();
     } catch (e) {
@@ -47,10 +53,12 @@ export function NewPracticeButton({
     }
   }
 
+  const className = ['button', primary ? 'buttonPrimary' : '', small ? 'buttonSmall' : ''].filter(Boolean).join(' ');
+
   return (
     <>
       <button
-        className={primary ? 'button buttonPrimary' : 'button'}
+        className={className}
         onClick={createInterview}
         disabled={loading}
         type="button"

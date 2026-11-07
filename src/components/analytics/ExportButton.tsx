@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { exportToCSV, exportToPDF } from '@/lib/export';
+import { DownloadIcon } from '@/components/icons';
 
 interface ExportButtonProps {
   data?: unknown[];
@@ -13,6 +14,7 @@ interface ExportButtonProps {
   disabled?: boolean;
 }
 
+/** CSV and PDF downloads of a view: two small secondary buttons. */
 export function ExportButton({
   data,
   elementId,
@@ -60,19 +62,23 @@ export function ExportButton({
   return (
     <div className="export-buttons">
       <button
-        className="export-btn csv"
+        type="button"
+        className="button buttonSmall"
         onClick={handleCSVExport}
         disabled={disabled || exporting}
         title={t('csv')}
       >
+        <DownloadIcon size={16} className="export-icon" />
         {t('csvShort')}
       </button>
       <button
-        className="export-btn pdf"
+        type="button"
+        className="button buttonSmall"
         onClick={handlePDFExport}
         disabled={disabled || exporting}
         title={t('pdf')}
       >
+        <DownloadIcon size={16} className="export-icon" />
         {t('pdfShort')}
       </button>
 
@@ -82,33 +88,9 @@ export function ExportButton({
           gap: 8px;
         }
 
-        .export-btn {
-          min-height: 40px;
-          padding: 0 16px;
-          border: 1px solid var(--line-strong);
-          border-radius: 10px;
-          background: var(--deck-2);
-          color: var(--paper);
-          cursor: pointer;
-          font: inherit;
-          font-size: 14px;
-          font-weight: 500;
-          transition: background 120ms ease, border-color 120ms ease;
-          display: flex;
-          align-items: center;
-          gap: 6px;
+        .export-buttons :global(.export-icon) {
+          color: var(--text-3);
         }
-
-        .export-btn:hover:not(:disabled) {
-          background: var(--well);
-          border-color: var(--line-strong);
-        }
-
-        .export-btn:disabled {
-          opacity: 0.5;
-          cursor: not-allowed;
-        }
-
       `}</style>
     </div>
   );

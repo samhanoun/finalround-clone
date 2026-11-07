@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useFormatter, useTranslations } from 'next-intl';
+import { CopyIcon } from './icons';
 import styles from './ReferralPanel.module.css';
 
 /** Referral links open the sign-up form. */
@@ -131,54 +132,65 @@ export function ReferralPanel() {
     }
   }, [referralCode, t]);
 
-  if (loading) {
-    return <div className="small">{t('loading')}</div>;
-  }
+  const heading = (
+    <div className={styles.head}>
+      <h2 className="cardTitle" id="referrals-heading">
+        {t('title')}
+      </h2>
+      <p className="cardDesc">{t('desc')}</p>
+    </div>
+  );
 
-  if (error) {
+  if (loading || error) {
     return (
-      <div className="card">
-        <div className="cardInner stack">
-          <h3 className="cardTitle">{t('title')}</h3>
-          <div className="error">{error}</div>
+      <section className="card" aria-labelledby="referrals-heading">
+        <div className={`cardInner ${styles.inner}`}>
+          {heading}
+          {error ? (
+            <p className={styles.note} role="alert">
+              {error}
+            </p>
+          ) : (
+            <p className={styles.note}>{t('loading')}</p>
+          )}
         </div>
-      </div>
+      </section>
     );
   }
 
   const referralUrl = referralCode ? referralLink(referralCode.code) : '';
 
   return (
-    <div className="card">
-      <div className="cardInner stack">
-        <h3 className="cardTitle">{t('title')}</h3>
-        <p className="cardDesc">{t('desc')}</p>
+    <section className="card" aria-labelledby="referrals-heading">
+      <div className={`cardInner ${styles.inner}`}>
+        {heading}
 
         <div className={styles.linkRow}>
           <input className={`input ${styles.link}`} type="text" readOnly value={referralUrl} aria-label={t('link')} />
-          <button className="button buttonPrimary" onClick={copyReferralLink}>
+          <button type="button" className="button" onClick={copyReferralLink}>
+            <CopyIcon size={16} className={styles.buttonIcon} />
             {copied === 'link' ? t('copied') : t('copyLink')}
           </button>
         </div>
 
         <div className={styles.meta}>
-          <span>
+          <span className={styles.codeLine}>
             {t.rich('code', { code: referralCode?.code ?? '', value: (chunks) => <code className={styles.code}>{chunks}</code> })}
           </span>
-          <button className="button buttonGhost" onClick={copyCode} aria-label={t('copyCodeLabel')}>
+          <button type="button" className="button buttonGhost buttonSmall" onClick={copyCode} aria-label={t('copyCodeLabel')}>
             {copied === 'code' ? t('copied') : t('copyCode')}
           </button>
         </div>
 
         <div className={styles.share}>
           <span className={styles.shareLabel}>{t('shareOn')}</span>
-          <button className="button" onClick={() => shareReferral('linkedin')}>
+          <button type="button" className="button buttonSmall" onClick={() => shareReferral('linkedin')}>
             {t('linkedin')}
           </button>
-          <button className="button" onClick={() => shareReferral('twitter')} aria-label={t('shareOnX')}>
+          <button type="button" className="button buttonSmall" onClick={() => shareReferral('twitter')} aria-label={t('shareOnX')}>
             X
           </button>
-          <button className="button" onClick={() => shareReferral('email')} aria-label={t('shareByEmail')}>
+          <button type="button" className="button buttonSmall" onClick={() => shareReferral('email')} aria-label={t('shareByEmail')}>
             {t('email')}
           </button>
         </div>
@@ -186,11 +198,11 @@ export function ReferralPanel() {
         <dl className={styles.stats}>
           <div>
             <dt>{t('statuses.signed_up')}</dt>
-            <dd>{referralCode?.referral_count || 0}</dd>
+            <dd>{format.number(referralCode?.referral_count || 0)}</dd>
           </div>
           <div>
             <dt>{t('statuses.converted')}</dt>
-            <dd>{referralCode?.conversion_count || 0}</dd>
+            <dd>{format.number(referralCode?.conversion_count || 0)}</dd>
           </div>
         </dl>
 
@@ -198,16 +210,19 @@ export function ReferralPanel() {
           <ul className={styles.history} aria-label={t('invites')}>
             {referrals.map((ref) => (
               <li key={ref.id}>
-                <span className={`badge ${ref.status === 'converted' ? 'badgeLive' : ref.status === 'signed_up' ? 'badgeIce' : ''}`}>
+                <span className={styles.status} data-status={ref.status}>
+                  <span className="dot" aria-hidden="true" />
                   {STATUSES.includes(ref.status) ? t(`statuses.${ref.status}`) : ref.status}
                 </span>
-                {ref.source && <span className="small muted">{t('via', { source: ref.source })}</span>}
-                <span className={`small muted ${styles.when}`}>{format.dateTime(new Date(ref.created_at), { dateStyle: 'medium' })}</span>
+                {ref.source && <span className={styles.source}>{t('via', { source: ref.source })}</span>}
+                <time className={styles.when} dateTime={ref.created_at}>
+                  {format.dateTime(new Date(ref.created_at), { dateStyle: 'medium' })}
+                </time>
               </li>
             ))}
           </ul>
         )}
       </div>
-    </div>
+    </section>
   );
 }

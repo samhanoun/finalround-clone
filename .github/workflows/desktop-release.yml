@@ -1,0 +1,214 @@
+name: Desktop release
+
+# Builds the desktop app (desktop/) for Windows and macOS and uploads the
+# installers to the draft GitHub release desktop-v<version>. Installed apps
+# update (electron-updater) once that draft is published as the latest release.
+#
+# - Push a tag desktop-v<version>, matching "version" in desktop/package.json:
+#   builds both platforms and uploads to the draft release.
+# - Run workflow (manual): builds both; uploads only when "publish" is ticked,
+#   otherwise the builds are kept as workflow artifacts.
+#
+# Needs the repository variable APEX_APP_URL: the deployed web app, https.
+# Code signing is optional and comes from the secrets and variables below; a
+# build without them is unsigned. See desktop/README.md, "Code signing" and
+# "Releases".
+
+on:
+  push:
+    tags: ['desktop-v*']
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Upload to the draft release desktop-v<version> (otherwise keep the builds as workflow artifacts only)
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: desktop-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Check version and app URL
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+      publish: ${{ steps.check.outputs.publish }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the version, the tag and APEX_APP_URL
+        id: check
+        env:
+          APEX_APP_URL: ${{ vars.APEX_APP_URL }}
+          EVENT: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+          PUBLISH_INPUT: ${{ inputs.publish }}
+        run: |
+          version=$(node -p "require('./desktop/package.json').version")
+          if [ -z "$APEX_APP_URL" ]; then
+            echo "::error title=APEX_APP_URL is not set::Add the repository variable APEX_APP_URL (Settings > Secrets and variables > Actions > Variables) with the deployed web app's address, for example https://app.example.com. The desktop app loads that URL and nothing else."
+            exit 1
+          fi
+          case "$APEX_APP_URL" in
+            https://*) ;;
+            *)
+              echo "::error title=APEX_APP_URL must be https::APEX_APP_URL is \"$APEX_APP_URL\". A packaged app only loads an https URL on a real host, because it gives that site screen and microphone capture."
+              exit 1
+              ;;
+          esac
+          if [ "$EVENT" = "push" ]; then
+            if [ "$REF_NAME" != "desktop-v$version" ]; then
+              echo "::error title=The tag doesn't match the version::The tag is $REF_NAME but desktop/package.json has version $version. Tag desktop-v$version, or change the version first."
+              exit 1
+            fi
+            publish=always
+          elif [ "$PUBLISH_INPUT" = "true" ]; then
+            publish=always
+          else
+            publish=never
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "publish=$publish" >> "$GITHUB_OUTPUT"
+
+      - name: Create the draft release
+        if: steps.check.outputs.publish == 'always'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: desktop-v${{ steps.check.outputs.version }}
+          VERSION: ${{ steps.check.outputs.version }}
+        run: |
+          # Both builds upload into one draft. Creating it here stops them racing to
+          # create two (a draft isn't tied to its tag until it's published).
+          if gh release list --limit 200 --json tagName --jq '.[].tagName' | grep -qxF "$TAG"; then
+            echo "Release $TAG already exists; the builds upload into it."
+          else
+            gh release create "$TAG" --draft --target "$GITHUB_SHA" --title "Apex Round desktop $VERSION" \
+              --notes "Windows and macOS builds of the Apex Round desktop app, version $VERSION. Check the files, then publish this release: installed apps update from the latest published release."
+          fi
+
+  build:
+    name: Build (${{ matrix.name }})
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows
+            os: windows-latest
+            platform: win
+          - name: macOS
+            os: macos-latest
+            platform: mac
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Point the app at the deployed web app
+        env:
+          APEX_APP_URL: ${{ vars.APEX_APP_URL }}
+        run: |
+          if [ -z "$APEX_APP_URL" ]; then
+            echo "::error title=APEX_APP_URL is not set::Add the repository variable APEX_APP_URL with the deployed web app's https address."
+            exit 1
+          fi
+          node -e "require('node:fs').writeFileSync('app.config.json', JSON.stringify({ appUrl: process.env.APEX_APP_URL }, null, 2) + '\n')"
+
+      - name: Test
+        run: npm test
+
+      - name: Check the packaged app's URL
+        run: node dist/checkConfig.js
+
+      - name: Build for Windows
+        if: matrix.platform == 'win'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PUBLISH: ${{ needs.prepare.outputs.publish }}
+          # Either a code-signing certificate (base64 of the .pfx file) ...
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+          # ... or Azure Trusted Signing (used when all four variables are set).
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_TRUSTED_SIGNING_ENDPOINT: ${{ vars.AZURE_TRUSTED_SIGNING_ENDPOINT }}
+          AZURE_TRUSTED_SIGNING_ACCOUNT: ${{ vars.AZURE_TRUSTED_SIGNING_ACCOUNT }}
+          AZURE_TRUSTED_SIGNING_PROFILE: ${{ vars.AZURE_TRUSTED_SIGNING_PROFILE }}
+          AZURE_TRUSTED_SIGNING_PUBLISHER: ${{ vars.AZURE_TRUSTED_SIGNING_PUBLISHER }}
+        run: |
+          # Empty secrets and variables come through as empty strings: unset them,
+          # so electron-builder signs only with what is really configured.
+          for name in WIN_CSC_LINK WIN_CSC_KEY_PASSWORD AZURE_TENANT_ID AZURE_CLIENT_ID AZURE_CLIENT_SECRET \
+            AZURE_TRUSTED_SIGNING_ENDPOINT AZURE_TRUSTED_SIGNING_ACCOUNT AZURE_TRUSTED_SIGNING_PROFILE AZURE_TRUSTED_SIGNING_PUBLISHER; do
+            if [ -z "${!name}" ]; then unset "$name"; fi
+          done
+          if [ -n "$AZURE_TRUSTED_SIGNING_ENDPOINT" ] && [ -n "$AZURE_TRUSTED_SIGNING_ACCOUNT" ] && [ -n "$AZURE_TRUSTED_SIGNING_PROFILE" ] && [ -n "$AZURE_TRUSTED_SIGNING_PUBLISHER" ]; then
+            echo "Signing with Azure Trusted Signing."
+          elif [ -n "$WIN_CSC_LINK" ]; then
+            echo "Signing with the certificate in WIN_CSC_LINK."
+          else
+            echo "::warning title=Unsigned Windows build::Neither WIN_CSC_LINK nor Azure Trusted Signing is set, so the installer is unsigned and SmartScreen warns on first run."
+          fi
+          npx electron-builder --win --publish "$PUBLISH"
+
+      - name: Build for macOS
+        if: matrix.platform == 'mac'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PUBLISH: ${{ needs.prepare.outputs.publish }}
+          # A Developer ID Application certificate (base64 of the .p12 file) signs ...
+          CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+          # ... and these notarize.
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          for name in CSC_LINK CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
+            if [ -z "${!name}" ]; then unset "$name"; fi
+          done
+          if [ -z "$CSC_LINK" ]; then
+            # No certificate: don't search the runner's keychain, and skip notarizing (it needs a signed app).
+            export CSC_IDENTITY_AUTO_DISCOVERY=false
+            unset APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID
+            echo "::warning title=Unsigned macOS build::MAC_CSC_LINK is not set, so the app is neither signed nor notarized. macOS won't open it from a download, and it can't auto-update."
+          elif [ -z "$APPLE_ID" ] || [ -z "$APPLE_APP_SPECIFIC_PASSWORD" ] || [ -z "$APPLE_TEAM_ID" ]; then
+            # electron-builder stops on a partial set; sign without notarizing instead.
+            unset APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID
+            echo "::warning title=Signed but not notarized::Set all of APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD and APPLE_TEAM_ID to notarize; Gatekeeper blocks apps that aren't."
+          fi
+          npx electron-builder --mac --publish "$PUBLISH"
+
+      - name: Keep the builds
+        uses: actions/upload-artifact@v4
+        with:
+          name: apex-round-desktop-${{ matrix.platform }}-${{ needs.prepare.outputs.version }}
+          path: |
+            desktop/release/*.exe
+            desktop/release/*.dmg
+            desktop/release/*.zip
+            desktop/release/*.blockmap
+            desktop/release/latest*.yml
+          if-no-files-found: error
+          retention-days: 14

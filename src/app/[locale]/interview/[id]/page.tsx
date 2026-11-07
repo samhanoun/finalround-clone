@@ -11,6 +11,7 @@ import {
   type ResumeOption,
 } from '@/components/practice/PracticeInterview';
 import { practiceTypeForRound, type StoredPracticeSetup } from '@/lib/practice/practice';
+import styles from '@/components/practice/PracticeList.module.css';
 
 const STATUSES = ['draft', 'in_progress', 'completed'] as const;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -104,7 +105,12 @@ export default async function InterviewPage(props: {
   return (
     <AppShell
       title={session.title || t('interviewTitle')}
-      actions={<span className={`badge ${session.status === 'completed' ? 'badgeLive' : ''}`}>{status}</span>}
+      actions={
+        <span className={styles.status} data-status={session.status}>
+          <span className={styles.statusDot} aria-hidden="true" />
+          {status}
+        </span>
+      }
     >
       <RequireAuth>
         <PracticeInterview

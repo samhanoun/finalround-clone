@@ -10,10 +10,18 @@ import { RecentActivity } from '@/components/RecentActivity';
 import { QuickActions } from '@/components/QuickActions';
 import { BadgesList } from '@/components/BadgesList';
 import { ReferralPanel } from '@/components/ReferralPanel';
+import { loadHome } from './homeData';
+import { ScoreTrend } from './ScoreTrend';
 import styles from './dashboard.module.css';
 
 const STATUSES = ['draft', 'in_progress', 'completed'];
 
+/**
+ * Home. One main thing, the next interview, then the figures, the practice
+ * score trend, and smaller blocks of different kinds: short lists and links
+ * beside activity and usage, then achievements and invites. Phones read it in
+ * that order.
+ */
 export default async function DashboardPage() {
   const t = await getTranslations('Home');
   const tPractice = await getTranslations('PracticePages');
@@ -34,104 +42,96 @@ export default async function DashboardPage() {
     }
   }
 
-  const { data: sessions } = await supabase
-    .from('interview_sessions')
-    .select('id,title,status,created_at')
-    .order('created_at', { ascending: false })
-    .limit(10);
-
-  const { data: docs } = await supabase
-    .from('resume_documents')
-    .select('id,filename,created_at')
-    .order('created_at', { ascending: false })
-    .limit(10);
+  const now = new Date();
+  const home = data.user ? await loadHome(supabase, data.user.id, now) : null;
+  const date = (iso: string) => format.dateTime(new Date(iso), { dateStyle: 'medium' });
 
   return (
-    <AppShell
-      title={t('title')}
-      actions={
-        <Link className="button buttonPrimary" href="/copilot/live">
-          {t('startLive')}
-        </Link>
-      }
-    >
+    <AppShell title={t('title')}>
       <RequireAuth>
-        <div className={styles.dash}>
-          <DashboardClient />
+        {home ? (
+          <div className={styles.home}>
+            <DashboardClient next={home.next} setup={home.setup} now={now.toISOString()} />
 
-          <QuickActions />
+            <DashboardStats stats={home.stats} />
 
-          <div className={styles.columns}>
-            <div className={styles.main}>
-              <DashboardStats />
+            <div className={styles.columns}>
+              <div className={styles.main}>
+                <ScoreTrend points={home.trend} />
 
-              <section id="sessions" className="card" aria-labelledby="sessions-heading">
-                <div className="cardInner stack">
-                  <div className={styles.cardHeader}>
-                    <h2 className="cardTitle" id="sessions-heading">
-                      {t('practiceTitle')}
-                    </h2>
-                    <Link className="button buttonGhost" href="/interview">
-                      {t('allPractice')}
-                    </Link>
-                  </div>
-                  <ul className={styles.list}>
-                    {(sessions ?? []).length ? (
-                      (sessions ?? []).map((s) => (
-                        <li key={s.id} className={styles.listRow}>
-                          <Link href={`/interview/${s.id}`} className={styles.rowLink}>
-                            {s.title}
-                          </Link>
-                          <span className={styles.rowMeta}>
-                            <span className="badge">{STATUSES.includes(s.status) ? tPractice(`status.${s.status}`) : s.status}</span>
-                            <span>{format.dateTime(new Date(s.created_at), { dateStyle: 'medium' })}</span>
-                          </span>
-                        </li>
-                      ))
+                <div className={`card ${styles.lists}`}>
+                  <section id="sessions" className={styles.listBlock} aria-labelledby="sessions-heading">
+                    <div className={styles.listHead}>
+                      <h2 className="cardTitle" id="sessions-heading">
+                        {t('practiceTitle')}
+                      </h2>
+                      <Link className="button buttonGhost buttonSmall" href="/interview">
+                        {t('allPractice')}
+                      </Link>
+                    </div>
+                    {home.sessions.length ? (
+                      <ul className={styles.list}>
+                        {home.sessions.map((s) => (
+                          <li key={s.id} className={styles.row}>
+                            <Link href={`/interview/${s.id}`} className={styles.rowLink}>
+                              {s.title || t('untitledPractice')}
+                            </Link>
+                            <span className={styles.rowMeta}>
+                              <span className={styles.status} data-status={s.status}>
+                                <span className="dot" aria-hidden="true" />
+                                {STATUSES.includes(s.status) ? tPractice(`status.${s.status}`) : s.status}
+                              </span>
+                              <time dateTime={s.created_at}>{date(s.created_at)}</time>
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
                     ) : (
-                      <li className={styles.empty}>{tPractice('empty')}</li>
+                      <p className={styles.empty}>{tPractice('empty')}</p>
                     )}
-                  </ul>
-                </div>
-              </section>
+                  </section>
 
-              <section id="resume" className="card" aria-labelledby="resumes-heading">
-                <div className="cardInner stack">
-                  <div className={styles.cardHeader}>
-                    <h2 className="cardTitle" id="resumes-heading">
-                      {t('resumesTitle')}
-                    </h2>
-                    <Link className="button buttonGhost" href="/resume">
-                      {t('openResume')}
-                    </Link>
-                  </div>
-                  <ul className={styles.list}>
-                    {(docs ?? []).length ? (
-                      (docs ?? []).map((d) => (
-                        <li key={d.id} className={styles.listRow}>
-                          <span>{d.filename ?? d.id}</span>
-                          <span className={styles.rowMeta}>{format.dateTime(new Date(d.created_at), { dateStyle: 'medium' })}</span>
-                        </li>
-                      ))
+                  <section id="resume" className={styles.listBlock} aria-labelledby="resumes-heading">
+                    <div className={styles.listHead}>
+                      <h2 className="cardTitle" id="resumes-heading">
+                        {t('resumesTitle')}
+                      </h2>
+                      <Link className="button buttonGhost buttonSmall" href="/resume">
+                        {t('openResume')}
+                      </Link>
+                    </div>
+                    {home.resumes.length ? (
+                      <ul className={styles.list}>
+                        {home.resumes.map((d) => (
+                          <li key={d.id} className={styles.row}>
+                            <span className={styles.rowName}>{d.filename ?? d.id}</span>
+                            <span className={styles.rowMeta}>
+                              <time dateTime={d.created_at}>{date(d.created_at)}</time>
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
                     ) : (
-                      <li className={styles.empty}>{t('resumesEmpty')}</li>
+                      <p className={styles.empty}>{t('resumesEmpty')}</p>
                     )}
-                  </ul>
+                  </section>
                 </div>
-              </section>
+
+                <QuickActions />
+              </div>
+
+              <div className={styles.side}>
+                <RecentActivity {...home.activity} />
+                <UsageWidget compact />
+              </div>
             </div>
 
-            <aside className={styles.side}>
-              <UsageWidget />
-              <RecentActivity />
-            </aside>
+            <div className={styles.social}>
+              <BadgesList />
+              <ReferralPanel />
+            </div>
           </div>
-
-          <div className={styles.social}>
-            <BadgesList />
-            <ReferralPanel />
-          </div>
-        </div>
+        ) : null}
       </RequireAuth>
     </AppShell>
   );

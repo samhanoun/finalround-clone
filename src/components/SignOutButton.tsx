@@ -19,14 +19,13 @@ export function SignOutButton({ compact = false }: { compact?: boolean }) {
 
   return (
     <button
-      className={compact ? 'button buttonGhost' : 'button'}
+      className={compact ? 'iconButton' : 'button'}
       type="button"
       onClick={onClick}
       aria-label={t('label')}
       title={compact ? t('short') : undefined}
-      style={compact ? { padding: 0, width: 44 } : undefined}
     >
-      {compact ? <SignOutIcon size={20} /> : t('short')}
+      {compact ? <SignOutIcon size={18} /> : t('short')}
     </button>
   );
 }

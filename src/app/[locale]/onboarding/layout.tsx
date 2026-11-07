@@ -26,9 +26,6 @@ export default async function OnboardingLayout({
     return redirect({ href: '/dashboard', locale });
   }
 
-  return (
-    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
-      {children}
-    </div>
-  );
+  // OnboardingFlow lays out its own full-height page.
+  return children;
 }

@@ -1,48 +1,62 @@
+/* Joining a team: one card, one short explanation, one primary action. */
+
 .standalone {
-  min-height: 100vh;
+  min-height: calc(100vh - var(--titlebar, 0px));
   display: grid;
   place-items: center;
-  padding: 24px 16px;
-  background: var(--midnight);
+  padding: 48px 16px;
+  background: var(--bg);
+  outline: none;
 }
 
 .card {
   width: 100%;
-  max-width: 520px;
+  max-width: 480px;
+}
+
+.body {
+  display: grid;
+  gap: 12px;
+}
+
+.mark {
+  margin-bottom: 8px;
 }
 
 .title {
   margin: 0;
-  font-family: var(--font-title);
   font-size: 24px;
+  font-weight: 500;
   line-height: 1.25;
-  font-weight: 600;
+  letter-spacing: -0.01em;
 }
 
 .text {
   margin: 0;
-  color: var(--mist);
+  font-size: 15px;
   line-height: 1.55;
+  color: var(--text-2);
 }
 
 .text strong {
-  color: var(--paper);
-  font-weight: 600;
+  color: var(--text-1);
+  font-weight: 500;
 }
 
 .actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 8px;
+  margin-top: 12px;
 }
 
-.warning {
-  margin: 0;
-  padding: 10px 12px;
-  border-radius: 10px;
-  border: 1px solid color-mix(in srgb, var(--alert) 40%, transparent);
-  background: color-mix(in srgb, var(--alert) 10%, transparent);
-  color: var(--paper);
-  font-size: 14px;
-  line-height: 1.5;
+.alert {
+  margin: 4px 0 0;
+}
+
+@media (max-width: 639px) {
+  .actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
 }

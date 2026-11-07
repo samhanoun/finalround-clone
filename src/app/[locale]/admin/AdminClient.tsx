@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { useFormatter, useTranslations } from 'next-intl';
+import { SearchIcon } from '@/components/icons';
+import { TableSkeleton } from '@/components/Skeleton';
 import type { AdminRole } from '@/lib/adminAuth';
 import styles from './AdminClient.module.css';
 
@@ -60,22 +62,29 @@ interface Ticket {
 
 const TABS: Tab[] = ['overview', 'users', 'subscriptions', 'fraud', 'tickets'];
 
-const TONE: Record<string, string> = {
-  active: 'badgeLive',
-  resolved: 'badgeLive',
-  open: 'badgeIce',
-  in_progress: 'badgePro',
-  past_due: 'badgePro',
-  medium: 'badgePro',
-  high: 'badgeAlert',
-  urgent: 'badgeAlert',
-  critical: 'badgeAlert',
-  canceled: 'badgeAlert',
+/** Status, priority and severity as quiet text with a dot; colour only where it means something. */
+const TONE: Record<string, 'good' | 'bad' | 'warn' | 'attention'> = {
+  active: 'good',
+  resolved: 'good',
+  trialing: 'good',
+  open: 'attention',
+  waiting_user: 'attention',
+  past_due: 'warn',
+  medium: 'warn',
+  high: 'bad',
+  urgent: 'bad',
+  critical: 'bad',
+  canceled: 'bad',
 };
 
-function Badge({ value }: { value: string }) {
+function Status({ value }: { value: string }) {
   const t = useTranslations('Admin');
-  return <span className={`badge ${TONE[value] ?? ''}`}>{t.has(`values.${value}`) ? t(`values.${value}`) : value.replace(/_/g, ' ')}</span>;
+  return (
+    <span className={styles.status} data-tone={TONE[value] ?? 'none'}>
+      <span className={styles.dot} aria-hidden="true" />
+      {t.has(`values.${value}`) ? t(`values.${value}`) : value.replace(/_/g, ' ')}
+    </span>
+  );
 }
 
 function useDates() {
@@ -189,7 +198,7 @@ export default function AdminClient({ role }: { role: AdminRole }) {
               onClick={() => setActiveTab(tab)}
             >
               {t(`tabs.${tab}`)}
-              {count ? <span className={styles.count} data-tone={tab === 'fraud' ? 'alert' : 'ice'}>{count}</span> : null}
+              {count ? <span className={styles.count}>{formatNumber(count)}</span> : null}
             </button>
           );
         })}
@@ -202,18 +211,34 @@ export default function AdminClient({ role }: { role: AdminRole }) {
       ) : null}
 
       {activeTab === 'users' ? (
-        <input
-          className={`input ${styles.search}`}
-          type="search"
-          placeholder={t('searchPlaceholder')}
-          aria-label={t('searchLabel')}
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-        />
+        <div className={styles.search}>
+          <SearchIcon size={16} className={styles.searchIcon} />
+          <input
+            className="input"
+            type="search"
+            placeholder={t('searchPlaceholder')}
+            aria-label={t('searchLabel')}
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+        </div>
       ) : null}
 
       {loading ? (
-        <p className="help">{t('loading')}</p>
+        <div role="status" aria-label={t('loading')}>
+          {activeTab === 'overview' ? (
+            <div className={styles.stats}>
+              {[0, 1, 2, 3, 4, 5].map((i) => (
+                <div key={i} className={styles.stat}>
+                  <span className={styles.skeletonLine} />
+                  <span className={styles.skeletonFigure} />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <TableSkeleton rows={5} />
+          )}
+        </div>
       ) : activeTab === 'overview' ? (
         stats ? (
           <dl className={styles.stats}>
@@ -229,24 +254,28 @@ export default function AdminClient({ role }: { role: AdminRole }) {
         <Table empty={t('empty.users')} headers={[t('cols.user'), t('cols.joined'), t('cols.subscription'), ...(canManage ? [''] : [])]}>
           {users.map((user) => (
             <tr key={user.id}>
-              <td>
+              <td className={styles.primary}>
                 <span className={styles.personName}>{user.full_name || user.email}</span>
                 {user.full_name ? <span className={styles.personEmail}>{user.email}</span> : null}
               </td>
-              <td className={styles.muted}>{formatDate(user.created_at)}</td>
-              <td>{user.subscription ? <Badge value={user.subscription.status} /> : <span className={styles.muted}>{t('free')}</span>}</td>
+              <td className={styles.muted} data-label={t('cols.joined')}>
+                {formatDate(user.created_at)}
+              </td>
+              <td data-label={t('cols.subscription')}>
+                {user.subscription ? <Status value={user.subscription.status} /> : <span className={styles.muted}>{t('free')}</span>}
+              </td>
               {canManage ? (
                 <td className={styles.actions}>
                   <button
                     type="button"
-                    className="button buttonGhost"
+                    className="button buttonGhost buttonSmall"
                     onClick={() => act('/api/admin/users', 'set_admin', { user_id: user.id, role: 'admin' }, t('confirmAdmin', { email: user.email }))}
                   >
                     {t('makeAdmin')}
                   </button>
                   <button
                     type="button"
-                    className="button buttonDanger"
+                    className={`button buttonGhost buttonSmall ${styles.dangerText}`}
                     onClick={() => act('/api/admin/users', 'suspend_user', { user_id: user.id }, t('confirmSuspend', { email: user.email }))}
                   >
                     {t('suspend')}
@@ -260,24 +289,28 @@ export default function AdminClient({ role }: { role: AdminRole }) {
         <Table empty={t('empty.subscriptions')} headers={[t('cols.user'), t('cols.status'), t('cols.price'), t('cols.renews'), ...(canManage ? [''] : [])]}>
           {subscriptions.map((sub) => (
             <tr key={sub.id}>
-              <td>{sub.email}</td>
-              <td>
-                <Badge value={sub.status} />
+              <td className={styles.primary}>{sub.email}</td>
+              <td data-label={t('cols.status')}>
+                <Status value={sub.status} />
               </td>
-              <td className={styles.mono}>{sub.price_id || '—'}</td>
-              <td className={styles.muted}>{sub.current_period_end ? formatDate(sub.current_period_end) : '—'}</td>
+              <td className={styles.mono} data-label={t('cols.price')}>
+                {sub.price_id || '—'}
+              </td>
+              <td className={styles.muted} data-label={t('cols.renews')}>
+                {sub.current_period_end ? formatDate(sub.current_period_end) : '—'}
+              </td>
               {canManage ? (
                 <td className={styles.actions}>
                   {sub.status === 'active' ? (
                     <button
                       type="button"
-                      className="button buttonDanger"
+                      className={`button buttonGhost buttonSmall ${styles.dangerText}`}
                       onClick={() => act('/api/admin/subscriptions', 'cancel', { subscription_id: sub.id }, t('confirmCancel', { email: sub.email }))}
                     >
                       {t('cancel')}
                     </button>
                   ) : (
-                    <button type="button" className="button" onClick={() => act('/api/admin/subscriptions', 'resume', { subscription_id: sub.id })}>
+                    <button type="button" className="button buttonSmall" onClick={() => act('/api/admin/subscriptions', 'resume', { subscription_id: sub.id })}>
                       {t('resume')}
                     </button>
                   )}
@@ -293,24 +326,28 @@ export default function AdminClient({ role }: { role: AdminRole }) {
         >
           {fraudFlags.map((flag) => (
             <tr key={flag.id}>
-              <td>{flag.user_email}</td>
-              <td className={styles.muted}>{flag.flag_type.replace(/_/g, ' ')}</td>
-              <td>
-                <Badge value={flag.severity} />
+              <td className={styles.primary}>{flag.user_email}</td>
+              <td className={styles.muted} data-label={t('cols.type')}>
+                {flag.flag_type.replace(/_/g, ' ')}
+              </td>
+              <td data-label={t('cols.severity')}>
+                <Status value={flag.severity} />
               </td>
               <td className={styles.description}>{flag.description}</td>
-              <td className={styles.muted}>{formatDate(flag.created_at)}</td>
+              <td className={styles.muted} data-label={t('cols.date')}>
+                {formatDate(flag.created_at)}
+              </td>
               {canManage ? (
                 <td className={styles.actions}>
-                  <button type="button" className="button" onClick={() => act('/api/admin/fraud', 'resolve', { flag_id: flag.id })}>
+                  <button type="button" className="button buttonSmall" onClick={() => act('/api/admin/fraud', 'resolve', { flag_id: flag.id })}>
                     {t('resolve')}
                   </button>
-                  <button type="button" className="button buttonGhost" onClick={() => act('/api/admin/fraud', 'escalate', { flag_id: flag.id })}>
+                  <button type="button" className="button buttonGhost buttonSmall" onClick={() => act('/api/admin/fraud', 'escalate', { flag_id: flag.id })}>
                     {t('escalate')}
                   </button>
                   <button
                     type="button"
-                    className="button buttonDanger"
+                    className={`button buttonGhost buttonSmall ${styles.dangerText}`}
                     onClick={() =>
                       act(
                         '/api/admin/fraud',
@@ -329,48 +366,52 @@ export default function AdminClient({ role }: { role: AdminRole }) {
         </Table>
       ) : (
         <>
-        <Table
-          empty={t('empty.tickets')}
-          headers={[t('cols.from'), t('cols.subject'), t('cols.category'), t('cols.priority'), t('cols.status'), t('cols.date'), '']}
-        >
-          {tickets.map((ticket) => (
-            <tr key={ticket.id}>
-              <td>
-                <span className={styles.personName}>{ticket.full_name || ticket.email}</span>
-                {ticket.full_name ? <span className={styles.personEmail}>{ticket.email}</span> : null}
-              </td>
-              <td className={styles.description}>{ticket.subject}</td>
-              <td className={styles.muted}>{ticket.category}</td>
-              <td>
-                <Badge value={ticket.priority} />
-              </td>
-              <td>
-                <Badge value={ticket.status} />
-              </td>
-              <td className={styles.muted}>{formatDate(ticket.created_at)}</td>
-              <td className={styles.actions}>
-                <button type="button" className="button buttonPrimary" onClick={() => setOpenTicket(ticket)}>
-                  {t('open')}
-                </button>
-                <button
-                  type="button"
-                  className="button buttonGhost"
-                  onClick={() => act('/api/admin/tickets', 'update_status', { ticket_id: ticket.id, data: { status: 'in_progress' } })}
-                >
-                  {t('start')}
-                </button>
-                <button
-                  type="button"
-                  className="button"
-                  onClick={() => act('/api/admin/tickets', 'update_status', { ticket_id: ticket.id, data: { status: 'resolved' } })}
-                >
-                  {t('resolve')}
-                </button>
-              </td>
-            </tr>
-          ))}
-        </Table>
-        {openTicket ? <TicketThread ticket={openTicket} onClose={() => setOpenTicket(null)} /> : null}
+          <Table
+            empty={t('empty.tickets')}
+            headers={[t('cols.from'), t('cols.subject'), t('cols.category'), t('cols.priority'), t('cols.status'), t('cols.date'), '']}
+          >
+            {tickets.map((ticket) => (
+              <tr key={ticket.id} aria-current={openTicket?.id === ticket.id ? 'true' : undefined}>
+                <td className={styles.primary}>
+                  <span className={styles.personName}>{ticket.full_name || ticket.email}</span>
+                  {ticket.full_name ? <span className={styles.personEmail}>{ticket.email}</span> : null}
+                </td>
+                <td className={styles.description}>{ticket.subject}</td>
+                <td className={styles.muted} data-label={t('cols.category')}>
+                  {ticket.category}
+                </td>
+                <td data-label={t('cols.priority')}>
+                  <Status value={ticket.priority} />
+                </td>
+                <td data-label={t('cols.status')}>
+                  <Status value={ticket.status} />
+                </td>
+                <td className={styles.muted} data-label={t('cols.date')}>
+                  {formatDate(ticket.created_at)}
+                </td>
+                <td className={styles.actions}>
+                  <button type="button" className="button buttonSmall" onClick={() => setOpenTicket(ticket)}>
+                    {t('open')}
+                  </button>
+                  <button
+                    type="button"
+                    className="button buttonGhost buttonSmall"
+                    onClick={() => act('/api/admin/tickets', 'update_status', { ticket_id: ticket.id, data: { status: 'in_progress' } })}
+                  >
+                    {t('start')}
+                  </button>
+                  <button
+                    type="button"
+                    className="button buttonGhost buttonSmall"
+                    onClick={() => act('/api/admin/tickets', 'update_status', { ticket_id: ticket.id, data: { status: 'resolved' } })}
+                  >
+                    {t('resolve')}
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </Table>
+          {openTicket ? <TicketThread key={openTicket.id} ticket={openTicket} onClose={() => setOpenTicket(null)} /> : null}
         </>
       )}
     </div>
@@ -384,7 +425,7 @@ function TicketThread({ ticket, onClose }: { ticket: Ticket; onClose: () => void
   const [messages, setMessages] = useState<Array<{ id: string; is_from_admin: boolean; content: string; created_at: string }> | null>(null);
   const [reply, setReply] = useState('');
   const [sending, setSending] = useState(false);
-  const [note, setNote] = useState<string | null>(null);
+  const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -410,7 +451,7 @@ function TicketThread({ ticket, onClose }: { ticket: Ticket; onClose: () => void
     }).catch(() => null);
     setSending(false);
     if (!res?.ok) {
-      setNote(t('replyFailed'));
+      setNote({ ok: false, text: t('replyFailed') });
       return;
     }
     setMessages((current) => [
@@ -418,49 +459,58 @@ function TicketThread({ ticket, onClose }: { ticket: Ticket; onClose: () => void
       { id: `local-${Date.now()}`, is_from_admin: true, content: reply.trim(), created_at: new Date().toISOString() },
     ]);
     setReply('');
-    setNote(t('replySent'));
+    setNote({ ok: true, text: t('replySent') });
   }
 
   return (
-    <section className={`card ${styles.thread}`} aria-label={t('ticketLabel', { subject: ticket.subject })}>
-      <div className="cardInner stack">
-        <div className={styles.threadHead}>
-          <h3 className="cardTitle">{ticket.subject}</h3>
-          <button type="button" className="button buttonGhost" onClick={onClose}>
-            {t('close')}
+    <section className={styles.thread} aria-label={t('ticketLabel', { subject: ticket.subject })}>
+      <div className={styles.threadHead}>
+        <div className={styles.threadTitle}>
+          <h3>{ticket.subject}</h3>
+          <p className={styles.muted}>
+            {ticket.full_name || ticket.email} · {ticket.category} · {formatDate(ticket.created_at)}
+          </p>
+        </div>
+        <button type="button" className="button buttonGhost buttonSmall" onClick={onClose}>
+          {t('close')}
+        </button>
+      </div>
+
+      <ol className={styles.messages}>
+        <li className={styles.message} data-from="user">
+          <span className={styles.messageMeta}>
+            {t('user')} · {formatDate(ticket.created_at)}
+          </span>
+          <p className={styles.bubble}>{ticket.description}</p>
+        </li>
+        {messages === null ? (
+          <li className={styles.messageMeta}>{t('loadingThread')}</li>
+        ) : (
+          messages.map((message) => (
+            <li key={message.id} className={styles.message} data-from={message.is_from_admin ? 'support' : 'user'}>
+              <span className={styles.messageMeta}>
+                {message.is_from_admin ? t('support') : t('user')} · {formatDate(message.created_at)}
+              </span>
+              <p className={styles.bubble}>{message.content}</p>
+            </li>
+          ))
+        )}
+      </ol>
+
+      <form className={styles.composer} onSubmit={send}>
+        <label className="label">
+          {t('reply')}
+          <textarea className="textarea" rows={4} value={reply} onChange={(e) => setReply(e.target.value)} maxLength={5000} />
+        </label>
+        <div className={styles.composerActions}>
+          <span className={note && !note.ok ? styles.noteError : styles.note} role={note && !note.ok ? 'alert' : 'status'}>
+            {note?.text}
+          </span>
+          <button type="submit" className="button buttonPrimary" disabled={sending || !reply.trim()}>
+            {sending ? t('sending') : t('sendReply')}
           </button>
         </div>
-        <p className={styles.muted}>
-          {ticket.full_name || ticket.email} · {ticket.category} · {formatDate(ticket.created_at)}
-        </p>
-        <p className={styles.threadBody}>{ticket.description}</p>
-        {messages === null ? (
-          <p className="help">{t('loadingThread')}</p>
-        ) : (
-          <ol className={styles.threadList}>
-            {messages.map((message) => (
-              <li key={message.id} data-from={message.is_from_admin ? 'support' : 'user'}>
-                <span className={styles.muted}>
-                  {message.is_from_admin ? t('support') : t('user')} · {formatDate(message.created_at)}
-                </span>
-                <p>{message.content}</p>
-              </li>
-            ))}
-          </ol>
-        )}
-        <form className="stack" onSubmit={send}>
-          <label className="label">
-            {t('reply')}
-            <textarea className="textarea" rows={4} value={reply} onChange={(e) => setReply(e.target.value)} maxLength={5000} />
-          </label>
-          <div className={styles.actions}>
-            {note ? <span className="help">{note}</span> : null}
-            <button type="submit" className="button buttonPrimary" disabled={sending || !reply.trim()}>
-              {sending ? t('sending') : t('sendReply')}
-            </button>
-          </div>
-        </form>
-      </div>
+      </form>
     </section>
   );
 }
@@ -476,15 +526,15 @@ function Stat({ label, value }: { label: string; value: string }) {
 
 function Table(props: { headers: string[]; empty: string; children: React.ReactNode[] }) {
   const t = useTranslations('Admin');
-  if (props.children.length === 0) return <p className={`card ${styles.note}`}>{props.empty}</p>;
+  if (props.children.length === 0) return <p className="emptyState">{props.empty}</p>;
   return (
-    <div className={`card ${styles.tableCard}`}>
+    <div className={styles.tableCard}>
       <table className={styles.table}>
         <thead>
           <tr>
             {props.headers.map((header, i) => (
-              <th key={i} scope="col" aria-label={header ? undefined : t('cols.actions')}>
-                {header}
+              <th key={i} scope="col">
+                {header || <span className="srOnly">{t('cols.actions')}</span>}
               </th>
             ))}
           </tr>

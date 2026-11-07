@@ -4,8 +4,8 @@
   "description": "Live interview copilot: answers on screen while the question is still in the air.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0b1324",
-  "theme_color": "#0b1324",
+  "background_color": "#141415",
+  "theme_color": "#141415",
   "orientation": "any",
   "scope": "/",
   "icons": [

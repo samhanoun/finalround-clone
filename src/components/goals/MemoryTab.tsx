@@ -3,6 +3,7 @@
 import { useId, useState } from 'react';
 import { useFormatter, useTranslations } from 'next-intl';
 import { createClient } from '@/lib/supabase/browser';
+import { Switch } from '@/components/practice/Controls';
 import type { Memory } from '@/lib/goalTypes';
 import type { WorkspaceData } from './GoalsWorkspace';
 import styles from './Goals.module.css';
@@ -16,7 +17,7 @@ export function MemoryTab({ data, reload }: { data: WorkspaceData; reload: () =>
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
   const [enabled, setEnabled] = useState(data.memoryEnabled);
-  const ids = { content: useId(), goal: useId() };
+  const ids = { content: useId(), goal: useId(), heading: useId(), list: useId() };
 
   async function add(event: React.FormEvent) {
     event.preventDefault();
@@ -60,94 +61,95 @@ export function MemoryTab({ data, reload }: { data: WorkspaceData; reload: () =>
     await reload();
   }
 
-  const goalName = (id: string | null) => (id ? data.goals.find((goal) => goal.id === id)?.name ?? null : null);
+  const goalName = (id: string | null) => (id ? (data.goals.find((goal) => goal.id === id)?.name ?? null) : null);
 
   return (
     <div className={styles.split}>
-      <section className="card">
-        <div className="cardInner stack">
-          <div>
-            <h2 className="cardTitle">{t('memoryTitle')}</h2>
-            <p className="help">{t('memoryHelp')}</p>
-          </div>
-          <label className="checkbox-label" style={{ alignItems: 'flex-start' }}>
-            <input type="checkbox" checked={enabled} onChange={(e) => void toggleLearning(e.target.checked)} />
-            <span>
-              {t('learnFromSessions')}
-              <span className="help" style={{ display: 'block' }}>
-                {t('learnFromSessionsHelp')}
-              </span>
-            </span>
-          </label>
-          <form className="stack" onSubmit={add}>
-            <label className="label" htmlFor={ids.content}>
-              {t('addMemory')}
-              <textarea
-                id={ids.content}
-                className="textarea"
-                rows={3}
-                value={content}
-                onChange={(e) => setContent(e.target.value)}
-                maxLength={600}
-                placeholder={t('memoryPlaceholder')}
-                required
-              />
-            </label>
-            <label className="label" htmlFor={ids.goal}>
-              {t('memoryGoal')}
-              <select id={ids.goal} className="select" value={goalId} onChange={(e) => setGoalId(e.target.value)}>
-                <option value="">{t('allGoals')}</option>
-                {data.goals.map((goal) => (
-                  <option key={goal.id} value={goal.id}>
-                    {goal.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            {failed ? (
-              <p className="help" role="alert" style={{ margin: 0 }}>
-                {t('saveFailed')}
-              </p>
-            ) : null}
-            <button type="submit" className="button buttonPrimary" disabled={busy || !content.trim()}>
-              {busy ? t('saving') : t('remember')}
+      <section className={styles.listPane} aria-labelledby={ids.list}>
+        <div className={styles.paneHead}>
+          <h2 className={styles.paneTitle} id={ids.list}>
+            {t('whatIKnow')}
+            <span className={styles.paneCount}>{data.memories.length}</span>
+          </h2>
+          {data.memories.length ? (
+            <button type="button" className="button buttonGhost buttonSmall" onClick={() => void forgetAll()}>
+              {t('forgetAll')}
             </button>
-          </form>
+          ) : null}
         </div>
-      </section>
-
-      <section className="card">
-        <div className="cardInner stack">
-          <div className={styles.toolbar}>
-            <h2 className="cardTitle">{t('whatIKnow')}</h2>
-            {data.memories.length ? (
-              <button type="button" className="button buttonGhost" onClick={() => void forgetAll()}>
-                {t('forgetAll')}
-              </button>
-            ) : null}
-          </div>
-          {data.memories.length === 0 ? (
-            <p className="help">{t('noMemories')}</p>
-          ) : (
-            <ul className={styles.list}>
-              {data.memories.map((memory) => (
-                <li key={memory.id} className={styles.listItem}>
-                  <div>
-                    <p className={styles.memory}>{memory.content}</p>
-                    <span className={styles.meta}>
-                      {memory.source === 'session' ? t('learnedInSession') : t('addedByYou')} ·{' '}
-                      {goalName(memory.goal_id) ?? t('allGoals')} · {format.dateTime(new Date(memory.created_at), { day: 'numeric', month: 'short' })}
-                    </span>
-                  </div>
-                  <button type="button" className="button buttonGhost" onClick={() => void remove(memory)}>
+        {data.memories.length === 0 ? (
+          <p className={`emptyState ${styles.empty}`}>{t('noMemories')}</p>
+        ) : (
+          <ul className={styles.rows}>
+            {data.memories.map((memory) => (
+              <li key={memory.id} className={styles.row}>
+                <div className={styles.rowBody}>
+                  <p className={styles.memory}>{memory.content}</p>
+                  <span className={styles.rowMeta}>
+                    <span>{memory.source === 'session' ? t('learnedInSession') : t('addedByYou')}</span>
+                    <span>{goalName(memory.goal_id) ?? t('allGoals')}</span>
+                    <span>{format.dateTime(new Date(memory.created_at), { dateStyle: 'medium' })}</span>
+                  </span>
+                </div>
+                <div className={styles.rowActions}>
+                  <button type="button" className="button buttonGhost buttonSmall" onClick={() => void remove(memory)}>
                     {t('forget')}
                   </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
+
+      <aside className={styles.sidePanel} aria-labelledby={ids.heading}>
+        <div className={styles.panelHead}>
+          <h2 className={styles.panelTitle} id={ids.heading}>
+            {t('memoryTitle')}
+          </h2>
+          <p className={styles.help}>{t('memoryHelp')}</p>
+        </div>
+        <Switch
+          label={t('learnFromSessions')}
+          description={t('learnFromSessionsHelp')}
+          checked={enabled}
+          onChange={(next) => void toggleLearning(next)}
+        />
+        <form className={styles.panelForm} onSubmit={add}>
+          <label className="label" htmlFor={ids.content}>
+            {t('addMemory')}
+            <textarea
+              id={ids.content}
+              className="textarea"
+              rows={3}
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+              maxLength={600}
+              placeholder={t('memoryPlaceholder')}
+              required
+            />
+          </label>
+          <label className="label" htmlFor={ids.goal}>
+            {t('memoryGoal')}
+            <select id={ids.goal} className="select" value={goalId} onChange={(e) => setGoalId(e.target.value)}>
+              <option value="">{t('allGoals')}</option>
+              {data.goals.map((goal) => (
+                <option key={goal.id} value={goal.id}>
+                  {goal.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          {failed ? (
+            <p className={styles.formError} role="alert">
+              {t('saveFailed')}
+            </p>
+          ) : null}
+          <button type="submit" className="button buttonPrimary" disabled={busy || !content.trim()}>
+            {busy ? t('saving') : t('remember')}
+          </button>
+        </form>
+      </aside>
     </div>
   );
 }

@@ -19,7 +19,11 @@ export default async function JoinTeamPage({ searchParams }: { searchParams: Pro
   );
 
   if (!user) {
-    return <main className={styles.standalone}>{content}</main>;
+    return (
+      <main id="main-content" className={styles.standalone} tabIndex={-1}>
+        {content}
+      </main>
+    );
   }
   return <AppShell title={tPage('joinTeam')}>{content}</AppShell>;
 }

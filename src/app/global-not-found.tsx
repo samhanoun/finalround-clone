@@ -1,7 +1,9 @@
 import type { Metadata } from 'next';
-import { Geist, Unbounded } from 'next/font/google';
+import { Geist, Geist_Mono, Unbounded } from 'next/font/google';
 import { getLocale, getTranslations } from 'next-intl/server';
+import { ApexMark } from '@/components/ApexMark';
 import '@/app/globals.css';
+import styles from './notFound.module.css';
 
 /**
  * 404 for addresses that match no page (/es/no-such-page), in the address's
@@ -14,6 +16,7 @@ import '@/app/globals.css';
  */
 
 const geistSans = Geist({ variable: '--font-geist-sans', subsets: ['latin'] });
+const geistMono = Geist_Mono({ variable: '--font-geist-mono', subsets: ['latin'] });
 const unbounded = Unbounded({ variable: '--font-display', subsets: ['latin'] });
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -28,21 +31,18 @@ export default async function GlobalNotFound() {
     <html lang={locale}>
       <head>
         <meta name="color-scheme" content="dark" />
-        <meta name="theme-color" content="#0b1324" />
+        <meta name="theme-color" content="#141415" />
       </head>
-      <body className={`${geistSans.variable} ${unbounded.variable}`}>
-        <main id="main-content" style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', padding: '48px 16px' }}>
-          <div className="stack" style={{ maxWidth: 440, textAlign: 'center', gap: 12 }}>
-            <p className="help" style={{ margin: 0 }}>404</p>
-            <h1 className="pageTitle" style={{ margin: 0 }}>
-              {t('title')}
-            </h1>
-            <p style={{ margin: 0 }}>{t('body')}</p>
-            <div>
-              <a className="button buttonPrimary" href={`/${locale}/dashboard`}>
-                {t('home')}
-              </a>
-            </div>
+      <body className={`${geistSans.variable} ${geistMono.variable} ${unbounded.variable}`}>
+        <main id="main-content" className={styles.page}>
+          <div className={styles.box}>
+            <ApexMark size={32} />
+            <p className={styles.code}>404</p>
+            <h1 className="pageTitle">{t('title')}</h1>
+            <p className={styles.body}>{t('body')}</p>
+            <a className={`button buttonPrimary ${styles.action}`} href={`/${locale}/dashboard`}>
+              {t('home')}
+            </a>
           </div>
         </main>
       </body>

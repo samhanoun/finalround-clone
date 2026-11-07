@@ -1,12 +1,13 @@
 'use client';
 
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
-import { Link } from '@/i18n/routing';
-import { useRouter } from 'next/navigation';
+import { Link, useRouter } from '@/i18n/routing';
 import { useLocale, useTranslations } from 'next-intl';
 import { NewPracticeButton } from '@/components/NewPracticeButton';
+import { ChevronDownIcon, MicIcon, StopIcon, TargetIcon } from '@/components/icons';
 import type { AnswerFeedback, StoredPracticeSetup } from '@/lib/practice/practice';
 import { InterviewerAvatar } from './InterviewerAvatar';
+import { Segmented, Switch } from './Controls';
 import { useInterviewerVoice } from './useInterviewerVoice';
 import styles from './PracticeInterview.module.css';
 
@@ -65,15 +66,28 @@ function label(t: T, group: string, value: string) {
   return t.has(`${group}.${value}`) ? t(`${group}.${value}`) : value;
 }
 
-function scoreTone(score10: number) {
-  return score10 >= 8 ? 'good' : score10 >= 5 ? 'fair' : 'low';
-}
-
 function wordCount(text: string) {
   return text.trim() ? text.trim().split(/\s+/).length : 0;
 }
 
 const isFollowUp = (question: PracticeQuestion) => Boolean(question.rubric?.follow_up_of);
+
+/**
+ * Main questions are numbered 1…n, as many as the setup asked for; a follow-up
+ * carries the number of the question it follows.
+ */
+function numbering(questions: PracticeQuestion[]) {
+  const numbers: number[] = [];
+  let n = 0;
+  for (const question of questions) {
+    if (!isFollowUp(question)) n += 1;
+    numbers.push(Math.max(n, 1));
+  }
+  return { numbers, total: Math.max(n, 1) };
+}
+
+/** The report lists next steps in priority order; the model's "P1:" markers repeat that order. */
+const withoutPriority = (step: string) => step.replace(/^P\d+\s*[:.)-]\s*/i, '');
 
 /** Browser speech recognition, where the browser has it (Chrome, Edge, Safari). */
 type Recognition = {
@@ -91,6 +105,25 @@ function speechRecognition(): (new () => Recognition) | null {
   if (typeof window === 'undefined') return null;
   const w = window as unknown as { SpeechRecognition?: new () => Recognition; webkitSpeechRecognition?: new () => Recognition };
   return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
+}
+
+/** Line icons for the interviewer's voice controls, drawn like the shared set. */
+function SpeakerIcon({ muted }: { muted: boolean }) {
+  return (
+    <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+      <path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" />
+      {muted ? <path d="M16 9.5l5 5M21 9.5l-5 5" /> : <path d="M16 9a4 4 0 0 1 0 6M18.5 6.5a7.5 7.5 0 0 1 0 11" />}
+    </svg>
+  );
+}
+
+function ReplayIcon() {
+  return (
+    <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+      <path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3" />
+      <path d="M4.5 4.5v4h4" />
+    </svg>
+  );
 }
 
 export function PracticeInterview(props: {
@@ -139,33 +172,6 @@ export function PracticeInterview(props: {
   );
 }
 
-function Segmented<V extends string | number>(props: {
-  label: string;
-  options: ReadonlyArray<{ value: V; label: string }>;
-  value: V;
-  onChange: (value: V) => void;
-}) {
-  return (
-    <div className={styles.field}>
-      <span className="label">{props.label}</span>
-      <div className={styles.segmented} role="radiogroup" aria-label={props.label}>
-        {props.options.map((option) => (
-          <button
-            key={String(option.value)}
-            type="button"
-            role="radio"
-            aria-checked={option.value === props.value}
-            className={styles.segment}
-            onClick={() => props.onChange(option.value)}
-          >
-            {option.label}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 function SetupForm(props: {
   sessionId: string;
   resumes: ResumeOption[];
@@ -187,7 +193,7 @@ function SetupForm(props: {
   const [bank, setBank] = useState<{ company: string; count: number } | null>(null);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const ids = { role: useId(), company: useId(), resume: useId(), job: useId(), error: useId() };
+  const ids = { role: useId(), company: useId(), resume: useId(), resumeHelp: useId(), job: useId(), error: useId() };
 
   // How many questions the company's bank has, once the name has settled.
   const companyName = company.trim();
@@ -244,16 +250,19 @@ function SetupForm(props: {
   }
 
   return (
-    <form className={`card ${styles.setup}`} onSubmit={start} aria-describedby={error ? ids.error : undefined}>
-      <div className="cardInner stack">
-        <div>
-          <h2 className="cardTitle">{t('setup.title')}</h2>
-          <p className="cardDesc">
-            {t.rich('setup.desc', { bank: (chunks) => <Link href="/interview/bank">{chunks}</Link> })}
+    <form className={styles.setup} onSubmit={start} aria-describedby={error ? ids.error : undefined}>
+      <div className={styles.setupHead}>
+        <h2 className={styles.setupTitle}>{t('setup.title')}</h2>
+        <p className={styles.setupDesc}>{t.rich('setup.desc', { bank: (chunks) => <Link href="/interview/bank">{chunks}</Link> })}</p>
+        {props.prefill?.goalName ? (
+          <p className={styles.goalNote}>
+            <TargetIcon size={16} />
+            <span>{t('setup.fromGoal', { name: props.prefill.goalName })}</span>
           </p>
-          {props.prefill?.goalName ? <p className="help">{t('setup.fromGoal', { name: props.prefill.goalName })}</p> : null}
-        </div>
+        ) : null}
+      </div>
 
+      <div className={styles.setupGroup}>
         <div className={styles.twoCol}>
           <label className="label" htmlFor={ids.role}>
             {t('setup.role')}
@@ -265,6 +274,7 @@ function SetupForm(props: {
               placeholder={t('setup.rolePlaceholder')}
               required
               maxLength={120}
+              autoComplete="organization-title"
             />
           </label>
           <label className="label" htmlFor={ids.company}>
@@ -276,17 +286,18 @@ function SetupForm(props: {
               onChange={(e) => setCompany(e.target.value)}
               placeholder={t('setup.companyPlaceholder')}
               maxLength={120}
+              autoComplete="organization"
             />
           </label>
         </div>
 
         {bankCount > 0 ? (
-          <label className={styles.check}>
-            <input type="checkbox" checked={useBank} onChange={(e) => setUseBank(e.target.checked)} />
-            <span>
-              <strong>{t('setup.fromBank', { company: companyName, count: bankCount })}</strong> {t('setup.fromBankHelp')}
-            </span>
-          </label>
+          <Switch
+            label={t('setup.fromBank', { company: companyName })}
+            description={t('setup.fromBankHelp', { count: bankCount })}
+            checked={useBank}
+            onChange={setUseBank}
+          />
         ) : null}
 
         <Segmented
@@ -310,16 +321,19 @@ function SetupForm(props: {
           />
         </div>
 
-        <label className={styles.check}>
-          <input type="checkbox" checked={followUps} onChange={(e) => setFollowUps(e.target.checked)} />
-          <span>
-            <strong>{t('setup.followUps')}</strong> {t('setup.followUpsHelp')}
-          </span>
-        </label>
+        <Switch label={t('setup.followUps')} description={t('setup.followUpsHelp')} checked={followUps} onChange={setFollowUps} />
+      </div>
 
+      <div className={styles.setupGroup}>
         <label className="label" htmlFor={ids.resume}>
           {t('setup.resume')}
-          <select id={ids.resume} className="select" value={resumeId} onChange={(e) => setResumeId(e.target.value)}>
+          <select
+            id={ids.resume}
+            className="select"
+            value={resumeId}
+            onChange={(e) => setResumeId(e.target.value)}
+            aria-describedby={ids.resumeHelp}
+          >
             <option value="">{t('setup.none')}</option>
             {props.resumes.map((resume) => (
               <option key={resume.id} value={resume.id}>
@@ -327,7 +341,9 @@ function SetupForm(props: {
               </option>
             ))}
           </select>
-          <span className="help">{t('setup.resumeHelp')}</span>
+          <span id={ids.resumeHelp} className="help">
+            {t('setup.resumeHelp')}
+          </span>
         </label>
 
         <label className="label" htmlFor={ids.job}>
@@ -342,18 +358,21 @@ function SetupForm(props: {
             maxLength={20_000}
           />
         </label>
+      </div>
 
-        {error ? (
-          <p id={ids.error} className={styles.error} role="alert">
-            {error}
-          </p>
-        ) : null}
+      {error ? (
+        <p id={ids.error} className={styles.error} role="alert">
+          {error}
+        </p>
+      ) : null}
 
-        <div className={styles.actions}>
-          <button type="submit" className="button buttonPrimary" disabled={starting || !role.trim()}>
-            {starting ? t('setup.starting') : t('setup.start')}
-          </button>
-        </div>
+      <div className={styles.startBar}>
+        <p className={styles.startSummary}>
+          {t('setup.summary', { count, type: t(`types.${type}`), difficulty: t(`difficulties.${difficulty}`) })}
+        </p>
+        <button type="submit" className="button buttonPrimary" disabled={starting || !role.trim()}>
+          {starting ? t('setup.starting') : t('setup.start')}
+        </button>
       </div>
     </form>
   );
@@ -370,6 +389,7 @@ function InterviewView(props: {
   const locale = useLocale();
   const { questions } = props;
   const router = useRouter();
+  const { numbers, total } = useMemo(() => numbering(questions), [questions]);
   // The first question still to answer; a follow-up that was skipped (a later answer exists) doesn't count.
   const firstOpen = questions.findIndex(
     (q, i) => !q.rubric?.feedback && !(isFollowUp(q) && questions.slice(i + 1).some((later) => later.rubric?.feedback)),
@@ -381,6 +401,8 @@ function InterviewView(props: {
   const nextIsFollowUp = next?.rubric?.follow_up_of === question.id;
   // Follow-ups are optional: the interview is done once every main question has feedback.
   const allAnswered = questions.every((q) => q.rubric?.feedback || isFollowUp(q));
+  // A follow-up shows the exchange it digs into above it.
+  const parent = isFollowUp(question) ? (questions.find((q) => q.id === question.rubric?.follow_up_of) ?? null) : null;
 
   const [draft, setDraft] = useState(question.response_text ?? '');
   const [editing, setEditing] = useState(!feedback);
@@ -511,307 +533,422 @@ function InterviewView(props: {
   }
 
   const words = wordCount(draft);
+  const clock = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
   const avatarState = voice.speaking ? 'speaking' : listening ? 'listening' : 'idle';
-  const finishButton = (
-    <button type="button" className="button buttonPrimary" onClick={finish} disabled={finishing || !allAnswered}>
-      {finishing ? t('interview.finishing') : t('interview.finish')}
+  // One primary at a time: the follow-up or the next question, unless the report is the next step.
+  const nextPrimary = Boolean(next) && !(allAnswered && !nextIsFollowUp);
+  const nextButton = next ? (
+    <button type="button" className={nextPrimary ? 'button buttonPrimary' : 'button'} onClick={() => goTo(index + 1)}>
+      {nextIsFollowUp ? t('interview.answerFollowUp') : t('interview.next')}
     </button>
-  );
+  ) : null;
+  const finishButton =
+    !next || allAnswered ? (
+      <button type="button" className={nextPrimary ? 'button' : 'button buttonPrimary'} onClick={finish} disabled={finishing || !allAnswered}>
+        {finishing ? t('interview.finishing') : t('interview.finish')}
+      </button>
+    ) : null;
 
   return (
     <div className={styles.interview}>
       <nav className={styles.progress} aria-label={t('interview.questions')}>
-        <span className={styles.progressLabel}>{t('interview.progress', { current: index + 1, total: questions.length })}</span>
+        <p className={styles.progressLabel}>{t('interview.progress', { current: numbers[index], total })}</p>
         <ol className={styles.steps}>
-          {questions.map((q, i) => (
-            <li key={q.id}>
-              <button
-                type="button"
-                className={styles.step}
-                data-state={i === index ? 'current' : q.rubric?.feedback ? 'done' : 'open'}
-                data-kind={isFollowUp(q) ? 'follow-up' : undefined}
-                aria-current={i === index ? 'step' : undefined}
-                aria-label={t(isFollowUp(q) ? 'interview.stepFollowUp' : 'interview.step', {
-                  n: i + 1,
-                  answered: q.rubric?.feedback ? 'yes' : 'no',
-                })}
-                disabled={!q.rubric?.feedback && i !== firstOpen && i !== index}
-                onClick={() => goTo(i)}
-              />
-            </li>
-          ))}
+          {questions.map((q, i) => {
+            const done = q.rubric?.feedback;
+            const followUp = isFollowUp(q);
+            return (
+              <li key={q.id} className={styles.stepItem} data-kind={followUp ? 'follow-up' : 'main'}>
+                <button
+                  type="button"
+                  className={styles.step}
+                  data-state={i === index ? 'current' : done ? 'done' : 'open'}
+                  aria-current={i === index ? 'step' : undefined}
+                  aria-label={t(followUp ? 'interview.stepFollowUp' : 'interview.step', {
+                    n: numbers[i],
+                    answered: done ? 'yes' : 'no',
+                  })}
+                  disabled={!done && i !== firstOpen && i !== index}
+                  onClick={() => goTo(i)}
+                >
+                  <span className={styles.stepName}>{followUp ? t('interview.followUp') : t('interview.railQuestion', { n: numbers[i] })}</span>
+                  {done ? <span className={styles.stepScore}>{t('interview.stepScore', { score: done.score })}</span> : null}
+                </button>
+              </li>
+            );
+          })}
         </ol>
       </nav>
 
-      <section className={styles.questionCard} aria-label={t('interview.question')}>
-        <div className={styles.questionRow}>
-          <InterviewerAvatar state={avatarState} label={t(`interview.avatar.${avatarState}`)} />
-          <div className={styles.questionBody}>
-            <div className={styles.questionMeta}>
-              <span className={styles.who}>{t('interview.interviewer')}</span>
-              {isFollowUp(question) ? <span className="badge badgePro">{t('interview.followUp')}</span> : null}
-              <span className="badge">{label(t, 'questionTypes', question.question_type)}</span>
-              <span className="badge">{label(t, 'difficulties', question.difficulty)}</span>
+      <div className={styles.main}>
+        <div className={styles.thread}>
+          {parent ? (
+            <div className={styles.context}>
+              <div className={`${styles.turn} ${styles.them}`}>
+                <div className={styles.gutter}>
+                  <span className={styles.mark} aria-hidden="true" />
+                </div>
+                <div className={styles.body}>
+                  <p className={styles.contextSpeaker}>{t('interview.interviewer')}</p>
+                  <p className={styles.contextText}>{parent.question_text}</p>
+                </div>
+              </div>
+              {parent.response_text ? (
+                <div className={`${styles.turn} ${styles.you}`}>
+                  <div className={styles.gutter}>
+                    <span className={styles.mark} aria-hidden="true" />
+                  </div>
+                  <div className={styles.body}>
+                    <p className={styles.contextSpeaker}>{t('interview.yourAnswer')}</p>
+                    <p className={styles.contextText}>{parent.response_text}</p>
+                  </div>
+                </div>
+              ) : null}
             </div>
-            <p className={styles.questionText}>{question.question_text}</p>
-            {voice.supported ? (
-              <div className={styles.voiceControls}>
+          ) : null}
+
+          <section className={`${styles.turn} ${styles.them} ${styles.asking}`} aria-label={t('interview.question')}>
+            <div className={styles.gutter}>
+              <InterviewerAvatar state={avatarState} label={t(`interview.avatar.${avatarState}`)} />
+            </div>
+            <div className={styles.body}>
+              <div className={styles.speaker}>
+                <span className={styles.speakerName}>{t('interview.interviewer')}</span>
+                {isFollowUp(question) ? <span className={styles.speakerTag}>{t('interview.followUp')}</span> : null}
+                <span className={styles.questionMeta}>
+                  <span>{label(t, 'questionTypes', question.question_type)}</span>
+                  <span>{label(t, 'difficulties', question.difficulty)}</span>
+                </span>
+                {voice.supported ? (
+                  <span className={styles.voiceControls}>
+                    <button
+                      type="button"
+                      className={`button buttonGhost buttonSmall ${styles.voiceButton}`}
+                      onClick={() => (voice.speaking ? stopVoice() : speak(question.question_text))}
+                      disabled={voice.muted}
+                      aria-label={voice.speaking ? t('interview.stopSpeaking') : t('interview.repeat')}
+                    >
+                      {voice.speaking ? <StopIcon size={16} /> : <ReplayIcon />}
+                      <span className={styles.voiceText}>{voice.speaking ? t('interview.stopSpeaking') : t('interview.repeat')}</span>
+                    </button>
+                    <button
+                      type="button"
+                      className={`button buttonGhost buttonSmall ${styles.voiceButton}`}
+                      aria-pressed={voice.muted}
+                      onClick={() => voice.setMuted(!voice.muted)}
+                      aria-label={voice.muted ? t('interview.unmute') : t('interview.mute')}
+                    >
+                      <SpeakerIcon muted={voice.muted} />
+                      <span className={styles.voiceText}>{voice.muted ? t('interview.unmute') : t('interview.mute')}</span>
+                    </button>
+                  </span>
+                ) : null}
+              </div>
+              <p className={styles.questionText}>{question.question_text}</p>
+            </div>
+          </section>
+
+          {editing ? (
+            <div className={`${styles.turn} ${styles.you}`}>
+              <div className={styles.gutter}>
+                <span className={styles.mark} aria-hidden="true" />
+              </div>
+              <div className={styles.body}>
+                <div className={styles.answerHead}>
+                  <label className={styles.youLabel} htmlFor={answerId}>
+                    {t('interview.yourAnswer')}
+                  </label>
+                  <span className={styles.answerMeta}>
+                    <span>{t('interview.words', { count: words })}</span>
+                    <span>
+                      <span className="srOnly">{t('interview.time')} </span>
+                      {clock}
+                    </span>
+                  </span>
+                </div>
+                <textarea
+                  id={answerId}
+                  className={`textarea ${styles.answer}`}
+                  rows={7}
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
+                  placeholder={t('interview.placeholder')}
+                  maxLength={8_000}
+                />
+                {canDictate ? <p className={styles.help}>{t('interview.dictationHelp')}</p> : null}
+              </div>
+            </div>
+          ) : feedback ? (
+            <>
+              <div className={`${styles.turn} ${styles.you}`}>
+                <div className={styles.gutter}>
+                  <span className={styles.mark} aria-hidden="true" />
+                </div>
+                <div className={styles.body}>
+                  <p className={styles.youLabel}>{t('interview.yourAnswer')}</p>
+                  <p className={styles.answerText}>{question.response_text}</p>
+                </div>
+              </div>
+              <FeedbackPanel feedback={feedback} />
+            </>
+          ) : null}
+        </div>
+
+        {error ? (
+          <p className={styles.error} role="alert">
+            {error}
+          </p>
+        ) : null}
+
+        {!editing && feedback && nextIsFollowUp && !next?.rubric?.feedback ? (
+          <p className={styles.followUpNote} role="status">
+            <span className={styles.followUpDot} aria-hidden="true" />
+            {t('interview.followUpComing')}
+          </p>
+        ) : null}
+
+        <div className={styles.actionBar}>
+          {editing ? (
+            <>
+              {isFollowUp(question) ? (
+                <button type="button" className="button buttonGhost" onClick={skipFollowUp} disabled={submitting || finishing}>
+                  {t('interview.skipFollowUp')}
+                </button>
+              ) : null}
+              <span className={styles.actionSpacer} />
+              {canDictate ? (
                 <button
                   type="button"
-                  className="button buttonGhost"
-                  onClick={() => (voice.speaking ? stopVoice() : speak(question.question_text))}
-                  disabled={voice.muted}
+                  className={`button ${styles.dictate}`}
+                  onClick={toggleDictation}
+                  aria-pressed={listening}
+                  aria-label={listening ? t('interview.stopDictating') : t('interview.dictate')}
                 >
-                  {voice.speaking ? t('interview.stopSpeaking') : t('interview.repeat')}
+                  {listening ? <StopIcon size={16} /> : <MicIcon size={16} />}
+                  <span className={styles.dictateText}>{listening ? t('interview.stopDictating') : t('interview.dictate')}</span>
                 </button>
-                <button type="button" className="button buttonGhost" aria-pressed={voice.muted} onClick={() => voice.setMuted(!voice.muted)}>
-                  {voice.muted ? t('interview.unmute') : t('interview.mute')}
-                </button>
-              </div>
-            ) : null}
-          </div>
-        </div>
-      </section>
-
-      {editing ? (
-        <section className="card">
-          <div className="cardInner stack">
-            <label className="label" htmlFor={answerId}>
-              <span className={styles.youLabel}>{t('interview.yourAnswer')}</span>
-              <textarea
-                id={answerId}
-                className={`textarea ${styles.answer}`}
-                rows={8}
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                placeholder={t('interview.placeholder')}
-                maxLength={8_000}
-              />
-            </label>
-            <div className={styles.answerBar}>
-              <span className={styles.meta}>
-                <span>{t('interview.words', { count: words })}</span>
-                <span aria-label={t('interview.time')}>
-                  {Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, '0')}
-                </span>
-              </span>
-              <div className={styles.answerButtons}>
-                {isFollowUp(question) ? (
-                  <button type="button" className="button buttonGhost" onClick={skipFollowUp} disabled={submitting || finishing}>
-                    {t('interview.skipFollowUp')}
-                  </button>
-                ) : null}
-                {canDictate ? (
-                  <button type="button" className="button" onClick={toggleDictation} aria-pressed={listening}>
-                    {listening ? t('interview.stopDictating') : t('interview.dictate')}
-                  </button>
-                ) : null}
-                <button type="button" className="button buttonPrimary" onClick={submit} disabled={submitting || !draft.trim()}>
-                  {submitting ? t('interview.scoring') : t('interview.submit')}
-                </button>
-              </div>
-            </div>
-            {canDictate ? <p className="help">{t('interview.dictationHelp')}</p> : null}
-          </div>
-        </section>
-      ) : feedback ? (
-        <FeedbackPanel answer={question.response_text ?? ''} feedback={feedback} />
-      ) : null}
-
-      {error ? (
-        <p className={styles.error} role="alert">
-          {error}
-        </p>
-      ) : null}
-
-      {!editing && feedback ? (
-        <>
-          {nextIsFollowUp && !next?.rubric?.feedback ? (
-            <p className={styles.followUpNote} role="status">
-              {t('interview.followUpComing')}
-            </p>
-          ) : null}
-          <div className={styles.actions}>
-            <button type="button" className="button buttonGhost" onClick={() => setEditing(true)}>
-              {t('interview.answerAgain')}
-            </button>
-            {next ? (
-              <button type="button" className={`button ${allAnswered && !nextIsFollowUp ? '' : 'buttonPrimary'}`} onClick={() => goTo(index + 1)}>
-                {nextIsFollowUp ? t('interview.answerFollowUp') : t('interview.next')}
+              ) : null}
+              <button type="button" className="button buttonPrimary" onClick={submit} disabled={submitting || !draft.trim()}>
+                {submitting ? t('interview.scoring') : t('interview.submit')}
               </button>
-            ) : null}
-            {!next || allAnswered ? finishButton : null}
-          </div>
-        </>
-      ) : null}
+            </>
+          ) : feedback ? (
+            <>
+              <button type="button" className="button buttonGhost" onClick={() => setEditing(true)}>
+                {t('interview.answerAgain')}
+              </button>
+              <span className={styles.actionSpacer} />
+              {/* The primary goes last, nearest the thumb. */}
+              {nextPrimary ? (
+                <>
+                  {finishButton}
+                  {nextButton}
+                </>
+              ) : (
+                <>
+                  {nextButton}
+                  {finishButton}
+                </>
+              )}
+            </>
+          ) : null}
+        </div>
+      </div>
     </div>
   );
 }
 
-function FeedbackPanel({ answer, feedback }: { answer: string; feedback: AnswerFeedback }) {
+/** The coach's read of one answer: the score, then what worked, what to change and what a stronger answer covers. */
+function FeedbackPanel({ feedback }: { feedback: AnswerFeedback }) {
   const t = useTranslations('Practice');
+  const sections = [
+    ['worked', feedback.strengths],
+    ['improve', feedback.improvements],
+    ['stronger', feedback.stronger_answer],
+  ] as const;
   return (
-    <section className={`card ${styles.feedback}`} aria-label={t('feedback.label')}>
-      <div className="cardInner stack">
-        <div className={styles.scoreRow}>
-          <span className={styles.score} data-tone={scoreTone(feedback.score)}>
-            {feedback.score}
-            <span className={styles.scoreOf}>/10</span>
-          </span>
-          <p className={styles.verdict}>{feedback.verdict}</p>
-        </div>
-        <div className={styles.columns}>
-          {feedback.strengths.length ? (
-            <div>
-              <h3 className={styles.listTitle}>{t('feedback.worked')}</h3>
-              <ul className={styles.points} data-tone="good">
-                {feedback.strengths.map((item) => (
+    <section className={styles.feedback} aria-label={t('feedback.label')}>
+      <div className={styles.verdictRow}>
+        <p className={styles.score}>
+          <span className={styles.scoreValue}>{feedback.score}</span>
+          <span className={styles.scoreOf}>{t('feedback.outOf')}</span>
+        </p>
+        <p className={styles.verdict}>{feedback.verdict}</p>
+      </div>
+      <div className={styles.sections}>
+        {sections.map(([key, items]) =>
+          items.length ? (
+            <section key={key} className={styles.section}>
+              <h3 className={styles.sectionTitle}>{t(`feedback.${key}`)}</h3>
+              <ul className={styles.points}>
+                {items.map((item) => (
                   <li key={item}>{item}</li>
                 ))}
               </ul>
-            </div>
-          ) : null}
-          {feedback.improvements.length ? (
-            <div>
-              <h3 className={styles.listTitle}>{t('feedback.improve')}</h3>
-              <ul className={styles.points} data-tone="ember">
-                {feedback.improvements.map((item) => (
-                  <li key={item}>{item}</li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
-        </div>
-        {feedback.stronger_answer.length ? (
-          <div>
-            <h3 className={styles.listTitle}>{t('feedback.stronger')}</h3>
-            <ul className={styles.points} data-tone="ice">
-              {feedback.stronger_answer.map((item) => (
-                <li key={item}>{item}</li>
-              ))}
-            </ul>
-          </div>
-        ) : null}
-        <details className={styles.yourAnswer}>
-          <summary>{t('feedback.yourAnswer')}</summary>
-          <p>{answer}</p>
-        </details>
+            </section>
+          ) : null,
+        )}
       </div>
     </section>
   );
 }
 
+/** The hiring signal's dot: green for a hire, red for a no hire, neutral in between. */
+const SIGNAL_TONE: Record<string, 'good' | 'fair' | 'low'> = {
+  strong_hire: 'good',
+  hire: 'good',
+  lean_hire: 'fair',
+  lean_no_hire: 'fair',
+  no_hire: 'low',
+  strong_no_hire: 'low',
+};
+
 function ReportView(props: { sessionId: string; report: PracticeReport; questions: PracticeQuestion[] }) {
   const t = useTranslations('Practice');
   const { report } = props;
-  const overall = report.overall_score ?? 0;
+  const overall = Math.max(0, Math.min(100, report.overall_score ?? 0));
   const signal = report.hiring_signal ? label(t, 'signals', report.hiring_signal) : null;
-  const tone = overall >= 75 ? 'good' : overall >= 50 ? 'fair' : 'low';
   // Skipped follow-ups weren't part of the interview.
   const asked = props.questions.filter((q) => !(isFollowUp(q) && !q.rubric?.feedback));
+  const { numbers } = numbering(asked);
+  const lists = [
+    { key: 'strengths', title: t('report.strengths'), items: report.strengths ?? [] },
+    { key: 'toWorkOn', title: t('report.toWorkOn'), items: report.weaknesses ?? [] },
+  ].filter((list) => list.items.length);
+  const nextSteps = (report.next_steps ?? []).map(withoutPriority).filter(Boolean);
+  const dimensions = DIMENSIONS.flatMap((key) => (report.rubric?.[key] ? [{ key, ...report.rubric[key] }] : []));
 
   return (
     <div className={styles.report}>
-      <section className={`card ${styles.reportHero}`} aria-label={t('report.overall')}>
-        <div className="cardInner">
-          <div className={styles.heroRow}>
-            <div className={styles.overall} data-tone={tone}>
-              <span className={styles.overallNumber}>{overall}</span>
-              <span className={styles.overallOf}>{t('report.outOf')}</span>
-            </div>
-            <div className={styles.heroText}>
-              {signal ? <span className={`badge ${tone === 'good' ? 'badgeLive' : tone === 'fair' ? 'badgePro' : 'badgeAlert'}`}>{signal}</span> : null}
-              {report.summary ? <p className={styles.summary}>{report.summary}</p> : null}
-            </div>
-          </div>
+      <section className={styles.hero} aria-label={t('report.overall')}>
+        <div className={styles.overall}>
+          <p className={styles.overallLabel}>{t('report.overall')}</p>
+          <p className={styles.overallFigure}>
+            <span className={styles.overallNumber}>{overall}</span>
+            <span className={styles.overallOf}>{t('report.outOf')}</span>
+          </p>
+          <span className={styles.overallBar} aria-hidden="true">
+            <span style={{ transform: `scaleX(${overall / 100})` }} />
+          </span>
+        </div>
+        <div className={styles.heroText}>
+          {signal ? (
+            <p className={styles.signal} data-tone={SIGNAL_TONE[report.hiring_signal ?? ''] ?? 'fair'}>
+              <span className={styles.signalDot} aria-hidden="true" />
+              {signal}
+            </p>
+          ) : null}
+          {report.summary ? <p className={styles.summary}>{report.summary}</p> : null}
         </div>
       </section>
 
-      {report.rubric ? (
-        <section className="card" aria-label={t('report.byAreaLabel')}>
-          <div className="cardInner stack">
-            <h2 className="cardTitle">{t('report.byArea')}</h2>
-            <ul className={styles.dimensions}>
-              {DIMENSIONS.map((key) => {
-                const dimension = report.rubric?.[key];
-                if (!dimension) return null;
-                return (
-                  <li key={key} className={styles.dimension}>
-                    <div className={styles.dimensionHead}>
-                      <span>{t(`dimensions.${key}`)}</span>
-                      <span className={styles.meta}>{t('report.outOfFive', { score: dimension.score })}</span>
-                    </div>
-                    <div className={styles.bar} aria-hidden="true">
-                      <span style={{ width: `${(dimension.score / 5) * 100}%` }} />
-                    </div>
-                    {dimension.recommendation ? <p className={styles.dimensionTip}>{dimension.recommendation}</p> : null}
-                  </li>
-                );
-              })}
+      <div className={styles.reportGrid}>
+        {dimensions.length ? (
+          <section className={styles.reportSection} aria-label={t('report.byAreaLabel')}>
+            <h2 className={styles.reportHeading}>{t('report.byArea')}</h2>
+            <ul className={styles.rubric}>
+              {dimensions.map((dimension) => (
+                <li key={dimension.key} className={styles.area}>
+                  <div className={styles.areaHead}>
+                    <span className={styles.areaName}>{t(`dimensions.${dimension.key}`)}</span>
+                    <span className={styles.areaBar} aria-hidden="true">
+                      <span style={{ transform: `scaleX(${Math.max(0, Math.min(5, dimension.score)) / 5})` }} />
+                    </span>
+                    <span className={styles.areaScore}>{t('report.outOfFive', { score: dimension.score })}</span>
+                  </div>
+                  {dimension.evidence || dimension.recommendation ? (
+                    <dl className={styles.areaNotes}>
+                      {dimension.evidence ? (
+                        <>
+                          <dt>{t('report.evidence')}</dt>
+                          <dd>{dimension.evidence}</dd>
+                        </>
+                      ) : null}
+                      {dimension.recommendation ? (
+                        <>
+                          <dt>{t('report.change')}</dt>
+                          <dd>{dimension.recommendation}</dd>
+                        </>
+                      ) : null}
+                    </dl>
+                  ) : null}
+                </li>
+              ))}
             </ul>
-          </div>
-        </section>
-      ) : null}
+          </section>
+        ) : null}
 
-      <div className={styles.reportLists}>
-        <ReportList title={t('report.strengths')} items={report.strengths} tone="good" />
-        <ReportList title={t('report.toWorkOn')} items={report.weaknesses} tone="ember" />
-        <ReportList title={t('report.nextSteps')} items={report.next_steps} tone="ice" ordered />
+        {lists.length || nextSteps.length ? (
+          <div className={styles.reportLists}>
+            {lists.map((list) => (
+              <section key={list.key} className={styles.reportSection} aria-label={list.title}>
+                <h2 className={styles.reportHeading}>{list.title}</h2>
+                <ul className={styles.points}>
+                  {list.items.map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ul>
+              </section>
+            ))}
+            {nextSteps.length ? (
+              <section className={styles.reportSection} aria-label={t('report.nextSteps')}>
+                <h2 className={styles.reportHeading}>{t('report.nextSteps')}</h2>
+                <ol className={styles.steplist}>
+                  {nextSteps.map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ol>
+              </section>
+            ) : null}
+          </div>
+        ) : null}
       </div>
 
-      <section className="card" aria-label={t('report.eachAnswer')}>
-        <div className="cardInner stack">
-          <h2 className="cardTitle">{t('report.eachAnswer')}</h2>
-          <ol className={styles.breakdown}>
-            {asked.map((q, i) => {
-              const fb = q.rubric?.feedback;
-              return (
-                <li key={q.id}>
-                  <details>
-                    <summary className={styles.breakdownSummary}>
-                      <span className={styles.breakdownIndex}>{i + 1}</span>
-                      <span className={styles.breakdownQuestion}>
-                        {isFollowUp(q) ? <span className={styles.followUpTag}>{t('interview.followUp')}</span> : null}
-                        {q.question_text}
-                      </span>
-                      {fb ? (
-                        <span className={styles.breakdownScore} data-tone={scoreTone(fb.score)}>
-                          {fb.score}/10
-                        </span>
-                      ) : null}
-                    </summary>
-                    {fb ? <FeedbackPanel answer={q.response_text ?? ''} feedback={fb} /> : <p className="help">{t('report.notAnswered')}</p>}
-                  </details>
-                </li>
-              );
-            })}
-          </ol>
-        </div>
+      <section className={styles.reportSection} aria-label={t('report.eachAnswer')}>
+        <h2 className={styles.reportHeading}>{t('report.eachAnswer')}</h2>
+        <ol className={styles.answers}>
+          {asked.map((q, i) => {
+            const fb = q.rubric?.feedback;
+            const followUp = isFollowUp(q);
+            return (
+              <li key={q.id} className={styles.answerItem} data-kind={followUp ? 'follow-up' : 'main'}>
+                <details>
+                  <summary className={styles.answerSummary}>
+                    <span className={styles.answerIndex}>{followUp ? null : numbers[i]}</span>
+                    <span className={styles.answerQuestion}>
+                      {followUp ? <span className={styles.followUpTag}>{t('interview.followUp')}</span> : null}
+                      {q.question_text}
+                    </span>
+                    {fb ? <span className={styles.answerScore}>{t('interview.stepScore', { score: fb.score })}</span> : null}
+                    <ChevronDownIcon size={16} className={styles.chevron} />
+                  </summary>
+                  <div className={styles.answerDetail}>
+                    {q.response_text ? (
+                      <div className={`${styles.turn} ${styles.you}`}>
+                        <div className={styles.gutter}>
+                          <span className={styles.mark} aria-hidden="true" />
+                        </div>
+                        <div className={styles.body}>
+                          <p className={styles.youLabel}>{t('feedback.yourAnswer')}</p>
+                          <p className={styles.answerText}>{q.response_text}</p>
+                        </div>
+                      </div>
+                    ) : null}
+                    {fb ? <FeedbackPanel feedback={fb} /> : <p className={styles.help}>{t('report.notAnswered')}</p>}
+                  </div>
+                </details>
+              </li>
+            );
+          })}
+        </ol>
       </section>
 
-      <div className={styles.actions}>
+      <div className={styles.reportActions}>
         <a className="button" href={`/api/interviews/${props.sessionId}/export`}>
           {t('report.export')}
         </a>
         <NewPracticeButton primary label={t('report.again')} />
       </div>
     </div>
-  );
-}
-
-function ReportList(props: { title: string; items: string[] | null; tone: 'good' | 'ember' | 'ice'; ordered?: boolean }) {
-  if (!props.items?.length) return null;
-  const List = props.ordered ? 'ol' : 'ul';
-  return (
-    <section className="card" aria-label={props.title}>
-      <div className="cardInner stack">
-        <h2 className="cardTitle">{props.title}</h2>
-        <List className={styles.points} data-tone={props.tone}>
-          {props.items.map((item) => (
-            <li key={item}>{item}</li>
-          ))}
-        </List>
-      </div>
-    </section>
   );
 }

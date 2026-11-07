@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { Link, useRouter } from '@/i18n/routing';
 import { useTranslations } from 'next-intl';
 import { createClient } from '@/lib/supabase/browser';
-import { ApexMark } from '@/components/ApexMark';
+import { AuthShell } from '../AuthShell';
 import styles from '../auth.module.css';
 
 /** Where the password reset email lands (through /api/auth/callback, which signs the user in). */
@@ -37,56 +37,51 @@ export default function ResetPasswordPage() {
   }
 
   return (
-    <div className={styles.page} style={{ gridTemplateColumns: '1fr' }}>
-      <main id="main-content" className={styles.formSide} tabIndex={-1}>
-        <div className={styles.formBox}>
-          <ApexMark size={36} />
-          <div className={styles.heading}>
-            <h1 className="pageTitle">{t('title')}</h1>
-            <p className="help">{signedIn === false ? t('expired') : t('subtitle')}</p>
-          </div>
-          {signedIn === false ? (
-            <Link className={`button buttonPrimary ${styles.submit}`} href="/auth?mode=forgot">
-              {t('requestNew')}
-            </Link>
-          ) : (
-            <form className="stack" onSubmit={save}>
-              <label className="label">
-                {t('newPassword')}
-                <input
-                  className="input"
-                  type="password"
-                  autoComplete="new-password"
-                  minLength={8}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                />
-              </label>
-              <label className="label">
-                {t('confirm')}
-                <input
-                  className="input"
-                  type="password"
-                  autoComplete="new-password"
-                  minLength={8}
-                  value={confirm}
-                  onChange={(e) => setConfirm(e.target.value)}
-                  required
-                />
-              </label>
-              {error ? (
-                <div className="error" role="alert">
-                  {error}
-                </div>
-              ) : null}
-              <button className={`button buttonPrimary ${styles.submit}`} type="submit" disabled={saving || signedIn === null}>
-                {saving ? t('saving') : t('save')}
-              </button>
-            </form>
-          )}
-        </div>
-      </main>
-    </div>
+    <AuthShell>
+      <div className={styles.heading}>
+        <h1 className="pageTitle">{t('title')}</h1>
+        <p className={styles.subtitle}>{signedIn === false ? t('expired') : t('subtitle')}</p>
+      </div>
+      {signedIn === false ? (
+        <Link className={`button buttonPrimary ${styles.wide}`} href="/auth?mode=forgot">
+          {t('requestNew')}
+        </Link>
+      ) : (
+        <form className={styles.form} onSubmit={save} aria-label={t('title')}>
+          <label className="label">
+            {t('newPassword')}
+            <input
+              className="input"
+              type="password"
+              autoComplete="new-password"
+              minLength={8}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+            />
+          </label>
+          <label className="label">
+            {t('confirm')}
+            <input
+              className="input"
+              type="password"
+              autoComplete="new-password"
+              minLength={8}
+              value={confirm}
+              onChange={(e) => setConfirm(e.target.value)}
+              required
+            />
+          </label>
+          {error ? (
+            <div className="error" role="alert">
+              {error}
+            </div>
+          ) : null}
+          <button className={`button buttonPrimary ${styles.wide}`} type="submit" disabled={saving || signedIn === null}>
+            {saving ? t('saving') : t('save')}
+          </button>
+        </form>
+      )}
+    </AuthShell>
   );
 }

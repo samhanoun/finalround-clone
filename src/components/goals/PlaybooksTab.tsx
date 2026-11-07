@@ -1,19 +1,26 @@
 'use client';
 
-import { useId, useState } from 'react';
+import { useCallback, useId, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { createClient } from '@/lib/supabase/browser';
 import type { Playbook } from '@/lib/goalTypes';
 import type { WorkspaceData } from './GoalsWorkspace';
+import { Sheet } from './Sheet';
 import styles from './Goals.module.css';
+
+type Editing = { id: string | null; name: string; instructions: string };
 
 /** Playbooks: the user's own instructions for how answers should sound. */
 export function PlaybooksTab({ data, reload }: { data: WorkspaceData; reload: () => Promise<void> }) {
   const t = useTranslations('Goals');
-  const [editing, setEditing] = useState<{ id: string | null; name: string; instructions: string } | null>(null);
+  const [editing, setEditing] = useState<Editing | null>(null);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
-  const ids = { name: useId(), instructions: useId() };
+  const ids = { name: useId(), instructions: useId(), limit: useId(), list: useId() };
+  const close = useCallback(() => {
+    setEditing(null);
+    setFailed(false);
+  }, []);
 
   async function save(event: React.FormEvent) {
     event.preventDefault();
@@ -42,90 +49,102 @@ export function PlaybooksTab({ data, reload }: { data: WorkspaceData; reload: ()
   }
 
   return (
-    <div className={styles.split}>
-      <section className="card">
-        <div className="cardInner stack">
-          <div>
-            <h2 className="cardTitle">{t('playbooksTitle')}</h2>
-            <p className="help">{t('playbooksHelp')}</p>
-          </div>
-          {editing ? (
-            <form className="stack" onSubmit={save}>
-              <label className="label" htmlFor={ids.name}>
-                {t('playbookName')}
-                <input id={ids.name} className="input" value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} maxLength={120} required />
-              </label>
-              <label className="label" htmlFor={ids.instructions}>
-                {t('playbookInstructions')}
-                <textarea
-                  id={ids.instructions}
-                  className="textarea"
-                  rows={9}
-                  value={editing.instructions}
-                  onChange={(e) => setEditing({ ...editing, instructions: e.target.value })}
-                  maxLength={4000}
-                  required
-                />
-                <span className="help">{t('playbookLimit')}</span>
-              </label>
+    <div className={styles.tabBody}>
+      <div className={styles.toolbar}>
+        <p className={styles.intro}>{t('playbooksHelp')}</p>
+        <div className={styles.toolbarActions}>
+          <button type="button" className="button" onClick={() => setEditing({ id: null, name: t('examplePlaybookName'), instructions: t('examplePlaybook') })}>
+            {t('startFromExample')}
+          </button>
+          <button type="button" className="button buttonPrimary" onClick={() => setEditing({ id: null, name: '', instructions: '' })}>
+            {t('newPlaybook')}
+          </button>
+        </div>
+      </div>
+
+      <section className={styles.listPane} aria-labelledby={ids.list}>
+        <h2 className={styles.paneTitle} id={ids.list}>
+          {t('yourPlaybooks')}
+          <span className={styles.paneCount}>{data.playbooks.length}</span>
+        </h2>
+        {data.playbooks.length === 0 ? (
+          <p className={`emptyState ${styles.empty}`}>{t('noPlaybooks')}</p>
+        ) : (
+          <ul className={styles.rows}>
+            {data.playbooks.map((playbook) => (
+              <li key={playbook.id} className={styles.row}>
+                <div className={styles.rowBody}>
+                  <span className={styles.rowTitle}>{playbook.name}</span>
+                  <p className={styles.clamp}>{playbook.instructions}</p>
+                </div>
+                <div className={styles.rowActions}>
+                  <button
+                    type="button"
+                    className="button buttonGhost buttonSmall"
+                    onClick={() => setEditing({ id: playbook.id, name: playbook.name, instructions: playbook.instructions })}
+                  >
+                    {t('edit')}
+                  </button>
+                  <button type="button" className="button buttonGhost buttonSmall" onClick={() => void remove(playbook)}>
+                    {t('delete')}
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      {editing ? (
+        <Sheet
+          title={editing.id ? t('editPlaybook') : t('newPlaybook')}
+          onClose={close}
+          onSubmit={save}
+          footer={
+            <>
               {failed ? (
-                <p className="help" role="alert" style={{ margin: 0 }}>
+                <p className={styles.sheetError} role="alert">
                   {t('saveFailed')}
                 </p>
               ) : null}
-              <div className={styles.cardActions}>
-                <button type="button" className="button" onClick={() => setEditing(null)}>
-                  {t('cancel')}
-                </button>
-                <button type="submit" className="button buttonPrimary" disabled={busy || !editing.name.trim() || !editing.instructions.trim()}>
-                  {busy ? t('saving') : t('save')}
-                </button>
-              </div>
-            </form>
-          ) : (
-            <div className={styles.cardActions}>
-              <button type="button" className="button buttonPrimary" onClick={() => setEditing({ id: null, name: '', instructions: '' })}>
-                {t('newPlaybook')}
+              <button type="button" className="button" onClick={close}>
+                {t('cancel')}
               </button>
-              <button
-                type="button"
-                className="button"
-                onClick={() => setEditing({ id: null, name: t('examplePlaybookName'), instructions: t('examplePlaybook') })}
-              >
-                {t('startFromExample')}
+              <button type="submit" className="button buttonPrimary" disabled={busy || !editing.name.trim() || !editing.instructions.trim()}>
+                {busy ? t('saving') : t('save')}
               </button>
-            </div>
-          )}
-        </div>
-      </section>
-
-      <section className="card">
-        <div className="cardInner stack">
-          <h2 className="cardTitle">{t('yourPlaybooks')}</h2>
-          {data.playbooks.length === 0 ? (
-            <p className="help">{t('noPlaybooks')}</p>
-          ) : (
-            <ul className={styles.list}>
-              {data.playbooks.map((playbook) => (
-                <li key={playbook.id} className={styles.listItem}>
-                  <div>
-                    <strong>{playbook.name}</strong>
-                    <p className={styles.preview}>{playbook.instructions}</p>
-                  </div>
-                  <div className={styles.cardActions}>
-                    <button type="button" className="button buttonGhost" onClick={() => setEditing({ id: playbook.id, name: playbook.name, instructions: playbook.instructions })}>
-                      {t('edit')}
-                    </button>
-                    <button type="button" className="button buttonGhost" onClick={() => void remove(playbook)}>
-                      {t('delete')}
-                    </button>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      </section>
+            </>
+          }
+        >
+          <label className="label" htmlFor={ids.name}>
+            {t('playbookName')}
+            <input
+              id={ids.name}
+              className="input"
+              value={editing.name}
+              onChange={(e) => setEditing({ ...editing, name: e.target.value })}
+              maxLength={120}
+              required
+            />
+          </label>
+          <label className="label" htmlFor={ids.instructions}>
+            {t('playbookInstructions')}
+            <textarea
+              id={ids.instructions}
+              className={`textarea ${styles.instructions}`}
+              rows={12}
+              value={editing.instructions}
+              onChange={(e) => setEditing({ ...editing, instructions: e.target.value })}
+              maxLength={4000}
+              required
+              aria-describedby={ids.limit}
+            />
+            <span id={ids.limit} className="help">
+              {t('playbookLimit')}
+            </span>
+          </label>
+        </Sheet>
+      ) : null}
     </div>
   );
 }

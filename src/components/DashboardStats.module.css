@@ -1,45 +1,91 @@
-.statsGrid {
+/* Four figures in one quiet row: label, number, change. Hairlines between
+   them instead of four boxes. On phones, two by two. */
+.stats {
+  padding: 4px 0;
+}
+
+.grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 16px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 0;
 }
 
-.statItem {
-  display: flex;
-  flex-direction: column;
-  padding: 2px 0 2px 16px;
-  border-left: 2px solid var(--line-strong);
+.stat {
+  display: grid;
+  align-content: start;
+  gap: 4px;
+  min-width: 0;
+  padding: 0 24px;
+  border-left: 1px solid var(--hairline);
 }
 
-.statValue {
-  font-size: 2rem;
-  font-weight: 600;
-  letter-spacing: -0.03em;
+.stat:first-child {
+  padding-left: 0;
+  border-left: 0;
+}
+
+.label {
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--text-2);
+}
+
+.value {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 500;
+  line-height: 36px;
+  letter-spacing: -0.01em;
+  color: var(--text-1);
   font-variant-numeric: tabular-nums;
-  color: var(--paper);
-  line-height: 1.2;
 }
 
-.statLabel {
-  font-size: 0.85rem;
-  color: var(--muted);
-  margin-top: 4px;
+.unit {
+  margin-left: 2px;
+  font-size: 14px;
+  font-weight: 400;
+  letter-spacing: 0;
+  color: var(--text-3);
 }
 
-@media (max-width: 600px) {
-  .statsGrid {
-    gap: 10px;
+.note {
+  margin: 0;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.up {
+  color: var(--positive-text);
+}
+
+.down {
+  color: var(--negative-text);
+}
+
+@media (max-width: 767px) {
+  .grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    row-gap: 16px;
   }
 
-  .statItem {
-    padding-left: 10px;
+  .stat {
+    padding: 0 16px;
   }
 
-  .statValue {
-    font-size: 1.5rem;
+  .stat:nth-child(odd) {
+    padding-left: 0;
+    border-left: 0;
   }
 
-  .statLabel {
-    font-size: 0.8rem;
+  .stat:nth-child(n + 3) {
+    padding-top: 16px;
+    border-top: 1px solid var(--hairline);
+  }
+
+  .value {
+    font-size: 24px;
+    line-height: 32px;
   }
 }

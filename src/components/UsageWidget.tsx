@@ -1,8 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useTranslations } from 'next-intl';
+import { useEffect, useId, useState } from 'react';
+import { useFormatter, useTranslations } from 'next-intl';
+import { Link } from '@/i18n/routing';
 import { BillingActions } from './BillingActions';
+import styles from './UsageWidget.module.css';
 
 interface UsageData {
   plan: string;
@@ -23,28 +25,26 @@ interface UsageData {
   };
 }
 
-function ProgressBar({ used, limit, label }: { used: number; limit: number; label: string }) {
-  const percentage = limit > 0 ? Math.min((used / limit) * 100, 100) : 0;
-  const isNearLimit = percentage >= 80;
+const ROWS = [
+  { key: 'copilot_minutes_monthly', label: 'copilotMonth' },
+  { key: 'copilot_session_minutes', label: 'perSession' },
+  { key: 'copilot_daily_minutes', label: 'copilotToday' },
+  { key: 'smart_mode_minutes_monthly', label: 'smartMonth' },
+  { key: 'resume_deep_reviews_monthly', label: 'reviewsMonth' },
+] as const;
 
-  return (
-    <div className="usage-row">
-      <span className="usage-label">{label}</span>
-      <div className="usage-bar-container">
-        <div
-          className={`usage-bar ${isNearLimit ? 'near-limit' : ''}`}
-          style={{ width: `${percentage}%` }}
-        />
-      </div>
-      <span className="usage-value">
-        {used} / {limit}
-      </span>
-    </div>
-  );
-}
+/** A limit counts as nearly used up from 80%: only then does its bar turn red. */
+const NEAR_LIMIT = 0.8;
 
-export function UsageWidget() {
+/**
+ * Usage this month against the plan's limits. `compact` (Home) keeps to the
+ * figures and one secondary billing action; the full version (Settings) adds
+ * what Pro raises and the checkout.
+ */
+export function UsageWidget({ compact = false }: { compact?: boolean }) {
   const t = useTranslations('Usage');
+  const format = useFormatter();
+  const headingId = useId();
   const [data, setData] = useState<UsageData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -53,11 +53,11 @@ export function UsageWidget() {
     async function fetchUsage() {
       try {
         const res = await fetch('/api/usage');
-        if (!res.ok) throw new Error('Failed to fetch usage');
+        if (!res.ok) throw new Error('usage');
         const json = await res.json();
         setData(json);
       } catch (e) {
-        setError(e instanceof Error ? e.message : 'Failed to load');
+        setError(e instanceof Error ? e.message : 'usage');
       } finally {
         setLoading(false);
       }
@@ -65,72 +65,63 @@ export function UsageWidget() {
     fetchUsage();
   }, []);
 
-  if (loading) {
-    return (
-      <div className="card">
-        <div className="cardInner">
-          <p className="small">{t('loading')}</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (error || !data) {
-    return (
-      <div className="card">
-        <div className="cardInner">
-          <p className="small error">{t('failed')}</p>
-        </div>
-      </div>
-    );
-  }
+  const planName = data ? (t.has(`plans.${data.plan.toLowerCase()}`) ? t(`plans.${data.plan.toLowerCase()}`) : data.plan) : '';
 
   return (
-    <div className="card">
-      <div className="cardInner stack">
-        <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-          <h2 className="cardTitle">{t('title')}</h2>
-          <span className={`badge ${data.isPro ? 'badgePro' : 'badgeFree'}`}>
-            {t('plan', { plan: t.has(`plans.${data.plan.toLowerCase()}`) ? t(`plans.${data.plan.toLowerCase()}`) : data.plan })}
-          </span>
+    <section className="card" aria-labelledby={headingId}>
+      <div className={`cardInner ${styles.inner}`}>
+        <div className={styles.head}>
+          <h2 className="cardTitle" id={headingId}>
+            {t('title')}
+          </h2>
+          {data ? <span className={styles.plan}>{t('plan', { plan: planName })}</span> : null}
         </div>
 
-        <div className="stack" style={{ gap: 12 }}>
-          <ProgressBar
-            used={data.usage.copilot_minutes_monthly}
-            limit={data.limits.copilot_minutes_monthly}
-            label={t('copilotMonth')}
-          />
-          <ProgressBar
-            used={data.usage.copilot_session_minutes}
-            limit={data.limits.copilot_session_minutes}
-            label={t('perSession')}
-          />
-          <ProgressBar
-            used={data.usage.copilot_daily_minutes}
-            limit={data.limits.copilot_daily_minutes}
-            label={t('copilotToday')}
-          />
-          <ProgressBar
-            used={data.usage.smart_mode_minutes_monthly}
-            limit={data.limits.smart_mode_minutes_monthly}
-            label={t('smartMonth')}
-          />
-          <ProgressBar
-            used={data.usage.resume_deep_reviews_monthly}
-            limit={data.limits.resume_deep_reviews_monthly}
-            label={t('reviewsMonth')}
-          />
-        </div>
-
-        {!data.isPro && (
-          <p className="small help">
-            {t('proLimits')}
+        {loading ? (
+          <p className={styles.status}>{t('loading')}</p>
+        ) : error || !data ? (
+          <p className={styles.status} role="alert">
+            {t('failed')}
           </p>
-        )}
+        ) : (
+          <>
+            <ul className={styles.rows}>
+              {ROWS.map(({ key, label }) => {
+                const used = data.usage[key] ?? 0;
+                const limit = data.limits[key] ?? 0;
+                const share = limit > 0 ? Math.min(used / limit, 1) : 0;
+                return (
+                  <li key={key} className={styles.row}>
+                    <span className={styles.label}>{t(label)}</span>
+                    <span className={styles.value}>
+                      {format.number(used)} / {format.number(limit)}
+                    </span>
+                    <span className={styles.track} aria-hidden="true">
+                      <span
+                        className={`${styles.fill} ${share >= NEAR_LIMIT ? styles.near : ''}`}
+                        style={{ width: `${share * 100}%` }}
+                      />
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
 
-        <BillingActions isPro={data.isPro} />
+            {!compact && !data.isPro ? <p className="help">{t('proLimits')}</p> : null}
+
+            {/* Home keeps one Ember button (Start live session), so upgrading happens in Settings. */}
+            {compact && !data.isPro ? (
+              <div>
+                <Link className="button buttonSmall" href="/settings">
+                  {t('seePlans')}
+                </Link>
+              </div>
+            ) : (
+              <BillingActions isPro={data.isPro} />
+            )}
+          </>
+        )}
       </div>
-    </div>
+    </section>
   );
 }

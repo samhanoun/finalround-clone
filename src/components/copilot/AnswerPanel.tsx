@@ -7,7 +7,9 @@ import { addRevision, type CodeArtifact } from '@/lib/copilot/codeArtifacts';
 import { AnswerView, MAX_FONT_PX, MIN_FONT_PX, type ConnectionState, type TailLine } from './AnswerView';
 import { useDocumentPip } from './useDocumentPip';
 import { onDesktopCommand } from '@/lib/desktop';
+import { ExternalIcon } from '@/components/icons';
 import type { CopilotAnswers } from './useCopilotAnswers';
+import styles from './AnswerPanel.module.css';
 
 const FONT_STORAGE_KEY = 'apex.answerFontPx';
 const DEFAULT_FONT_PX = 16;
@@ -56,6 +58,7 @@ export function AnswerPanel({
   connection,
   tail,
   autoScreen,
+  mobileBar = false,
 }: {
   answers: CopilotAnswers;
   onAnswerNow: () => void;
@@ -66,6 +69,8 @@ export function AnswerPanel({
   tail: TailLine[];
   /** Automatic Solve screen switch. */
   autoScreen?: { on: boolean; onToggle: (on: boolean) => void };
+  /** Phones: the page has a bottom bar with Answer now and Solve screen. */
+  mobileBar?: boolean;
 }) {
   const t = useTranslations('AnswerPanel');
   const pip = useDocumentPip();
@@ -146,9 +151,11 @@ export function AnswerPanel({
       onFontPx={changeFont}
       codeArtifacts={codeArtifacts}
       autoScreen={autoScreen}
+      mobileBar={variant === 'inline' && mobileBar}
       actions={
         variant === 'inline' && pip.supported ? (
-          <button className="button" type="button" onClick={popOut} title={t('popOutTitle')}>
+          <button className="button buttonGhost" type="button" onClick={popOut} title={t('popOutTitle')}>
+            <ExternalIcon size={16} className={styles.icon} />
             {t('popOut')}
           </button>
         ) : null
@@ -159,15 +166,11 @@ export function AnswerPanel({
   if (pipWindow) {
     return (
       <>
-        <section className="card" aria-label={t('statusLabel')}>
-          <div className="cardInner row" style={{ justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-            <p className="small" style={{ margin: 0 }}>
-              {t('inWindow')}
-            </p>
-            <button className="button" type="button" onClick={pip.close}>
-              {t('bringBack')}
-            </button>
-          </div>
+        <section className={styles.popped} aria-label={t('statusLabel')}>
+          <p className={styles.poppedText}>{t('inWindow')}</p>
+          <button className="button" type="button" onClick={pip.close}>
+            {t('bringBack')}
+          </button>
         </section>
         {createPortal(view('window'), pipWindow.document.body)}
       </>
@@ -177,11 +180,7 @@ export function AnswerPanel({
   return (
     <>
       {view('inline')}
-      {!pip.supported ? (
-        <p className="small" style={{ margin: 0 }}>
-          {t('noPip')}
-        </p>
-      ) : null}
+      {!pip.supported ? <p className={styles.note}>{t('noPip')}</p> : null}
       {popOutError ? (
         <div className="error" role="status">
           {popOutError}

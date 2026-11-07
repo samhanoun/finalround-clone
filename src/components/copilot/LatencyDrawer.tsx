@@ -12,7 +12,7 @@ import {
   type StageSummary,
 } from '@/lib/copilot/latency';
 import type { CopilotAnswers } from './useCopilotAnswers';
-import styles from '../LiveCopilotClient.module.css';
+import styles from './LatencyDrawer.module.css';
 
 function ms(value: number | null): string {
   if (value === null) return '—';
@@ -62,8 +62,8 @@ export function LatencyTable({ summary, caption }: { summary: LatencySummary; ca
 }
 
 /**
- * Debug drawer: how long each question took this session, stage by stage,
- * with p50/p95 over answered questions.
+ * Debug drawer (`?debug=1`): how long each question took this session, stage
+ * by stage, with p50/p95 over answered questions.
  */
 export function LatencyDrawer({ answers }: { answers: Pick<CopilotAnswers, 'subscribeTurns' | 'getTurns'> }) {
   const t = useTranslations('Latency');
@@ -76,18 +76,16 @@ export function LatencyDrawer({ answers }: { answers: Pick<CopilotAnswers, 'subs
   );
 
   return (
-    <details className={styles.settingsCard}>
-      <summary className="small" style={{ cursor: 'pointer' }}>
+    <details className={styles.drawer}>
+      <summary className={styles.summary}>
         {t.rich('summary', { count: turns.length, strong: (chunks) => <strong>{chunks}</strong> })}
         {summary.speech_to_first_token.p50 !== null ? ` · ${t('summaryP50', { time: ms(summary.speech_to_first_token.p50) })}` : ''}
       </summary>
 
       {turns.length === 0 ? (
-        <p className="small" style={{ margin: '8px 0 0' }}>
-          {t('empty')}
-        </p>
+        <p className={styles.empty}>{t('empty')}</p>
       ) : (
-        <div className="stack" style={{ gap: 12, marginTop: 8 }}>
+        <div className={styles.body}>
           <LatencyTable summary={summary} caption={t('answeredCaption')} />
           <table className={styles.latencyTable}>
             <caption className="small">{t('latestCaption')}</caption>
