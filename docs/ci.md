@@ -172,7 +172,10 @@ node .github/scripts/semgrep-gate.mjs semgrep.json
   ```
 - **New scanners:** Semgrep, Trivy and dependency review have never run on this code.
   Their first runs may report real issues or false positives:
-  - Semgrep: fix the finding, or add `// nosemgrep: <rule-id>` with the reason.
+  - Semgrep: fix the finding, or add `// nosemgrep: <rule-id> -- <reason>` on the line
+    above it. Semgrep still writes marked findings to its SARIF as suppressed, so the
+    workflow leaves them out before the upload (`.github/scripts/sarif-drop-suppressed.mjs`);
+    otherwise code scanning would open alerts for them anyway.
   - Trivy: fix the finding (for example, update the base image). If there is no fix
     in reach, list the CVE in a `.trivyignore` at the repository root, which Trivy
     reads by default. Add a comment with the reason and an expiry, for example

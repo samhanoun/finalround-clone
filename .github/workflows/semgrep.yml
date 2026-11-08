@@ -62,17 +62,25 @@ jobs:
               --json-output=semgrep.json \
               --sarif-output=semgrep.sarif
 
-      - name: Upload to code scanning
-        # A pull request from a fork gets a read-only token, so it can't upload.
-        if: ${{ !cancelled() && steps.scan.outcome == 'success' && (github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork) }}
-        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
-        with:
-          sarif_file: semgrep.sarif
-          category: semgrep
-
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
+
+      # Findings marked nosemgrep in the code are already out of semgrep.json, but
+      # Semgrep writes them to the SARIF as suppressed and code scanning would open
+      # alerts for them anyway.
+      - name: Leave out findings marked nosemgrep
+        id: sarif
+        if: ${{ !cancelled() && steps.scan.outcome == 'success' }}
+        run: node .github/scripts/sarif-drop-suppressed.mjs semgrep.sarif semgrep.upload.sarif
+
+      - name: Upload to code scanning
+        # A pull request from a fork gets a read-only token, so it can't upload.
+        if: ${{ !cancelled() && steps.sarif.outcome == 'success' && (github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork) }}
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          sarif_file: semgrep.upload.sarif
+          category: semgrep
 
       # Job summary per severity, one annotation per blocking finding, and the
       # verdict: ERROR (or CRITICAL/HIGH, the same level in newer rules) fails.
