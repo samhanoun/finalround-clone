@@ -53,7 +53,8 @@ Server-side sanitization is mandatory before persistence and before any LLM call
 Implementation reference:
 - `src/lib/copilotSecurity.ts`
 - Applied in:
-  - `src/app/api/copilot/sessions/[id]/events/route.ts`
+  - `src/app/api/copilot/sessions/[id]/transcript/route.ts` (every transcript line)
+  - `src/app/api/copilot/sessions/[id]/gate/route.ts`, `answer/route.ts` and `screen/route.ts`
   - `src/app/api/copilot/sessions/[id]/summarize/route.ts`
 
 ## 4) Prompt-Injection Controls

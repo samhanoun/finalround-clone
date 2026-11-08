@@ -1,32 +1,8 @@
-import { createAdminClient } from '@/lib/supabase/admin';
 import { PDFParse } from 'pdf-parse';
 import mammoth from 'mammoth';
 
-/**
- * Parse a resume document (PDF or DOCX) and extract text content
- */
-export async function parseResumeDocument(
-  storageBucket: string,
-  storagePath: string
-): Promise<{ text: string; data: Record<string, unknown> }> {
-  // Created per call (not at import) so `next build` doesn't require the service role key.
-  const admin = createAdminClient();
-
-  // Download the file from storage
-  const { data: fileData, error: downloadError } =
-    await admin.storage.from(storageBucket).download(storagePath);
-
-  if (downloadError) {
-    throw new Error(`Failed to download file: ${downloadError.message}`);
-  }
-
-  if (!fileData) {
-    throw new Error('No file data received');
-  }
-
-  const buffer = await fileData.arrayBuffer();
-  return extractDocumentText(buffer, storagePath, fileData.type || 'application/octet-stream');
-}
+// Uploads are read from the bytes the server received (see /api/resume/upload), so nothing here
+// downloads from storage with the service role: a stored bucket or path is never trusted to choose a file.
 
 /** Text from a PDF, Word or plain-text file (résumés, and materials for goals). */
 export async function extractDocumentText(
@@ -43,11 +19,17 @@ export async function extractDocumentText(
       // Parse PDF
       const pdfBuffer = Buffer.from(buffer);
       const pdfParser = new PDFParse({ data: pdfBuffer });
-      const pdfData = await pdfParser.getText();
-      text = pdfData.text;
-      extractedData = {
-        pages: pdfData.pages?.length ?? 0,
-      };
+      try {
+        // No "-- 1 of 2 --" page markers in the text the models and the ATS check read.
+        const pdfData = await pdfParser.getText({ pageJoiner: '' });
+        text = pdfData.text;
+        extractedData = {
+          pages: pdfData.pages?.length ?? 0,
+        };
+      } finally {
+        // The server keeps running: free pdf.js's document and its worker state.
+        await pdfParser.destroy().catch(() => undefined);
+      }
     } else if (
       contentType ===
         'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||

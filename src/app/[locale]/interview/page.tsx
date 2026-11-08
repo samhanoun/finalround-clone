@@ -4,6 +4,7 @@ import { AppShell } from '@/components/AppShell';
 import { RequireAuth } from '@/components/RequireAuth';
 import { NewPracticeButton } from '@/components/NewPracticeButton';
 import { ScoreTrend } from '@/components/practice/ScoreTrend';
+import { PracticeList } from '@/components/practice/PracticeList';
 import { createClient } from '@/lib/supabase/server';
 import styles from '@/components/practice/PracticeList.module.css';
 
@@ -101,7 +102,8 @@ export default async function PracticePage() {
             ) : null}
 
             <section className={styles.listPanel} aria-labelledby="practice-heading">
-              <h2 className={styles.listTitle} id="practice-heading">
+              {/* Focus lands here after a row is deleted. */}
+              <h2 className={styles.listTitle} id="practice-heading" tabIndex={-1}>
                 {t('listTitle')}
               </h2>
               <div className={styles.listHead} aria-hidden="true">
@@ -110,32 +112,17 @@ export default async function PracticePage() {
                 <span>{t('columns.score')}</span>
                 <span>{t('columns.date')}</span>
               </div>
-              <ul className={styles.list}>
-                {sessions.map((session) => {
-                  const score = scores.get(session.id);
-                  const known = (STATUSES as readonly string[]).includes(session.status);
-                  return (
-                    <li key={session.id}>
-                      <Link href={`/interview/${session.id}`} className={styles.rowLink}>
-                        <span className={styles.rowTitle}>{session.title || t('interviewTitle')}</span>
-                        <span className={styles.status} data-status={session.status}>
-                          <span className={styles.statusDot} aria-hidden="true" />
-                          {known ? t(`status.${session.status}`) : session.status}
-                        </span>
-                        <span className={styles.rowScore}>
-                          {typeof score === 'number' ? (
-                            <>
-                              <span className="srOnly">{t('columns.score')} </span>
-                              {score}
-                            </>
-                          ) : null}
-                        </span>
-                        <span className={styles.rowDate}>{date(session.created_at)}</span>
-                      </Link>
-                    </li>
-                  );
-                })}
-              </ul>
+              <PracticeList
+                headingId="practice-heading"
+                items={sessions.map((session) => ({
+                  id: session.id,
+                  title: session.title,
+                  status: session.status,
+                  statusLabel: (STATUSES as readonly string[]).includes(session.status) ? t(`status.${session.status}`) : session.status,
+                  score: scores.get(session.id) ?? null,
+                  date: date(session.created_at),
+                }))}
+              />
             </section>
           </div>
         )}

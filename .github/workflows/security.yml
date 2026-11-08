@@ -1,0 +1,260 @@
+name: Security
+
+# Dependency (SCA) and secret scanning (see docs/ci.md):
+# - dependency review: pull requests only; blocks newly added or upgraded
+#   dependencies with a high or critical advisory, or a license outside the
+#   allow list (.github/dependency-review-config.yml)
+# - OSV-Scanner over both lockfiles: on pull requests fails only on
+#   vulnerabilities the pull request introduces; on master and weekly it
+#   reports everything to Security > Code scanning
+# - npm audit of the production dependencies of the web app and desktop/
+# - a license summary of both lockfiles (informational)
+# - gitleaks and GitGuardian secret scans of the pushed or proposed commits
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+  schedule:
+    - cron: '27 4 * * 1' # Mondays 04:27 UTC: new advisories against unchanged code
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  dependency-review:
+    name: Dependency review
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Review the dependency changes
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          config-file: ./.github/dependency-review-config.yml
+
+  osv-scanner:
+    name: OSV-Scanner (lockfiles)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      actions: read # only needed if the repository becomes private
+      contents: read
+      security-events: write
+    env:
+      # One argument per line, as the scanner action expects. Recursive, as in
+      # Google's reusable workflows: it finds package-lock.json and
+      # desktop/package-lock.json (and any lockfile added later), and copes with
+      # a lockfile that only exists on one side of a pull request.
+      SCAN_TARGET: |-
+        --recursive
+        ./
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # A pull request is compared with its base branch, so it needs both.
+          fetch-depth: 0
+          persist-credentials: false
+
+      # Pull requests: scan the base branch first (the same steps as Google's
+      # osv-scanner-reusable-pr.yml), then this branch.
+      - name: Check out the base branch
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: git checkout "$BASE_REF"
+
+      - name: Scan the base branch
+        id: scan-base
+        if: github.event_name == 'pull_request'
+        uses: google/osv-scanner-action/osv-scanner-action@b1d267aea5211fa648d9d442fa64b90dbdcbdd36 # v2.7.0
+        continue-on-error: true # the scanner exits 1 when it finds anything
+        with:
+          scan-args: |-
+            --format=json
+            --output=osv-base.json
+            ${{ env.SCAN_TARGET }}
+
+      - name: Check out this branch again
+        if: github.event_name == 'pull_request'
+        run: git checkout -f "$GITHUB_SHA"
+
+      - name: Scan
+        id: scan
+        uses: google/osv-scanner-action/osv-scanner-action@b1d267aea5211fa648d9d442fa64b90dbdcbdd36 # v2.7.0
+        continue-on-error: true # the scanner exits 1 when it finds anything
+        with:
+          scan-args: |-
+            --format=json
+            --output=osv-results.json
+            ${{ env.SCAN_TARGET }}
+
+      # A failed scan that wrote no results is an error, not "nothing found".
+      - name: Check that the scans completed
+        env:
+          BASE_OUTCOME: ${{ steps.scan-base.outcome }}
+          OUTCOME: ${{ steps.scan.outcome }}
+        run: |
+          status=0
+          if [ "$BASE_OUTCOME" = "failure" ] && [ ! -s osv-base.json ]; then
+            echo "::error title=OSV-Scanner::The scan of the base branch failed without results; see its step."
+            status=1
+          fi
+          if [ "$OUTCOME" = "failure" ] && [ ! -s osv-results.json ]; then
+            echo "::error title=OSV-Scanner::The scan failed without results; see the Scan step."
+            status=1
+          fi
+          exit "$status"
+
+      - name: Report all vulnerabilities (SARIF)
+        uses: google/osv-scanner-action/osv-reporter-action@b1d267aea5211fa648d9d442fa64b90dbdcbdd36 # v2.7.0
+        with:
+          scan-args: |-
+            --output=osv-results.sarif
+            --new=osv-results.json
+            --gh-annotations=false
+            --fail-on-vuln=false
+
+      # Code scanning works out itself which alerts a pull request adds.
+      - name: Upload to code scanning
+        # A pull request from a fork gets a read-only token, so it can't upload.
+        if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork }}
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          sarif_file: osv-results.sarif
+          category: osv-scanner
+
+      - name: Fail on vulnerabilities this pull request introduces
+        if: github.event_name == 'pull_request'
+        uses: google/osv-scanner-action/osv-reporter-action@b1d267aea5211fa648d9d442fa64b90dbdcbdd36 # v2.7.0
+        with:
+          scan-args: |-
+            --output=osv-new.sarif
+            --old=osv-base.json
+            --new=osv-results.json
+            --gh-annotations=true
+            --fail-on-vuln=true
+
+      - name: Keep the results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: osv-scanner-results
+          path: |
+            osv-*.json
+            osv-*.sarif
+          if-no-files-found: ignore
+          retention-days: 14
+
+  npm-audit:
+    name: npm audit (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: web app
+            directory: .
+          - name: desktop
+            directory: desktop
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+
+      # Production dependencies only: dev tooling (Jest, ESLint, electron-builder)
+      # never ships, and some of its advisories have no fix short of a major
+      # downgrade. npm audit reads the lockfile, so nothing is installed. Electron
+      # is a devDependency of desktop/ that does ship: OSV-Scanner, dependency
+      # review and Dependabot alerts cover it.
+      - name: Audit production dependencies
+        working-directory: ${{ matrix.directory }}
+        run: npm audit --omit=dev --audit-level=high
+
+  licenses:
+    name: License summary
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+
+      # Read from the lockfiles: no install, no extra dependency. Writes the job
+      # summary and warns about production packages that need a license review.
+      - name: Summarise the licenses
+        run: node .github/scripts/license-summary.mjs --json licenses.json
+
+      - name: Keep the license list
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: licenses
+          path: licenses.json
+          retention-days: 30
+
+  secret-scan:
+    name: Secret scan (gitleaks, GitGuardian)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: read # gitleaks lists the pull request's commits
+    env:
+      # Empty for Dependabot and fork pull requests, which get no secrets.
+      HAS_GITGUARDIAN_KEY: ${{ secrets.GITGUARDIAN_API_KEY != '' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Both scanners walk every commit of the push or pull request.
+          fetch-depth: 0
+          persist-credentials: false
+
+      # Non-blocking, as before. .github/gitleaks.toml adds an allowlist for
+      # test code and fixtures to gitleaks' default rules.
+      - name: Secret scan (gitleaks)
+        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_CONFIG: .github/gitleaks.toml
+          GITLEAKS_ENABLE_COMMENTS: 'false'
+          # Only needed if the repository moves to an organization.
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+
+      # GitGuardian (ggshield): warns on pull requests, blocks pushes to master.
+      # The GITHUB_* variables give it the full commit range to scan.
+      - name: Secret scan (GitGuardian), warn on pull request
+        if: github.event_name == 'pull_request' && env.HAS_GITGUARDIAN_KEY == 'true'
+        uses: GitGuardian/ggshield/actions/secret@4cccd600fd3890a7aba07fd0a45e483f3099fe70 # v1.56.1
+        continue-on-error: true
+        env:
+          GITHUB_PULL_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          GITHUB_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          GITGUARDIAN_API_KEY: ${{ secrets.GITGUARDIAN_API_KEY }}
+
+      - name: Secret scan (GitGuardian), block on master
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        uses: GitGuardian/ggshield/actions/secret@4cccd600fd3890a7aba07fd0a45e483f3099fe70 # v1.56.1
+        env:
+          GITHUB_PUSH_BEFORE_SHA: ${{ github.event.before }}
+          GITHUB_PUSH_BASE_SHA: ${{ github.event.base }}
+          GITHUB_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          GITGUARDIAN_API_KEY: ${{ secrets.GITGUARDIAN_API_KEY }}

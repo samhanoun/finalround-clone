@@ -1,3 +1,4 @@
+import { after } from 'next/server';
 import {
   getBillableMinutes,
   getCopilotQuotaSnapshot,
@@ -6,6 +7,7 @@ import {
   type CopilotQuotaSnapshot,
 } from '@/lib/copilot';
 import { getSessionHeartbeatAt, isSessionHeartbeatExpired } from '@/lib/copilotSession';
+import { rememberFromSession } from '@/lib/memoryExtraction';
 import { createAdminClient } from '@/lib/supabase/admin';
 
 export const SESSION_COLUMNS =
@@ -28,6 +30,22 @@ export type EndedCopilotSession = {
 };
 
 /**
+ * Long-term memory (Goals → Memory) from a session that just ended, after the
+ * response. rememberFromSession checks "Learn from my live sessions" itself
+ * and never throws; scheduling it can't fail the end either.
+ */
+function learnFromEndedSession(session: EndableCopilotSession) {
+  const goalId = typeof session.metadata?.goal_id === 'string' ? session.metadata.goal_id : null;
+  const learn = () => rememberFromSession(session.id, session.user_id, goalId);
+  try {
+    after(learn);
+  } catch {
+    // Outside a request (a script or a test): start it now, without waiting.
+    void learn().catch(() => undefined);
+  }
+}
+
+/**
  * Ends an active copilot session and charges the minutes it ran.
  *
  * - Bills up to `endedAt` while the app is still sending heartbeats, and up
@@ -37,6 +55,8 @@ export type EndedCopilotSession = {
  *   usage themselves (migration 0028).
  * - Charges only when this call is the one that ended the session, so two
  *   requests noticing the same expiry can't bill it twice.
+ * - Then learns from it, whatever ended it (Stop, expiry, a new session), so
+ *   memory doesn't depend on the Stop button.
  */
 export async function endCopilotSession(
   session: EndableCopilotSession,
@@ -80,7 +100,10 @@ export async function endCopilotSession(
     .maybeSingle();
 
   if (error) return { ended: null, error };
-  if (data) await recordCopilotUsage(session.user_id, billableMinutes);
+  if (data) {
+    await recordCopilotUsage(session.user_id, billableMinutes);
+    learnFromEndedSession(session);
+  }
 
   return { ended: { session: data, usage, billableMinutes, quota }, error: null };
 }

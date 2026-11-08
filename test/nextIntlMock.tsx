@@ -72,7 +72,23 @@ function formatMessage(text: string, values: Values = {}): string {
   return out;
 }
 
+/**
+ * One translator per namespace, like next-intl's hooks: a new function on
+ * every render would make effects that depend on `t` re-run (and refetch) in
+ * a loop under Jest.
+ */
+const translators = new Map<string, ReturnType<typeof buildTranslator>>();
 function makeTranslator(namespace?: string) {
+  const key = namespace ?? '';
+  let translator = translators.get(key);
+  if (!translator) {
+    translator = buildTranslator(namespace);
+    translators.set(key, translator);
+  }
+  return translator;
+}
+
+function buildTranslator(namespace?: string) {
   const full = (key: string) => (namespace ? `${namespace}.${key}` : key);
   const t = (key: string, values?: Values) => {
     const message = lookup(full(key));

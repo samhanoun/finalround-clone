@@ -35,6 +35,13 @@ jest.mock('@/lib/env', () => ({
   }),
 }));
 
+const SECRET = 'test-cron-secret-key-123456789012345';
+
+/** A cron call, with the secret as a bearer token (never in the URL). */
+function cronRequest(url: string, token?: string) {
+  return { url, headers: new Headers(token ? { authorization: `Bearer ${token}` } : {}) } as unknown as NextRequest;
+}
+
 const { createAdminClient } = jest.requireMock('@/lib/supabase/admin') as {
   createAdminClient: jest.Mock;
 };
@@ -55,12 +62,10 @@ describe('/api/cron/retention', () => {
     consoleErrorSpy.mockRestore();
   });
 
-  it('returns 401 when cronKey is missing', async () => {
+  it('returns 401 without the bearer token', async () => {
     const { GET } = await import('./route');
 
-    const req = {
-      url: 'http://localhost/api/cron/retention',
-    } as unknown as NextRequest;
+    const req = cronRequest('http://localhost/api/cron/retention');
 
     const response = await GET(req);
 
@@ -69,12 +74,16 @@ describe('/api/cron/retention', () => {
     expect(json.error).toBe('Unauthorized');
   });
 
-  it('returns 401 when cronKey is invalid', async () => {
+  it('refuses the secret in the query string (URLs end up in logs)', async () => {
+    const { GET } = await import('./route');
+    const response = await GET({ url: `http://localhost/api/cron/retention?cronKey=${SECRET}`, headers: new Headers() } as unknown as NextRequest);
+    expect(response.status).toBe(401);
+  });
+
+  it('returns 401 with a wrong token', async () => {
     const { GET } = await import('./route');
 
-    const req = {
-      url: 'http://localhost/api/cron/retention?cronKey=wrong-key',
-    } as unknown as NextRequest;
+    const req = cronRequest('http://localhost/api/cron/retention', 'wrong-key');
 
     const response = await GET(req);
 
@@ -83,7 +92,7 @@ describe('/api/cron/retention', () => {
     expect(json.error).toBe('Unauthorized');
   });
 
-  it('returns dry-run evidence by default with valid cronKey', async () => {
+  it('returns dry-run evidence by default with the right token', async () => {
     runCopilotRetentionSweep.mockResolvedValue({
       dryRun: true,
       policy: { eventsDays: 30, summariesDays: 90, sessionsDays: 90 },
@@ -99,9 +108,7 @@ describe('/api/cron/retention', () => {
 
     const { GET } = await import('./route');
 
-    const req = {
-      url: 'http://localhost/api/cron/retention?cronKey=test-cron-secret-key-123456789012345',
-    } as unknown as NextRequest;
+    const req = cronRequest('http://localhost/api/cron/retention', SECRET);
 
     const response = await GET(req);
 
@@ -115,7 +122,7 @@ describe('/api/cron/retention', () => {
     });
   });
 
-  it('executes actual deletion when dryRun=false with valid cronKey', async () => {
+  it('executes actual deletion when dryRun=false with the right token', async () => {
     runCopilotRetentionSweep.mockResolvedValue({
       dryRun: false,
       policy: { eventsDays: 30, summariesDays: 90, sessionsDays: 90 },
@@ -131,9 +138,7 @@ describe('/api/cron/retention', () => {
 
     const { GET } = await import('./route');
 
-    const req = {
-      url: 'http://localhost/api/cron/retention?dryRun=false&cronKey=test-cron-secret-key-123456789012345',
-    } as unknown as NextRequest;
+    const req = cronRequest('http://localhost/api/cron/retention?dryRun=false', SECRET);
 
     const response = await GET(req);
 
@@ -154,9 +159,7 @@ describe('/api/cron/retention', () => {
 
     const { GET } = await import('./route');
 
-    const req = {
-      url: 'http://localhost/api/cron/retention?cronKey=test-cron-secret-key-123456789012345',
-    } as unknown as NextRequest;
+    const req = cronRequest('http://localhost/api/cron/retention', SECRET);
 
     const response = await GET(req);
 
@@ -166,7 +169,7 @@ describe('/api/cron/retention', () => {
     expect(json.message).toContain('failed');
   });
 
-  it('supports POST method with valid cronKey', async () => {
+  it('supports POST method with the right token', async () => {
     runCopilotRetentionSweep.mockResolvedValue({
       dryRun: true,
       policy: { eventsDays: 30, summariesDays: 90, sessionsDays: 90 },
@@ -182,9 +185,7 @@ describe('/api/cron/retention', () => {
 
     const { POST } = await import('./route');
 
-    const req = {
-      url: 'http://localhost/api/cron/retention?cronKey=test-cron-secret-key-123456789012345',
-    } as unknown as NextRequest;
+    const req = cronRequest('http://localhost/api/cron/retention', SECRET);
 
     const response = await POST(req);
 

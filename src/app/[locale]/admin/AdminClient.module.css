@@ -96,11 +96,11 @@
   padding-left: 36px;
 }
 
-/* Overview: six figures in one group */
+/* Overview: five figures in one group */
 /* The 1px gaps show the hairline behind the cells. */
 .stats {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 1px;
   margin: 0;
   background: var(--hairline);
@@ -217,6 +217,12 @@
   color: var(--text-3);
   font-size: 13px;
   white-space: nowrap;
+}
+
+/* A suspended account, under the name */
+.personFlag {
+  display: block;
+  margin-top: 4px;
 }
 
 .muted {
@@ -392,8 +398,13 @@
 }
 
 @media (max-width: 1023px) {
+  /* Two columns: the user count across the top, then the other four in pairs. */
   .stats {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .stat:first-child {
+    grid-column: 1 / -1;
   }
 }
 

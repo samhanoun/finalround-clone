@@ -143,9 +143,8 @@
   gap: 16px;
 }
 
-/* The list */
+/* The list. No overflow clipping: a row's menu floats over the rows below. */
 .listPanel {
-  overflow: hidden;
   border: 1px solid var(--hairline);
   border-radius: var(--radius-card);
   background: var(--surface);
@@ -158,17 +157,22 @@
   font-weight: 500;
 }
 
+.listTitle:focus {
+  outline: none;
+}
+
 .listHead,
 .rowLink {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 152px 64px 128px;
   align-items: center;
   gap: 16px;
-  padding: 0 24px;
 }
 
+/* Lines up with the row's link: its 8px end padding, the 32px menu button and 16px after it. */
 .listHead {
   height: 32px;
+  padding: 0 56px 0 24px;
   border-bottom: 1px solid var(--hairline);
   color: var(--text-3);
   font-size: 12px;
@@ -189,17 +193,152 @@
   border-top: 1px solid var(--hairline);
 }
 
-.rowLink {
-  min-height: 44px;
-  padding-top: 8px;
-  padding-bottom: 8px;
-  color: var(--text-1);
-  text-decoration: none;
+/* A row: the link to the interview, then its menu */
+.row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
   transition: background-color var(--dur-fast) var(--ease);
 }
 
-.rowLink:hover {
+.row:last-child {
+  border-radius: 0 0 calc(var(--radius-card) - 1px) calc(var(--radius-card) - 1px);
+}
+
+.row[data-mode='view']:hover {
   background: rgba(237, 237, 237, 0.03);
+}
+
+.rowLink {
+  min-width: 0;
+  min-height: 44px;
+  padding: 8px 8px 8px 24px;
+  color: var(--text-1);
+  text-decoration: none;
+}
+
+.rowMenu {
+  position: relative;
+  padding-right: 16px;
+}
+
+.menuButton {
+  color: var(--text-3);
+}
+
+/* 32px with a mouse; touch keeps the 44px target. */
+@media (pointer: fine) {
+  .menuButton {
+    width: 32px;
+    height: 32px;
+  }
+}
+
+.menuButton[aria-expanded='true'] {
+  background: var(--raised);
+  color: var(--text-1);
+}
+
+.menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 16px;
+  z-index: 30;
+  display: grid;
+  min-width: 168px;
+  padding: 4px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-row);
+  background: var(--raised);
+  box-shadow: var(--float);
+  animation: menuIn var(--dur-menu) var(--ease);
+}
+
+@keyframes menuIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+.menuItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--text-1);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease);
+}
+
+.menuItem svg {
+  flex-shrink: 0;
+  color: var(--text-3);
+}
+
+.menuItem:hover,
+.menuItem:focus-visible {
+  background: var(--raised-2);
+}
+
+.menuItemDanger,
+.menuItemDanger svg {
+  color: var(--negative-text);
+}
+
+.menuItem:active {
+  transform: scale(0.98);
+}
+
+/* Renaming, or confirming a delete, in place of the row */
+.rowForm {
+  display: flex;
+  flex-wrap: wrap;
+  grid-column: 1 / -1;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 8px 16px 8px 24px;
+}
+
+.rowInput {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+
+.confirmText {
+  flex: 1 1 240px;
+  margin: 0;
+  color: var(--text-1);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.rowError {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 0 24px 12px;
+  color: var(--negative-text);
+  font-size: 13px;
+}
+
+@media (pointer: coarse) {
+  /* The menu button is 44px here: 8 + 44 + 16. */
+  .listHead {
+    padding-right: 68px;
+  }
+
+  .menuItem {
+    min-height: 44px;
+  }
 }
 
 .rowTitle {
@@ -300,7 +439,30 @@
       'status date . score';
     gap: 4px 8px;
     min-height: 64px;
+    padding: 12px 4px 12px 16px;
+  }
+
+  .rowMenu {
+    padding-right: 8px;
+  }
+
+  .menu {
+    right: 8px;
+  }
+
+  /* The field or question on its own line, the two buttons together under it. */
+  .rowForm {
+    justify-content: flex-end;
     padding: 12px 16px;
+  }
+
+  .rowInput,
+  .confirmText {
+    flex-basis: 100%;
+  }
+
+  .rowError {
+    padding: 0 16px 12px;
   }
 
   .rowTitle {

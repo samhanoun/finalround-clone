@@ -7,12 +7,14 @@ import { createClient } from '@/lib/supabase/browser';
 import { CheckIcon, CopyIcon } from '@/components/icons';
 import { Skeleton } from '@/components/Skeleton';
 import { Segmented } from '@/app/[locale]/settings/SettingsUI';
-import type { Organization, OrganizationMember, OrganizationInvitation, OrganizationRole } from '@/lib/organizations';
+import type { Organization, OrganizationMember, OrganizationInvitation, OrganizationRole, TeamStats } from '@/lib/organizations';
 import styles from './TeamsClient.module.css';
 
 interface TeamsClientProps {
   initialOrganization: Organization | null;
   role: OrganizationRole | null;
+  /** The signed-in user: their own row offers no role change or removal (the server refuses changing your own role). */
+  userId?: string | null;
 }
 
 type T = ReturnType<typeof useTranslations>;
@@ -46,7 +48,7 @@ function absoluteLink(path: string) {
  * single sign-on, the team's details and, for the owner, a danger zone.
  * Without a team: invitations sent to you and a way to start one.
  */
-export default function TeamsClient({ initialOrganization, role }: TeamsClientProps) {
+export default function TeamsClient({ initialOrganization, role, userId = null }: TeamsClientProps) {
   const t = useTranslations('Teams');
   const [organization, setOrganization] = useState<Organization | null>(initialOrganization);
   const [myRole, setMyRole] = useState<OrganizationRole | null>(role);
@@ -54,14 +56,11 @@ export default function TeamsClient({ initialOrganization, role }: TeamsClientPr
   const [invitations, setInvitations] = useState<TeamInvitation[]>([]);
   const [invitesForMe, setInvitesForMe] = useState<InviteForMe[]>([]);
   const [inviteSent, setInviteSent] = useState<InviteSent | null>(null);
-  const [stats, setStats] = useState({
-    totalMembers: 0,
-    activeMembers: 0,
-    pendingInvitations: 0,
-    totalInterviews: 0,
-    interviewsThisMonth: 0,
-  });
+  // Null until the figures load (or when they can't): the header shows a dash, not invented zeros.
+  const [stats, setStats] = useState<TeamStats | null>(null);
   const [loading, setLoading] = useState(true);
+  // The member list couldn't be read: the error says so, instead of an empty list claiming there's nobody.
+  const [membersFailed, setMembersFailed] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sso, setSso] = useState<SsoView | null>(null);
 
@@ -77,9 +76,13 @@ export default function TeamsClient({ initialOrganization, role }: TeamsClientPr
         ]);
         const membersData = await membersRes.json().catch(() => ({}));
         const statsData = await statsRes.json().catch(() => ({}));
-        if (membersData.members) setMembers(membersData.members);
         if (statsData.stats) setStats(statsData.stats);
+        // A list that didn't load says so, rather than "No members yet".
+        if (!membersRes.ok || !membersData.members) throw new Error(`members: HTTP ${membersRes.status}`);
+        setMembers(membersData.members);
+        setMembersFailed(false);
       } catch {
+        setMembersFailed(true);
         setError(t('errors.load'));
       } finally {
         setLoading(false);
@@ -212,19 +215,20 @@ export default function TeamsClient({ initialOrganization, role }: TeamsClientPr
     void loadData(organization);
   }
 
+  // Either way the list reloads, so it shows what the team is now (a refused change may mean it changed meanwhile).
   async function handleRemoveMember(memberId: string) {
     if (!organization) return;
-    const res = await call(
+    await call(
       `/api/teams/${organization.id}/members`,
       { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ member_id: memberId, action: 'remove' }) },
       t('errors.remove'),
     );
-    if (res) void loadData(organization);
+    void loadData(organization);
   }
 
   async function handleUpdateRole(memberId: string, newRole: string) {
     if (!organization) return;
-    const res = await call(
+    await call(
       `/api/teams/${organization.id}/members`,
       {
         method: 'PATCH',
@@ -233,7 +237,7 @@ export default function TeamsClient({ initialOrganization, role }: TeamsClientPr
       },
       t('errors.role'),
     );
-    if (res) void loadData(organization);
+    void loadData(organization);
   }
 
   async function handleCreateTeam(name: string, slug: string) {
@@ -300,10 +304,18 @@ export default function TeamsClient({ initialOrganization, role }: TeamsClientPr
           </p>
         </div>
         <dl className={styles.stats}>
-          <Stat label={t('stats.members')} value={stats.totalMembers} />
-          <Stat label={t('stats.active')} value={stats.activeMembers} />
-          <Stat label={t('stats.interviews')} value={stats.totalInterviews} />
-          <Stat label={t('stats.thisMonth')} value={stats.interviewsThisMonth} />
+          <Stat label={t('stats.members')} value={stats?.totalMembers} />
+          <Stat label={t('stats.active')} value={stats?.activeMembers} />
+          <Stat
+            label={t('stats.practice')}
+            value={stats?.practiceInterviews?.total}
+            note={stats?.practiceInterviews ? t('stats.newThisMonth', { count: stats.practiceInterviews.thisMonth }) : null}
+          />
+          <Stat
+            label={t('stats.live')}
+            value={stats?.liveSessions?.total}
+            note={stats?.liveSessions ? t('stats.newThisMonth', { count: stats.liveSessions.thisMonth }) : null}
+          />
         </dl>
       </header>
 
@@ -312,7 +324,7 @@ export default function TeamsClient({ initialOrganization, role }: TeamsClientPr
       <section className={styles.section} aria-labelledby="team-members">
         <h3 className={styles.sectionTitle} id="team-members">
           {t('tabs.members')}
-          {!loading ? <span className={styles.count}>{members.length}</span> : null}
+          {!loading && !(membersFailed && !members.length) ? <span className={styles.count}>{members.length}</span> : null}
         </h3>
         {loading ? (
           <div className={styles.group} aria-hidden="true">
@@ -323,8 +335,14 @@ export default function TeamsClient({ initialOrganization, role }: TeamsClientPr
               </div>
             ))}
           </div>
-        ) : (
-          <MembersList members={members} canManage={canManage} onRemove={handleRemoveMember} onUpdateRole={handleUpdateRole} />
+        ) : membersFailed && !members.length ? null : (
+          <MembersList
+            members={members}
+            canManage={canManage}
+            userId={userId}
+            onRemove={handleRemoveMember}
+            onUpdateRole={handleUpdateRole}
+          />
         )}
       </section>
 
@@ -366,27 +384,54 @@ export default function TeamsClient({ initialOrganization, role }: TeamsClientPr
   );
 }
 
-function Stat({ label, value }: { label: string; value: number }) {
+function Stat({ label, value, note }: { label: string; value: number | undefined; note?: string | null }) {
+  const format = useFormatter();
   return (
     <div className={styles.stat}>
       <dt>{label}</dt>
-      <dd>{value}</dd>
+      <dd>{typeof value === 'number' ? format.number(value) : '—'}</dd>
+      {note ? <dd className={styles.statNote}>{note}</dd> : null}
     </div>
   );
 }
 
 function initials(member: OrganizationMember) {
-  return (member.user_full_name?.[0] || member.user_email?.[0] || '?').toUpperCase();
+  return (member.user_full_name?.trim()[0] || member.user_email?.trim()[0] || '?').toUpperCase();
+}
+
+/** A profile photo address the page can show: http(s) only. */
+function photoUrl(value: string | null | undefined): string | null {
+  const url = value?.trim();
+  return url && /^https?:\/\/\S+$/i.test(url) ? url : null;
+}
+
+/** The member's profile photo, or their initial when there's none or it doesn't load. */
+function MemberAvatar({ member }: { member: OrganizationMember }) {
+  const src = photoUrl(member.user_avatar_url);
+  const [failed, setFailed] = useState<string | null>(null);
+  return (
+    <span className={styles.avatar} aria-hidden="true">
+      {src && failed !== src ? (
+        // A plain <img>: photos can live on any host, and next/image has no remote patterns for them.
+        // eslint-disable-next-line @next/next/no-img-element
+        <img className={styles.avatarImage} src={src} alt="" width={28} height={28} referrerPolicy="no-referrer" onError={() => setFailed(src)} />
+      ) : (
+        initials(member)
+      )}
+    </span>
+  );
 }
 
 function MembersList({
   members,
   canManage,
+  userId,
   onRemove,
   onUpdateRole,
 }: {
   members: OrganizationMember[];
   canManage: boolean;
+  userId: string | null;
   onRemove: (id: string) => void;
   onUpdateRole: (id: string, role: string) => void;
 }) {
@@ -397,58 +442,60 @@ function MembersList({
   }
   return (
     <ul className={`${styles.group} ${styles.list}`}>
-      {members.map((member) => (
-        <li key={member.id} className={styles.memberRow}>
-          <div className={styles.person}>
-            <span className={styles.avatar} aria-hidden="true">
-              {initials(member)}
-            </span>
-            <span className={styles.personText}>
-              <span className={styles.personName}>{member.user_full_name || member.user_email || t('unknown')}</span>
-              <span className={styles.personMeta}>
-                {member.user_full_name ? member.user_email : null}
-                {member.status !== 'active' ? (
-                  <>
-                    {member.user_full_name ? ' · ' : null}
-                    {label(t, 'statuses', member.status)}
-                  </>
-                ) : null}
+      {members.map((member) => {
+        // Owners can't be changed or removed, and nobody changes their own role.
+        const manageable = canManage && member.role !== 'owner' && member.user_id !== userId;
+        return (
+          <li key={member.id} className={styles.memberRow}>
+            <div className={styles.person}>
+              <MemberAvatar member={member} />
+              <span className={styles.personText}>
+                <span className={styles.personName}>{member.user_full_name || member.user_email || t('unknown')}</span>
+                <span className={styles.personMeta}>
+                  {member.user_full_name ? member.user_email : null}
+                  {member.status !== 'active' ? (
+                    <>
+                      {member.user_full_name && member.user_email ? ' · ' : null}
+                      {label(t, 'statuses', member.status)}
+                    </>
+                  ) : null}
+                </span>
               </span>
+            </div>
+            <div className={styles.memberRole}>
+              {manageable ? (
+                <select
+                  className={`select ${styles.roleSelect}`}
+                  value={member.role}
+                  aria-label={t('roleFor', { member: member.user_email || member.user_full_name || t('member') })}
+                  onChange={(e) => onUpdateRole(member.id, e.target.value)}
+                >
+                  <option value="admin">{t('roles.admin')}</option>
+                  <option value="member">{t('roles.member')}</option>
+                  <option value="viewer">{t('roles.viewer')}</option>
+                </select>
+              ) : (
+                <span className={styles.roleText}>{label(t, 'roles', member.role)}</span>
+              )}
+            </div>
+            <span className={styles.memberJoined}>
+              {member.joined_at ? t('joinedOn', { date: format.dateTime(new Date(member.joined_at), { dateStyle: 'medium' }) }) : null}
             </span>
-          </div>
-          <div className={styles.memberRole}>
-            {canManage && member.role !== 'owner' ? (
-              <select
-                className={`select ${styles.roleSelect}`}
-                value={member.role}
-                aria-label={t('roleFor', { member: member.user_email ?? t('member') })}
-                onChange={(e) => onUpdateRole(member.id, e.target.value)}
-              >
-                <option value="admin">{t('roles.admin')}</option>
-                <option value="member">{t('roles.member')}</option>
-                <option value="viewer">{t('roles.viewer')}</option>
-              </select>
-            ) : (
-              <span className={styles.roleText}>{label(t, 'roles', member.role)}</span>
-            )}
-          </div>
-          <span className={styles.memberJoined}>
-            {member.joined_at ? t('joinedOn', { date: format.dateTime(new Date(member.joined_at), { dateStyle: 'medium' }) }) : null}
-          </span>
-          <div className={styles.rowActions}>
-            {canManage && member.role !== 'owner' ? (
-              <button
-                type="button"
-                className="button buttonGhost buttonSmall"
-                onClick={() => onRemove(member.id)}
-                aria-label={t('removeMember', { member: member.user_full_name || member.user_email || t('member') })}
-              >
-                {t('remove')}
-              </button>
-            ) : null}
-          </div>
-        </li>
-      ))}
+            <div className={styles.rowActions}>
+              {manageable ? (
+                <button
+                  type="button"
+                  className="button buttonGhost buttonSmall"
+                  onClick={() => onRemove(member.id)}
+                  aria-label={t('removeMember', { member: member.user_full_name || member.user_email || t('member') })}
+                >
+                  {t('remove')}
+                </button>
+              ) : null}
+            </div>
+          </li>
+        );
+      })}
     </ul>
   );
 }

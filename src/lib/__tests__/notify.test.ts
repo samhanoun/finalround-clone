@@ -1,13 +1,32 @@
 jest.mock('@/lib/supabase/admin', () => ({ createAdminClient: jest.fn() }));
 jest.mock('@/lib/email', () => ({ sendEmail: jest.fn(async () => true) }));
 jest.mock('web-push', () => ({ __esModule: true, default: { setVapidDetails: jest.fn(), sendNotification: jest.fn() } }));
-jest.mock('@/lib/localizedEmail', () => ({ localizedNotificationEmail: jest.fn(async (_u: string, n: { title: string; message: string }) => ({ subject: n.title, text: n.message, html: n.message })) }));
+jest.mock('@/lib/localizedEmail', () => {
+  // A translator over the real message files, standing in for next-intl's.
+  const files: Record<string, unknown> = { en: jest.requireActual('@/messages/en.json'), es: jest.requireActual('@/messages/es.json') };
+  const translator = (locale: string, namespace: string) => {
+    const lookup = (key: string) =>
+      `${namespace}.${key}`.split('.').reduce<unknown>((node, part) => (node as Record<string, unknown> | undefined)?.[part], files[locale]);
+    const t = (key: string, values: Record<string, string | number> = {}) =>
+      String(lookup(key)).replace(/\{(\w+)\}/g, (_, name: string) => String(values[name] ?? `{${name}}`));
+    return Object.assign(t, { has: (key: string) => typeof lookup(key) === 'string' });
+  };
+  return {
+    localizedNotificationEmail: jest.fn(async (_u: string, n: { title: string; message: string }) => ({ subject: n.title, text: n.message, html: n.message })),
+    userLocaleAndZone: jest.fn(async () => ({ locale: 'en', timeZone: 'UTC' })),
+    kitFor: jest.fn(async (locale: string) => ({
+      t: (namespace: string) => translator(locale, namespace),
+      format: { dateTime: (value: Date) => value.toISOString() },
+    })),
+  };
+});
 
 import webPush from 'web-push';
 import { channelsFor, DEFAULT_NOTIFICATION_PREFS, notify } from '@/lib/notify';
 
 const { createAdminClient } = jest.requireMock('@/lib/supabase/admin') as { createAdminClient: jest.Mock };
 const { sendEmail } = jest.requireMock('@/lib/email') as { sendEmail: jest.Mock };
+const { userLocaleAndZone, kitFor } = jest.requireMock('@/lib/localizedEmail') as { userLocaleAndZone: jest.Mock; kitFor: jest.Mock };
 const sendNotification = webPush.sendNotification as jest.Mock;
 
 type Row = Record<string, unknown>;
@@ -28,7 +47,7 @@ function mockAdmin({
         return { error: null };
       },
       select: () => ({
-        eq: (_column: string, _value: string) =>
+        eq: () =>
           table === 'push_subscriptions'
             ? Promise.resolve({ data: pushRows })
             : { maybeSingle: async () => ({ data: prefs }) },
@@ -107,6 +126,50 @@ describe('notify', () => {
     expect(result.push).toBe(1);
     expect(JSON.parse(sendNotification.mock.calls[0][1])).toEqual({ title: 'Joined', body: 'x', url: '/teams', tag: 'system' });
     expect(deletes).toEqual(['device-2']);
+  });
+
+  it('pushes in the user’s app language, as emails are', async () => {
+    process.env.VAPID_PUBLIC_KEY = 'public';
+    process.env.VAPID_PRIVATE_KEY = 'private';
+    mockAdmin({ pushRows: [{ id: 'device-1', endpoint: 'https://push.example/1', p256dh: 'p', auth: 'a' }] });
+    userLocaleAndZone.mockResolvedValueOnce({ locale: 'es', timeZone: 'Europe/Madrid' });
+    sendNotification.mockResolvedValueOnce({});
+
+    await notify('user-1', {
+      type: 'ai_suggestion',
+      title: 'Practice report: 72/100',
+      message: 'Open it to see your scores and what to work on.',
+      url: '/interview/s1',
+      i18n: { key: 'practiceReport', params: { score: 72 } },
+    });
+
+    expect(kitFor).toHaveBeenCalledWith('es', 'Europe/Madrid');
+    expect(JSON.parse(sendNotification.mock.calls[0][1])).toEqual({
+      title: 'Informe de práctica: 72/100',
+      body: 'Ábrelo para ver tus puntuaciones y qué mejorar.',
+      url: '/interview/s1',
+      tag: 'ai_suggestion',
+    });
+  });
+
+  it('pushes the English text when there is no message key or the language can’t be read, and skips the lookup without devices', async () => {
+    process.env.VAPID_PUBLIC_KEY = 'public';
+    process.env.VAPID_PRIVATE_KEY = 'private';
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+    mockAdmin({ pushRows: [{ id: 'device-1', endpoint: 'https://push.example/1', p256dh: 'p', auth: 'a' }] });
+    sendNotification.mockResolvedValue({});
+
+    await notify('user-1', { type: 'system', title: 'Joined', message: 'x' });
+    expect(userLocaleAndZone).not.toHaveBeenCalled();
+
+    userLocaleAndZone.mockRejectedValueOnce(new Error('no service role'));
+    await notify('user-1', { type: 'system', title: 'Invitation to join Acme', message: 'Sam invited you', i18n: { key: 'teamInvite', params: { team: 'Acme' } } });
+    expect(JSON.parse(sendNotification.mock.calls[1][1])).toMatchObject({ title: 'Invitation to join Acme', body: 'Sam invited you' });
+
+    mockAdmin({ pushRows: [] });
+    await notify('user-1', { type: 'system', title: 'x', message: 'y', i18n: { key: 'proActive' } });
+    expect(userLocaleAndZone).toHaveBeenCalledTimes(1);
+    sendNotification.mockReset();
   });
 
   it('never throws', async () => {

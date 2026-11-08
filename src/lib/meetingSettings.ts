@@ -86,13 +86,20 @@ export function detectMeetingPlatform(link: string): Exclude<MeetingPlatform, 'a
   return LINK_PATTERNS.find(([, pattern]) => pattern.test(host))?.[0] ?? null;
 }
 
-/** An http(s) URL from what the user pasted ("meet.google.com/abc" works too), or null. */
+/**
+ * An http(s) URL from what the user pasted ("meet.google.com/abc" works too),
+ * or null. Text with spaces, or a host without a dot, isn't a link: the URL
+ * parser would happily turn "not a link" into https://not%20a%20link/.
+ */
 export function meetingUrl(link: string): URL | null {
   const trimmed = link.trim();
-  if (!trimmed) return null;
+  if (!trimmed || /\s/.test(trimmed)) return null;
   try {
     const url = new URL(/^[a-z]+:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`);
-    return url.protocol === 'https:' || url.protocol === 'http:' ? url : null;
+    if (url.protocol !== 'https:' && url.protocol !== 'http:') return null;
+    const host = url.hostname;
+    if (!host.includes('.') || host.startsWith('.') || host.endsWith('.') || host.includes('%')) return null;
+    return url;
   } catch {
     return null;
   }

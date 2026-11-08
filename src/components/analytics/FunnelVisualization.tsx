@@ -47,7 +47,6 @@ export function FunnelVisualization() {
         {data?.total ? (
           <ExportButton
             data={funnelCsvRows(data, { stage: t('csv.stage'), jobs: t('csv.jobs'), fromPrevious: t('csv.fromPrevious') }, (key) => t(`stages.${key}`))}
-            elementId="funnel-detail"
             filename="job-search-funnel"
             title={t('title')}
           />

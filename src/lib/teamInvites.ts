@@ -6,7 +6,7 @@ import { notify } from '@/lib/notify';
 import { kitFor, userLocaleAndZone } from '@/lib/localizedEmail';
 import { ssoProviderIdOf } from '@/lib/sso';
 import { domainFromEmail } from '@/lib/ssoDomain';
-import type { Locale } from '@/i18n/locales';
+import { DEFAULT_LOCALE, type Locale } from '@/i18n/locales';
 
 /**
  * Team invitations. An owner or admin invites an email address; the invitee
@@ -30,7 +30,8 @@ export type InvitationRow = {
   organization_id: string;
   email: string;
   role: string;
-  invited_by: string;
+  /** Null once the person who sent it has deleted their account (migration 0033: on delete set null). */
+  invited_by: string | null;
   token: string;
   status: string;
   expires_at: string;
@@ -50,9 +51,18 @@ export function isExpired(invitation: Pick<InvitationRow, 'expires_at'>, now = n
   return new Date(invitation.expires_at).getTime() < now.getTime();
 }
 
-async function displayName(userId: string): Promise<string | null> {
+/** The person's name (or email); null when unknown, for example an inviter who has deleted their account. */
+async function displayName(userId: string | null): Promise<string | null> {
+  if (!userId) return null;
   const { data } = await createAdminClient().from('profiles').select('full_name, email').eq('id', userId).maybeSingle();
   return (data?.full_name as string | null) || (data?.email as string | null) || null;
+}
+
+/** "A teammate", in this person's app language: what an invitation says when the inviter's name is unknown. */
+async function teammateFor(userId: string): Promise<string> {
+  const { locale } = await userLocaleAndZone(userId);
+  const { t } = await kitFor(locale);
+  return t('InviteEmail')('teammate');
 }
 
 /**
@@ -88,10 +98,13 @@ export async function sendInvitationEmail(input: {
   return sendEmail({ to: input.to, subject: title, text: email.text, html: email.html });
 }
 
-/** After an invitation is created: email it, and tell the invitee in-app if they already have an account. */
+/**
+ * After an invitation is created: email it, and tell the invitee in-app if
+ * they already have an account. Without a known inviter both say "A teammate".
+ */
 export async function deliverInvitation(invitation: InvitationRow, teamName: string) {
   const inviter = await displayName(invitation.invited_by);
-  const { locale } = await userLocaleAndZone(invitation.invited_by);
+  const locale = invitation.invited_by ? (await userLocaleAndZone(invitation.invited_by)).locale : DEFAULT_LOCALE;
   const emailSent = await sendInvitationEmail({
     to: invitation.email,
     teamName,
@@ -107,12 +120,13 @@ export async function deliverInvitation(invitation: InvitationRow, teamName: str
     .eq('email', normalizeEmail(invitation.email))
     .maybeSingle();
   if (invitee?.id) {
-    await notify(invitee.id as string, {
+    const inviteeId = invitee.id as string;
+    await notify(inviteeId, {
       type: 'system',
       title: `Invitation to join ${teamName}`,
       message: `${inviter ?? 'A teammate'} invited you as ${ROLE_LABEL[invitation.role]?.toLowerCase() ?? invitation.role}.`,
       url: invitePath(invitation.token),
-      i18n: { key: 'teamInvite', params: { team: teamName, inviter: inviter ?? '', role: invitation.role } },
+      i18n: { key: 'teamInvite', params: { team: teamName, inviter: inviter ?? (await teammateFor(inviteeId)), role: invitation.role } },
     });
   }
   return { emailSent };
@@ -214,7 +228,8 @@ export async function respondToInvitation(token: string, user: Invitee, action: 
     .select('id');
   if (updateError) throw new Error(`Could not update the invitation: ${updateError.message}`);
 
-  if (action === 'accept' && updated?.length) {
+  // The inviter hears about it, unless they have deleted their account since.
+  if (action === 'accept' && updated?.length && invitation.invited_by) {
     const who = (await displayName(user.id)) ?? invitation.email;
     await notify(invitation.invited_by, {
       type: 'system',

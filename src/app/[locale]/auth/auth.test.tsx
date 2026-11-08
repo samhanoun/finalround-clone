@@ -8,13 +8,15 @@ jest.mock('next/navigation', () => ({
 }));
 
 const mockPush = jest.fn();
+const mockReplace = jest.fn();
 jest.mock('@/i18n/routing', () => ({
   Link: ({ href, children, ...props }: { href: string; children: React.ReactNode }) => (
     <a href={href} {...props}>
       {children}
     </a>
   ),
-  useRouter: () => ({ push: mockPush, refresh: jest.fn() }),
+  useRouter: () => ({ push: mockPush, replace: mockReplace, refresh: jest.fn() }),
+  usePathname: () => '/auth',
 }));
 
 const mockAuth = {
@@ -29,6 +31,7 @@ jest.mock('@/lib/supabase/browser', () => ({ createClient: () => ({ auth: mockAu
 beforeEach(() => {
   mockParams = new URLSearchParams();
   mockPush.mockReset();
+  mockReplace.mockReset();
   Object.values(mockAuth).forEach((fn) => fn.mockClear());
 });
 
@@ -73,6 +76,26 @@ describe('AuthPage', () => {
     expect(screen.getByRole('form', { name: 'Sign in with single sign-on' })).toBeInTheDocument();
     expect(screen.getByLabelText('Work email')).toBeInTheDocument();
     expect(screen.queryByLabelText('Password')).not.toBeInTheDocument();
+  });
+
+  it('switches the page language from the foot line, keeping the address query', () => {
+    window.history.pushState({}, '', '/en/auth?next=%2Fgoals');
+    render(<AuthPage />);
+
+    const picker = screen.getByRole('combobox', { name: 'Language' });
+    expect(picker).toHaveValue('en');
+    // Each language in its own name.
+    expect(within(picker).getAllByRole('option').map((option) => option.textContent)).toEqual([
+      'English',
+      'Español',
+      'Français',
+      'Deutsch',
+      'Português',
+    ]);
+
+    fireEvent.change(picker, { target: { value: 'fr' } });
+    expect(mockReplace).toHaveBeenCalledWith('/auth?next=%2Fgoals', { locale: 'fr' });
+    window.history.pushState({}, '', '/');
   });
 
   it('opens on sign-up from ?mode=signup', () => {

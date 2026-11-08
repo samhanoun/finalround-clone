@@ -41,8 +41,50 @@
 }
 
 .footLine {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
   margin: 0;
   font-size: 13px;
+}
+
+/* The page's language: a quiet select in the foot line, its globe inside the field */
+.language {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.languageIcon {
+  position: absolute;
+  left: 10px;
+  color: var(--text-3);
+  pointer-events: none;
+}
+
+.languageSelect {
+  width: auto;
+  min-height: 32px;
+  padding: 4px 32px 4px 32px;
+  border-color: var(--hairline);
+  background-color: transparent;
+  background-position: right 10px center;
+  color: var(--text-2);
+  font-size: 13px;
+}
+
+.languageSelect:hover {
+  color: var(--text-1);
+}
+
+/* Touch screens keep the 44px target and the 16px text that stops zooming. */
+@media (pointer: coarse) {
+  .languageSelect {
+    min-height: 44px;
+    font-size: 16px;
+  }
 }
 
 .homeLink {

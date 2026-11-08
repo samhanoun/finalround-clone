@@ -17,6 +17,19 @@ const mockCapture: AudioCapture = {
   subscribeLevels: jest.fn(() => () => undefined),
   getDisplayVideoTrack: jest.fn(() => null),
 };
+// next-intl hands components the same t() on every render; so does this stand-in, or the
+// effects that list t as a dependency (Past sessions' detail and report) would refetch on each render.
+jest.mock('next-intl', () => {
+  const intl = jest.requireActual<typeof import('next-intl')>('next-intl');
+  const translators = new Map<string | undefined, ReturnType<typeof intl.useTranslations>>();
+  return {
+    ...intl,
+    useTranslations: (namespace?: string) => {
+      if (!translators.has(namespace)) translators.set(namespace, intl.useTranslations(namespace as never));
+      return translators.get(namespace)!;
+    },
+  };
+});
 jest.mock('@/components/copilot/useAudioCapture', () => ({ useAudioCapture: () => mockCapture }));
 jest.mock('@/components/copilot/useLiveTranscription', () => ({
   useLiveTranscription: () => ({ status: 'idle', error: null, errorCode: null, captions: { candidate: '', interviewer: '' } }),
@@ -215,5 +228,53 @@ describe('LiveCopilotClient', () => {
     await waitFor(() => expect(mockAnswers.answerScreen).toHaveBeenCalledWith(expect.objectContaining({ jpegBase64: 'frame' })));
     expect(order).toEqual(['hide', 'grab', 'show']);
     (mockCapture.getDisplayVideoTrack as jest.Mock).mockReturnValue(null);
+  });
+
+  it('confirms a deleted past session, even as the list moves on to the next one', async () => {
+    const past = (id: string, title: string) => ({
+      id,
+      title,
+      metadata: { mode: 'general' },
+      status: 'stopped',
+      started_at: '2026-11-01T10:00:00Z',
+      stopped_at: '2026-11-01T10:20:00Z',
+      consumed_minutes: 20,
+      created_at: '2026-11-01T10:00:00Z',
+    });
+    let sessions = [past('old-1', 'Staff Engineer at Acme'), past('old-2', 'Designer at Globex')];
+    const original = fetchMock.getMockImplementation()!;
+    fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === '/api/copilot/sessions/history') return reply({ sessions });
+      if (url.endsWith('/report')) return reply({ error: 'report_not_found' }, 404);
+      const id = url.split('/').pop()!;
+      if (init?.method === 'DELETE') {
+        sessions = sessions.filter((item) => item.id !== id);
+        return reply({ ok: true });
+      }
+      const session = sessions.find((item) => item.id === id);
+      return session ? reply({ session, events: [], summaries: [] }) : original(url, init);
+    });
+    const prompt = jest.spyOn(window, 'prompt').mockReturnValue('DELETE');
+    try {
+      render(<LiveCopilotClient />);
+      fireEvent.click(screen.getByRole('button', { name: 'Past sessions' }));
+      const detail = screen.getByRole('region', { name: 'Session detail view' });
+      await within(detail).findByRole('heading', { name: 'Staff Engineer at Acme' });
+
+      fireEvent.click(within(detail).getByRole('button', { name: 'Delete session' }));
+
+      expect(prompt).toHaveBeenCalledWith('Type DELETE to remove "Staff Engineer at Acme" permanently.');
+      await within(detail).findByRole('heading', { name: 'Designer at Globex' });
+      expect(within(detail).getByRole('status')).toHaveTextContent('Deleted "Staff Engineer at Acme".');
+
+      // Picking a session afterwards clears the confirmation.
+      fireEvent.click(screen.getByRole('button', { name: /Designer at Globex/ }));
+      expect(within(detail).queryByText('Deleted "Staff Engineer at Acme".')).not.toBeInTheDocument();
+      // Let the session's report request settle.
+      await within(detail).findByText('No generated report for this session yet.');
+    } finally {
+      prompt.mockRestore();
+      fetchMock.mockImplementation(original);
+    }
   });
 });

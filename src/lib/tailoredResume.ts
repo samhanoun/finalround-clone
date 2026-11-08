@@ -27,7 +27,6 @@ const MAX_RESUME_CHARS = 16_000;
 const MAX_JOB_CHARS = 8_000;
 
 // The user's own text, so contact details stay; only control characters go.
-// eslint-disable-next-line no-control-regex
 const CONTROL_CHARS = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g;
 
 function clean(text: string, max: number): string {

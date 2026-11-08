@@ -2,7 +2,11 @@ import type { NextRequest } from 'next/server';
 
 jest.mock('next/server', () => ({
   NextResponse: {
-    json: (body: unknown, init?: { status?: number }) => ({ status: init?.status ?? 200, json: async () => body }),
+    json: (body: unknown, init?: { status?: number; headers?: Record<string, string> }) => ({
+      status: init?.status ?? 200,
+      headers: init?.headers ?? {},
+      json: async () => body,
+    }),
   },
 }));
 jest.mock('@/lib/rateLimit', () => ({ rateLimit: jest.fn(async () => ({ ok: true })) }));
@@ -335,5 +339,47 @@ describe('POST /api/interviews/[id]/practice/answer', () => {
   it('only accepts a question from this interview', async () => {
     mockSupabase(answerHandlers(null));
     expect(await callAnswer({ questionId: QUESTION_ID, answer: 'x' })).toMatchObject({ status: 404, body: { error: 'question_not_found' } });
+  });
+});
+
+describe('GET /api/interviews/[id]/export', () => {
+  async function callExport() {
+    const { GET } = await import('../export/route');
+    const res = (await GET(request(undefined), { params: Promise.resolve({ id: SESSION_ID }) })) as unknown as {
+      status: number;
+      headers: Record<string, string>;
+      json: () => Promise<Record<string, unknown>>;
+    };
+    return { status: res.status, headers: res.headers, body: await res.json() };
+  }
+
+  it('downloads the interview with its questions, answers, feedback and report', async () => {
+    mockSupabase({
+      interview_sessions: { select: () => ({ data: { id: SESSION_ID, title: 'Staff Engineer at Acme', created_at: '2026-11-07T10:00:00Z' }, error: null }) },
+      interview_questions: {
+        select: () => ({
+          data: [{ question_text: 'Tell me about the payments migration you led.', response_text: 'I led it.', rubric: { feedback: { score: 7 } } }],
+          error: null,
+        }),
+      },
+      interview_reports: { select: () => ({ data: [{ overall_score: 72, hiring_signal: 'lean_hire' }], error: null }) },
+      interview_session_messages: { select: () => ({ data: [], error: null }) },
+    });
+
+    const { status, headers, body } = await callExport();
+
+    expect(status).toBe(200);
+    expect(headers['content-disposition']).toBe('attachment; filename="practice-interview-2026-11-07.json"');
+    expect(body).toMatchObject({
+      session: { id: SESSION_ID },
+      questions: [{ question_text: 'Tell me about the payments migration you led.', response_text: 'I led it.', rubric: { feedback: { score: 7 } } }],
+      report: { overall_score: 72 },
+      messages: [],
+    });
+  });
+
+  it('answers 404 for an interview that is not yours', async () => {
+    mockSupabase({ interview_sessions: { select: () => ({ data: null, error: null }) } });
+    expect(await callExport()).toMatchObject({ status: 404, body: { error: 'not_found' } });
   });
 });

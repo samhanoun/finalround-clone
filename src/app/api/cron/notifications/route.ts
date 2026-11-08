@@ -1,6 +1,6 @@
-import { timingSafeEqual } from 'node:crypto';
 import { NextResponse, type NextRequest } from 'next/server';
 import { runScheduledNotifications } from '@/lib/notificationJobs';
+import { isCronAuthorized } from '@/lib/cronAuth';
 
 /**
  * Sends due reminders and weekly digests (src/lib/notificationJobs.ts).
@@ -8,16 +8,8 @@ import { runScheduledNotifications } from '@/lib/notificationJobs';
  * scheduler can call it with `Authorization: Bearer <CRON_SECRET>`.
  */
 
-function matches(given: string, expected: string | undefined): boolean {
-  if (!expected || expected.length < 32) return false;
-  const a = Buffer.from(given);
-  const b = Buffer.from(expected);
-  return a.length === b.length && timingSafeEqual(a, b);
-}
-
 async function run(req: NextRequest) {
-  const given = req.headers.get('authorization')?.replace(/^Bearer\s+/i, '') ?? '';
-  if (!matches(given, process.env.CRON_SECRET) && !matches(given, process.env.INTERNAL_CRON_SECRET)) {
+  if (!isCronAuthorized(req, [process.env.CRON_SECRET, process.env.INTERNAL_CRON_SECRET])) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
   if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {

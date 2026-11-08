@@ -1,4 +1,4 @@
-import { after, NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { jsonError } from '@/lib/api';
 import { createClient } from '@/lib/supabase/server';
@@ -6,7 +6,6 @@ import { rateLimit } from '@/lib/rateLimit';
 import { endCopilotSession } from '@/lib/copilot/endSession';
 import { revokeConsentMetadata } from '@/lib/copilotConsent';
 import { summarizeLatencyEvents } from '@/lib/copilot/latency';
-import { rememberFromSession } from '@/lib/memoryExtraction';
 
 const BodySchema = z.object({
   sessionId: z.string().uuid(),
@@ -65,7 +64,8 @@ export async function POST(req: NextRequest) {
   const nowIso = new Date().toISOString();
   const consentRevocation = revokeConsentMetadata(session.metadata, nowIso);
 
-  // Charges the minutes and closes the session (service role, once).
+  // Charges the minutes and closes the session (service role, once), then
+  // learns from it for Goals → Memory after the response.
   const { ended, error: endError } = await endCopilotSession(session, {
     status: 'stopped',
     endedAt: new Date(nowIso),
@@ -84,10 +84,6 @@ export async function POST(req: NextRequest) {
 
   const { usage, billableMinutes, quota } = ended;
   const updated = ended.session;
-
-  // Long-term memory: what the candidate said about themselves (Goals → Memory), after the response.
-  const goalId = typeof session.metadata?.goal_id === 'string' ? session.metadata.goal_id : null;
-  after(() => rememberFromSession(session.id, userId, goalId));
 
   return NextResponse.json({
     session: updated,

@@ -2,8 +2,10 @@ import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
   testDir: './e2e',
-  // The live loop needs fake services; it has its own config (playwright.live.config.ts).
-  testIgnore: /copilot-live\.spec\.ts$/,
+  // The live loop, the whole-app suite (e2e/app) and the desktop app (e2e/desktop) need fake
+  // services; they have their own configs (playwright.live.config.ts, playwright.app.config.ts,
+  // playwright.desktop.config.ts).
+  testIgnore: [/copilot-live\.spec\.ts$/, /[\\/]app[\\/]/, /[\\/]desktop[\\/]/, /[\\/]\.artifacts[\\/]/],
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,

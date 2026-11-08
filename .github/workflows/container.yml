@@ -1,0 +1,127 @@
+name: Container
+
+# The Docker image and its configuration (see docs/ci.md):
+# - image: builds the Dockerfile with placeholder NEXT_PUBLIC_* build args and
+#   scans the image with Trivy; fails on CRITICAL or HIGH vulnerabilities that
+#   have a fix (OS packages and node_modules alike).
+# - config: Trivy's misconfiguration scan of the repository (the Dockerfile is
+#   its only infrastructure file) and hadolint on the Dockerfile.
+# Trivy results go to Security > Code scanning.
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+  schedule:
+    - cron: '53 4 * * 1' # Mondays 04:53 UTC: new CVEs in the base image and packages
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  image:
+    name: Docker image (build and Trivy scan)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      actions: read # only needed if the repository becomes private
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Placeholders: NEXT_PUBLIC_* values are inlined into the browser bundle at
+      # build time; the server's secrets are only read at runtime.
+      - name: Build the image
+        run: |
+          docker build --tag apex-round:ci \
+            --build-arg NEXT_PUBLIC_SUPABASE_URL=https://example.supabase.co \
+            --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY=ci-placeholder-anon-key \
+            --build-arg NEXT_PUBLIC_APP_URL=https://example.com \
+            .
+
+      - name: Scan the image (SARIF for code scanning)
+        # A pull request from a fork gets a read-only token, so it can't upload.
+        if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork }}
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: apex-round:ci
+          scanners: vuln
+          ignore-unfixed: true
+          severity: CRITICAL,HIGH
+          format: sarif
+          output: trivy-image.sarif
+          limit-severities-for-sarif: true
+
+      - name: Upload the image scan to code scanning
+        if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork }}
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          sarif_file: trivy-image.sarif
+          category: trivy-image
+
+      - name: Fail on fixable critical and high vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: apex-round:ci
+          scanners: vuln
+          ignore-unfixed: true
+          severity: CRITICAL,HIGH
+          format: table
+          exit-code: '1'
+
+  config:
+    name: Dockerfile and config (Trivy config, hadolint)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      actions: read # only needed if the repository becomes private
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # .cache holds trivy-action's own database and checks (its default cache-dir).
+      - name: Scan the configuration (SARIF for code scanning)
+        if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork }}
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: config
+          scan-ref: .
+          skip-dirs: .cache
+          format: sarif
+          output: trivy-config.sarif
+
+      - name: Upload the configuration scan to code scanning
+        if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork }}
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          sarif_file: trivy-config.sarif
+          category: trivy-config
+
+      - name: Fail on critical and high misconfigurations
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: config
+          scan-ref: .
+          skip-dirs: .cache
+          severity: CRITICAL,HIGH
+          format: table
+          exit-code: '1'
+
+      # Warnings and errors fail; info and style hints are only shown.
+      - name: Lint the Dockerfile (hadolint)
+        if: ${{ !cancelled() }}
+        uses: hadolint/hadolint-action@06be81baf89a55ffd0e24b8f04a4185738dd3387 # v3.5.0
+        with:
+          dockerfile: Dockerfile
+          failure-threshold: warning

@@ -50,6 +50,15 @@ interface JobWithApplication extends JobApplication {
 
 const STAGE_ORDER: ApplicationStage[] = ['saved', 'applied', 'oa', 'interview', 'offer', 'rejected'];
 
+/**
+ * Any stage past "saved" means the application went out, so a job that has no
+ * applied date yet gets today's (Home's "applications sent this month", the
+ * weekly figures and the digest count by it). A date already set is kept.
+ */
+function stampsApplied(stage: ApplicationStage | undefined, appliedAt: string | null | undefined): boolean {
+  return stage !== undefined && stage !== 'saved' && !appliedAt;
+}
+
 /** ISO → the value a datetime-local input shows (local time). */
 function toLocalInput(iso: string | null): string {
   if (!iso) return '';
@@ -173,7 +182,8 @@ export function JobsClient() {
     const updates: Partial<JobApplication> = { stage: newStage };
     const app = applications.find(a => a.id === appId);
 
-    if (newStage === 'applied' && !app?.applied_at) {
+    // Dragged or moved out of Saved, to any column: it was sent.
+    if (stampsApplied(newStage, app?.applied_at)) {
       updates.applied_at = new Date().toISOString();
     }
 
@@ -229,7 +239,7 @@ export function JobsClient() {
         job_url: jobData.job_url || null,
         interview_at: jobData.interview_at,
         next_followup_at: jobData.next_followup_at,
-        applied_at: jobData.stage && jobData.stage !== 'saved' ? new Date().toISOString() : null,
+        applied_at: stampsApplied(jobData.stage, null) ? new Date().toISOString() : null,
       });
 
     if (!error) {
@@ -251,7 +261,7 @@ export function JobsClient() {
       interview_at: jobData.interview_at,
       next_followup_at: jobData.next_followup_at,
       stage: jobData.stage ?? app?.stage ?? 'saved',
-      ...(jobData.stage && jobData.stage !== 'saved' && !app?.applied_at ? { applied_at: new Date().toISOString() } : {}),
+      ...(stampsApplied(jobData.stage, app?.applied_at) ? { applied_at: new Date().toISOString() } : {}),
       updated_at: new Date().toISOString(),
     };
     const { error } = await supabase.from('job_applications').update(updates).eq('id', appId);

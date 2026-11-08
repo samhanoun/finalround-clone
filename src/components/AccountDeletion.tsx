@@ -3,18 +3,21 @@
 import { useId, useState } from 'react';
 import { useRouter } from '@/i18n/routing';
 import { useTranslations } from 'next-intl';
+import { createClient } from '@/lib/supabase/browser';
 import { SettingRow, SettingsGroup, settingsStyles as styles } from '@/app/[locale]/settings/SettingsUI';
 
 /** Typed to confirm; it stays the same in every language. */
 const CONFIRM_WORD = 'DELETE';
 
+/** How long the confirmation stays on screen before going home. */
+const GOODBYE_MS = 2000;
+
 /** Settings → Account → Danger zone. Two steps: what goes, then the email and the typed word. */
 export function AccountDeletion() {
   const t = useTranslations('AccountDeletion');
   const router = useRouter();
-  const ids = { email: useId(), reason: useId(), word: useId(), title: useId() };
+  const ids = { email: useId(), word: useId(), title: useId() };
   const [email, setEmail] = useState('');
-  const [reason, setReason] = useState('');
   const [confirmText, setConfirmText] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -30,10 +33,7 @@ export function AccountDeletion() {
       const res = await fetch('/api/settings/account', {
         method: 'DELETE',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          confirm_email: email,
-          reason: reason || undefined,
-        }),
+        body: JSON.stringify({ confirm_email: email }),
       });
 
       const json = await res.json().catch(() => ({}));
@@ -44,12 +44,17 @@ export function AccountDeletion() {
 
       setSuccess(true);
 
-      // Sign out and go home after a short pause, so the confirmation can be read.
-      setTimeout(async () => {
-        await fetch('/api/auth/logout', { method: 'POST' });
+      // The account is gone: this browser's session goes now (even if the tab is closed during the
+      // pause), and home follows once the confirmation has been read.
+      try {
+        await createClient().auth.signOut();
+      } catch {
+        // The session belonged to the deleted account either way; going home still follows.
+      }
+      setTimeout(() => {
         router.push('/');
         router.refresh();
-      }, 2000);
+      }, GOODBYE_MS);
     } catch (e) {
       setError(e instanceof Error ? e.message : t('failed'));
     } finally {
@@ -83,6 +88,7 @@ export function AccountDeletion() {
             <li>{t('deletesSessions')}</li>
             <li>{t('deletesDocuments')}</li>
             <li>{t('deletesUsage')}</li>
+            <li>{t('deletesPlan')}</li>
           </ul>
         </div>
       </SettingsGroup>
@@ -111,18 +117,6 @@ export function AccountDeletion() {
               onChange={(e) => setEmail(e.target.value)}
               placeholder={t('emailPlaceholder')}
               required
-            />
-          </label>
-
-          <label className="label" htmlFor={ids.reason}>
-            {t('reason')}
-            <textarea
-              id={ids.reason}
-              className="textarea"
-              value={reason}
-              onChange={(e) => setReason(e.target.value)}
-              placeholder={t('reasonPlaceholder')}
-              rows={3}
             />
           </label>
 
@@ -165,7 +159,7 @@ export function AccountDeletion() {
           <button
             className="button buttonDanger"
             type="submit"
-            disabled={saving || !email.trim() || email !== email.toLowerCase() || confirmText !== CONFIRM_WORD}
+            disabled={saving || !email.trim() || confirmText !== CONFIRM_WORD}
           >
             {saving ? t('deleting') : t('confirm')}
           </button>

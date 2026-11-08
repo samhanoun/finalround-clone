@@ -1,6 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
+import { jsonError } from '@/lib/api';
+import { syncSubscription } from '@/lib/billing';
+import { getStripe } from '@/lib/stripe';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { MANAGE_ROLES, requireAdmin } from '@/lib/adminAuth';
+
+/** Every admin PATCH has one shape: the action, the id of what it acts on, and the action's own fields under `data`. */
+const PatchSchema = z.object({
+  action: z.string().min(1),
+  subscription_id: z.string().min(1),
+  data: z.record(z.string(), z.unknown()).optional(),
+});
 
 export async function GET(request: NextRequest) {
   try {
@@ -62,71 +73,52 @@ export async function GET(request: NextRequest) {
   }
 }
 
+/**
+ * PATCH: cancel (at the end of the period) or resume a subscription. Stripe is the source of truth, so the
+ * change is made there; its state is then copied into stripe_subscriptions by the same sync the webhook runs.
+ */
 export async function PATCH(request: NextRequest) {
+  const auth = await requireAdmin(MANAGE_ROLES);
+  if (!auth.ok) return auth.response;
+
+  const parsed = PatchSchema.safeParse(await request.json().catch(() => null));
+  if (!parsed.success) return jsonError(400, 'invalid_body', parsed.error.flatten());
+  const { action, subscription_id: subscriptionId } = parsed.data;
+  if (action !== 'cancel' && action !== 'resume') return jsonError(400, 'unknown_action');
+
+  const stripe = getStripe();
+  if (!stripe) return jsonError(503, 'billing_unavailable');
+
   try {
-    const auth = await requireAdmin(MANAGE_ROLES);
-    if (!auth.ok) return auth.response;
-
     const supabase = createAdminClient();
-    const body = await request.json();
-    const { subscription_id, action, data } = body;
 
-    if (!subscription_id || !action) {
-      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+    // Only the app's own subscriptions (the ones this console lists), not anything else on the Stripe account.
+    const { data: row, error } = await supabase
+      .from('stripe_subscriptions')
+      .select('stripe_subscription_id')
+      .eq('stripe_subscription_id', subscriptionId)
+      .maybeSingle();
+    if (error) throw error;
+    if (!row) return jsonError(404, 'not_found');
+
+    try {
+      await stripe.subscriptions.update(subscriptionId, { cancel_at_period_end: action === 'cancel' });
+    } catch (e) {
+      console.error('[admin subscriptions] Stripe refused the change', { action, subscriptionId, error: e instanceof Error ? e.message : e });
+      return jsonError(502, 'stripe_failed');
     }
 
-    switch (action) {
-      case 'cancel': {
-        // Update in our DB
-        const { error } = await supabase
-          .from('stripe_subscriptions')
-          .update({ 
-            cancel_at_period_end: true,
-            status: 'canceled'
-          })
-          .eq('stripe_subscription_id', subscription_id);
-
-        if (error) throw error;
-        return NextResponse.json({ success: true, message: 'Subscription will be cancelled at period end' });
-      }
-
-      case 'resume': {
-        const { error } = await supabase
-          .from('stripe_subscriptions')
-          .update({ 
-            cancel_at_period_end: false,
-            status: 'active'
-          })
-          .eq('stripe_subscription_id', subscription_id);
-
-        if (error) throw error;
-        return NextResponse.json({ success: true, message: 'Subscription resumed' });
-      }
-
-      case 'update_plan': {
-        const { error } = await supabase
-          .from('stripe_subscriptions')
-          .update({ 
-            stripe_price_id: data.price_id
-          })
-          .eq('stripe_subscription_id', subscription_id);
-
-        if (error) throw error;
-        return NextResponse.json({ success: true, message: 'Plan updated' });
-      }
-
-      case 'refund': {
-        // This would typically call Stripe API
-        // For now, just log and return success
-        console.log('Refund requested for subscription:', subscription_id);
-        return NextResponse.json({ success: true, message: 'Refund processed' });
-      }
-
-      default:
-        return NextResponse.json({ error: 'Unknown action' }, { status: 400 });
+    // The webhook syncs the row too; doing it now lets the list show the change straight away. If this
+    // copy fails, Stripe has still changed and the webhook catches the row up.
+    try {
+      await syncSubscription(stripe, supabase, subscriptionId);
+    } catch (e) {
+      console.warn('[admin subscriptions] changed in Stripe; the webhook will update the row', { subscriptionId, error: e instanceof Error ? e.message : e });
     }
+
+    return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('Admin subscription action error:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    console.error('[admin subscriptions] action failed', { action, subscriptionId, error: (error as { message?: string })?.message ?? error });
+    return jsonError(500, 'action_failed');
   }
 }

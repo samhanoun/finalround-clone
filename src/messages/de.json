@@ -255,7 +255,8 @@
       "link_failed": "Dieser Link hat nicht funktioniert oder ist abgelaufen. Versuche es erneut.",
       "missing_code": "Dieser Link ist unvollständig. Versuche es erneut.",
       "signin_failed": "Die Anmeldung wurde nicht abgeschlossen. Versuche es erneut oder nutze deine E-Mail und dein Passwort."
-    }
+    },
+    "language": "Sprache"
   },
   "ResetPassword": {
     "title": "Neues Passwort festlegen",
@@ -880,6 +881,24 @@
       "status": "Status",
       "score": "Bewertung",
       "date": "Datum"
+    },
+    "row": {
+      "menu": "Optionen für {title}",
+      "rename": "Umbenennen",
+      "renameTitle": "{title} umbenennen",
+      "nameLabel": "Name des Interviews",
+      "save": "Speichern",
+      "saving": "Wird gespeichert…",
+      "cancel": "Abbrechen",
+      "delete": "Löschen",
+      "deleteTitle": "{title} löschen",
+      "deleting": "Wird gelöscht…",
+      "keep": "Behalten",
+      "confirmDelete": "„{title}“ löschen? Fragen, Antworten und Bericht werden mitgelöscht.",
+      "renamed": "Umbenannt in „{title}“",
+      "deleted": "„{title}“ wurde gelöscht",
+      "renameFailed": "Der neue Name wurde nicht gespeichert. Versuche es erneut.",
+      "deleteFailed": "Das Interview wurde nicht gelöscht. Versuche es erneut."
     }
   },
   "QuestionBank": {
@@ -1102,12 +1121,14 @@
       "startFirst": "Starte zuerst eine Session.",
       "screenFailed": "Der geteilte Bildschirm konnte nicht gelesen werden.",
       "submitFailed": "Diese Zeile wurde nicht gesendet. Versuche es erneut.",
-      "summaryFailed": "Die Zusammenfassung ist nicht angekommen. Versuche es erneut.",
+      "summaryFailed": "Die Zusammenfassung ist nicht angekommen, es wurde nichts gespeichert.",
       "deleteFailed": "Die Session wurde nicht gelöscht. Versuche es erneut.",
       "exportFailed": "Der Export wurde nicht heruntergeladen. Versuche es erneut.",
       "purgeFailed": "Deine Copilot-Daten wurden nicht gelöscht. Versuche es erneut.",
       "stopBeforePurge": "Beende deine aktive Session, bevor du alle Copilot-Daten löschst.",
-      "typeConfirm": "Gib {phrase} ein, um zu bestätigen."
+      "typeConfirm": "Gib {phrase} ein, um zu bestätigen.",
+      "summaryUnavailable": "Für diese App ist noch kein KI-Modell eingerichtet, daher gibt es keine Zusammenfassung. Es wurde nichts gespeichert.",
+      "summaryNoTranscript": "Es gibt noch nichts zusammenzufassen. Füge zuerst ein paar Zeilen zum Transkript hinzu."
     },
     "startErrors": {
       "resume_not_found": "Dieser Lebenslauf wurde nicht gefunden. Wähle einen anderen.",
@@ -1142,7 +1163,8 @@
       "noStrengths": "Noch keine Stärken erkannt.",
       "noWeaknesses": "Noch keine Schwächen erkannt.",
       "noNextSteps": "Noch keine nächsten Schritte erkannt.",
-      "again": "Neu erstellen"
+      "again": "Neu erstellen",
+      "retry": "Erneut versuchen"
     },
     "history": {
       "label": "Verlaufsansicht",
@@ -1188,11 +1210,11 @@
       "export": "Alle Copilot-Daten exportieren",
       "exported": "Der Export der Copilot-Daten ist fertig und heruntergeladen.",
       "purgeTitle": "Alle Copilot-Daten löschen",
-      "purgeWarning": "<strong>Achtung:</strong> Damit werden jede Copilot-Session, jedes Transkriptereignis und jede Zusammenfassung deines Kontos endgültig gelöscht. Das lässt sich nicht rückgängig machen. Beende vorher jede aktive Session.",
+      "purgeWarning": "<strong>Achtung:</strong> Damit werden jede Copilot-Session, jedes Transkriptereignis und jede Zusammenfassung deines Kontos endgültig gelöscht, ebenso die Fakten, die der Copilot unter Ziele → Gedächtnis aus deinen Sessions gelernt hat (selbst hinzugefügte bleiben). Das lässt sich nicht rückgängig machen. Beende vorher jede aktive Session.",
       "purgeConfirm": "Gib <code>{phrase}</code> ein, um zu bestätigen",
       "purging": "Alle Daten werden gelöscht …",
       "purge": "Alle Copilot-Daten löschen",
-      "purged": "Alle Copilot-Daten wurden gelöscht ({sessions, plural, one {# Session} other {# Sessions}}, {events, plural, one {# Ereignis} other {# Ereignisse}}, {summaries, plural, one {# Zusammenfassung} other {# Zusammenfassungen}})."
+      "purged": "Alle Copilot-Daten wurden gelöscht ({sessions, plural, one {# Session} other {# Sessions}}, {events, plural, one {# Ereignis} other {# Ereignisse}}, {summaries, plural, one {# Zusammenfassung} other {# Zusammenfassungen}}, {memories, plural, one {# gelernter Fakt} other {# gelernte Fakten}})."
     },
     "report": {
       "title": "Interviewbericht",
@@ -1206,7 +1228,7 @@
       "signal": "Einstellungsempfehlung",
       "evidence": "Belege:",
       "recommendation": "Empfehlung:",
-      "notCaptured": "Nicht erfasst.",
+      "notCaptured": "Nicht erfasst",
       "strengths": "Stärken",
       "weaknesses": "Schwächen",
       "nextSteps": "Nächste Schritte",
@@ -1420,8 +1442,6 @@
     "confirmDesc": "Gib deine E-Mail-Adresse und {word} ein, um zu bestätigen.",
     "email": "Deine E-Mail-Adresse",
     "emailPlaceholder": "du@beispiel.de",
-    "reason": "Warum gehst du? (optional)",
-    "reasonPlaceholder": "Was hätten wir besser machen können?",
     "typeWord": "Gib <strong>{word}</strong> ein, um zu bestätigen",
     "cancel": "Abbrechen",
     "deleting": "Wird gelöscht …",
@@ -1429,10 +1449,12 @@
     "failed": "Dein Konto wurde nicht gelöscht. Versuche es erneut.",
     "errors": {
       "email_mismatch": "Diese E-Mail passt nicht zu deinem Konto.",
-      "rate_limited": "Zu viele Versuche. Versuche es in einer Minute erneut."
+      "rate_limited": "Zu viele Versuche. Versuche es in einer Minute erneut.",
+      "billing_cancel_failed": "Dein Abo konnte nicht gekündigt werden, deshalb wurde dein Konto nicht gelöscht. Versuche es in ein paar Minuten erneut."
     },
     "deletedTitle": "Konto gelöscht",
-    "deletedBody": "Dein Konto wurde endgültig gelöscht, ebenso alle deine Daten. Du wirst zur Startseite geleitet …"
+    "deletedBody": "Dein Konto wurde endgültig gelöscht, ebenso alle deine Daten. Du wirst zur Startseite geleitet …",
+    "deletesPlan": "Ein bezahlter Tarif, sofort gekündigt (der Rest des Zeitraums wird nicht erstattet)"
   },
   "Usage": {
     "loading": "Nutzung wird geladen …",
@@ -1448,9 +1470,8 @@
     "copilotMonth": "Live-Copilot, diesen Monat",
     "perSession": "Pro Session",
     "copilotToday": "Live-Copilot, heute",
-    "smartMonth": "Smart-Modus, diesen Monat",
     "reviewsMonth": "Lebenslauf-Prüfungen, diesen Monat",
-    "proLimits": "Pro erhöht die Limits auf 400 Minuten pro Monat, 30-Minuten-Sessions, 45 Minuten pro Tag, 80 Minuten Smart-Modus und 10 Lebenslauf-Prüfungen pro Monat.",
+    "proLimits": "Pro erhöht die Limits auf 400 Minuten pro Monat, 30-Minuten-Sessions, 45 Minuten pro Tag und 10 Lebenslauf-Prüfungen pro Monat.",
     "seePlans": "Tarife und Abrechnung"
   },
   "Billing": {
@@ -1459,7 +1480,8 @@
       "already_subscribed": "Du hast bereits Pro. Ändere es über „Abrechnung verwalten“.",
       "no_billing_account": "Du hast noch kein Abrechnungskonto. Upgrade zuerst.",
       "rate_limited": "Zu viele Versuche. Versuche es in einer Minute erneut.",
-      "unauthorized": "Melde dich erneut an und versuche es dann noch einmal."
+      "unauthorized": "Melde dich erneut an und versuche es dann noch einmal.",
+      "plan_without_billing": "Dein Tarif wurde dir direkt zugewiesen, daher gibt es keine Zahlungen zu verwalten."
     },
     "unreachable": "Die Abrechnung ist nicht erreichbar. Versuche es erneut.",
     "returned": {
@@ -1483,7 +1505,7 @@
       "tester": "Tester",
       "team": "Team"
     },
-    "proLimits": "Pro erhöht die Limits auf 400 Minuten pro Monat, 30-Minuten-Sessions, 45 Minuten pro Tag, 80 Minuten Smart-Modus und 10 Lebenslauf-Prüfungen pro Monat",
+    "proLimits": "Pro erhöht die Limits auf 400 Minuten pro Monat, 30-Minuten-Sessions, 45 Minuten pro Tag und 10 Lebenslauf-Prüfungen pro Monat",
     "loading": "Nutzung wird geladen …",
     "usageLabel": "Nutzung in diesem Monat",
     "usage": {
@@ -1491,7 +1513,6 @@
       "count": "{used} / {limit}",
       "copilotMonth": "Live-Copilot diesen Monat",
       "copilotToday": "Live-Copilot heute",
-      "smartMonth": "Smart-Modus diesen Monat",
       "reviewsMonth": "Lebenslauf-Prüfungen diesen Monat",
       "minutes": "{used} / {limit} Min."
     },
@@ -1619,7 +1640,7 @@
   "Badges": {
     "title": "Erfolge",
     "loading": "Abzeichen werden geladen …",
-    "empty": "Noch keine Abzeichen. Schließ ein Übungsinterview oder eine Live-Session ab, um dein erstes zu bekommen.",
+    "empty": "Noch keine Abzeichen. Schließ ein Übungsinterview ab, um dein erstes zu bekommen.",
     "badgeLabel": "Abzeichen: {badge}",
     "close": "Schließen",
     "awarded": "Erhalten: {date}",
@@ -1632,12 +1653,12 @@
         "description": "Dein erstes Übungsinterview abgeschlossen."
       },
       "five_sessions": {
-        "title": "Fünf Sessions",
-        "description": "Fünf Übungsinterviews oder Live-Sessions abgeschlossen."
+        "title": "Fünf Live-Sessions",
+        "description": "Fünf Live-Sessions abgeschlossen."
       },
       "ten_sessions": {
-        "title": "Zehn Sessions",
-        "description": "Zehn Übungsinterviews oder Live-Sessions abgeschlossen."
+        "title": "Zehn Live-Sessions",
+        "description": "Zehn Live-Sessions abgeschlossen."
       },
       "first_offer": {
         "title": "Erstes Angebot",
@@ -1645,15 +1666,15 @@
       },
       "streak_week": {
         "title": "Wochenserie",
-        "description": "Sieben Tage in Folge geübt."
+        "description": "Sieben Tage in Folge geübt oder eine Live-Session gemacht."
       },
       "streak_month": {
         "title": "Monatsserie",
-        "description": "Einen Monat lang jede Woche geübt."
+        "description": "30 Tage in Folge geübt oder eine Live-Session gemacht."
       },
       "resume_optimized": {
         "title": "Lebenslauf angepasst",
-        "description": "Einen Lebenslauf auf eine Stelle zugeschnitten."
+        "description": "Einen Lebenslauf für eine Stelle geprüft oder zugeschnitten."
       },
       "job_applied": {
         "title": "Beworben",
@@ -1671,7 +1692,8 @@
         "title": "Geteilt",
         "description": "Deinen Fortschritt geteilt."
       }
-    }
+    },
+    "loadFailed": "Deine Erfolge wurden nicht geladen."
   },
   "Share": {
     "email": "E-Mail",
@@ -1702,7 +1724,8 @@
       "signed_up": "Registriert",
       "converted": "Auf Pro",
       "expired": "Abgelaufen"
-    }
+    },
+    "shareNotRecorded": "Das Teilen wurde geöffnet, aber hier nicht erfasst."
   },
   "Landing": {
     "homeLabel": "Apex Round Startseite",
@@ -1765,7 +1788,8 @@
       "name": "Kostenlos",
       "minutes": "10 Minuten Live-Hilfe pro Monat",
       "sessions": "Sessions bis 10 Minuten",
-      "tools": "Lebenslauf-Editor und Job-Tracker"
+      "tools": "Lebenslauf-Editor und Job-Tracker",
+      "price": "0 $"
     },
     "pro": {
       "name": "Pro",
@@ -1773,7 +1797,8 @@
       "minutes": "400 Minuten Live-Hilfe pro Monat",
       "sessions": "Sessions bis 30 Minuten, 45 Minuten pro Tag",
       "cancel": "Jederzeit in den Einstellungen kündbar",
-      "cta": "Pro holen"
+      "cta": "Pro holen",
+      "price": "29 $"
     },
     "footer": "Prüfe vor der Nutzung, was die Regeln deines Interviews zu externer Hilfe sagen",
     "menu": "Menü",
@@ -1835,9 +1860,8 @@
         "price": "29 $ oder 29 € pro Monat",
         "feature1": "400 Minuten Live-Copilot pro Monat",
         "feature2": "Sessions bis 30 Minuten, 45 Minuten pro Tag",
-        "feature3": "80 Minuten Smart-Modus pro Monat",
-        "feature4": "10 ausführliche Lebenslauf-Prüfungen pro Monat",
-        "feature5": "Alles aus dem kostenlosen Tarif"
+        "feature3": "10 ausführliche Lebenslauf-Prüfungen pro Monat",
+        "feature4": "Alles aus dem kostenlosen Tarif"
       }
     },
     "profile": {
@@ -1890,7 +1914,8 @@
         "desc": "Lade ihn einmal hoch und gleiche ihn dann mit jeder Stellenbeschreibung auf fehlende Schlüsselwörter ab."
       }
     },
-    "stepOf": "Schritt {current} von {total}"
+    "stepOf": "Schritt {current} von {total}",
+    "saveFailed": "Deine Antworten wurden nicht gespeichert. Prüfe deine Verbindung und versuche es erneut."
   },
   "Resume": {
     "errors": {
@@ -1999,7 +2024,26 @@
     "delete": "Löschen",
     "noTailored": "Noch keine angepassten Versionen. Wähle einen Lebenslauf, füge eine Stelle ein und wähle „Angepasste Version schreiben“.",
     "outOf": "von 100",
-    "docScore": "{score} % Übereinstimmung"
+    "docScore": "{score} % Übereinstimmung",
+    "deleteDocumentLabel": "{name} löschen",
+    "confirmDeleteDocument": "{name} löschen? Angepasste Versionen, die daraus erstellt wurden, bleiben in deinem Verlauf.",
+    "documentDeleted": "Gelöscht",
+    "documentDeletedBody": "{name} wurde entfernt.",
+    "uploadedUnreadable": "Der Text konnte nicht gelesen werden, daher kann die Datei noch nicht geprüft werden. Lade sie als PDF oder .docx hoch.",
+    "tips": {
+      "add_keywords": "Ergänze diese Schlüsselwörter: {keywords}",
+      "add_more_keywords": "Ergänze weitere Schlüsselwörter aus der Stelle, zuerst {keywords}",
+      "add_contact": "Ergänze deine Kontaktdaten: E-Mail und Telefon",
+      "expand": "Ergänze mehr Details: Er hat weniger als 200 Wörter"
+    },
+    "bulletIssues": {
+      "weak_word": "schwache Formulierung („{word}“)",
+      "no_metrics": "keine Zahlen oder Ergebnisse",
+      "weak_verb": "beginnt nicht mit einem Aktionsverb",
+      "too_short": "zu kurz, um Details zu zeigen",
+      "too_long": "zu lang: Fasse dich kürzer",
+      "passive": "steht womöglich im Passiv"
+    }
   },
   "PageTitles": {
     "resume": "Lebenslauf",
@@ -2381,8 +2425,9 @@
     "stats": {
       "members": "Mitglieder",
       "active": "Aktiv",
-      "interviews": "Interviews",
-      "thisMonth": "Diesen Monat"
+      "practice": "Übungsinterviews",
+      "live": "Live-Sessions",
+      "newThisMonth": "{count, plural, =0 {Keine diesen Monat} other {+# diesen Monat}}"
     },
     "sections": "Teambereiche",
     "tabs": {
@@ -2438,7 +2483,8 @@
         "domain_taken": "Ein anderer Identitätsanbieter nutzt bereits eine dieser Domains.",
         "invalid_domains": "Gib mindestens eine E-Mail-Domain ein, z. B. acme.com.",
         "public_domain": "Öffentliche E-Mail-Domains wie gmail.com sind nicht möglich. Gib die eigene Domain deines Unternehmens ein.",
-        "domain_unverified": "Weise zuerst nach, dass dir jede Domain gehört: Lege die hier gezeigten DNS-Einträge an, warte ein paar Minuten, bis sie verteilt sind, und speichere dann erneut."
+        "domain_unverified": "Weise zuerst nach, dass dir jede Domain gehört: Lege die hier gezeigten DNS-Einträge an, warte ein paar Minuten, bis sie verteilt sind, und speichere dann erneut.",
+        "rate_limited": "Du hast das in der letzten Stunde mehrmals gespeichert. Versuche es später erneut."
       },
       "failed": "Das hat nicht geklappt. Versuche es erneut.",
       "on": "Single Sign-on ist an.",
@@ -2534,11 +2580,10 @@
     "loading": "Wird geladen …",
     "stats": {
       "users": "Nutzer",
-      "active": "Aktiv in den letzten 30 Tagen",
-      "revenue": "Umsatz",
       "subscriptions": "Aktive Abos",
       "tickets": "Offene Support-Tickets",
-      "fraud": "Offene Betrugsverdachte"
+      "fraud": "Offene Betrugsverdachte",
+      "newUsers": "{days, plural, one {Neue Registrierungen am letzten Tag} other {Neue Registrierungen in den letzten # Tagen}}"
     },
     "empty": {
       "users": "Keine passenden Nutzer.",
@@ -2552,7 +2597,7 @@
       "subscription": "Abo",
       "status": "Status",
       "price": "Preis",
-      "renews": "Verlängerung",
+      "renews": "Periodenende",
       "type": "Typ",
       "severity": "Schweregrad",
       "what": "Was passiert ist",
@@ -2577,14 +2622,20 @@
       "medium": "Mittel",
       "high": "Hoch",
       "urgent": "Dringend",
-      "critical": "Kritisch"
+      "critical": "Kritisch",
+      "canceling": "Endet zum Periodenende",
+      "suspended": "Gesperrt",
+      "unpaid": "Unbezahlt",
+      "incomplete": "Unvollständig",
+      "incomplete_expired": "Abgelaufen",
+      "paused": "Pausiert"
     },
     "free": "Kostenlos",
     "confirmAdmin": "{email} zum Admin machen?",
     "makeAdmin": "Zum Admin machen",
     "confirmSuspend": "{email} sperren? Die Person kann sich dann nicht mehr anmelden.",
     "suspend": "Sperren",
-    "confirmCancel": "Abo von {email} kündigen?",
+    "confirmCancel": "Abo von {email} kündigen? Es bleibt bis zum Ende der Periode aktiv und verlängert sich dann nicht mehr.",
     "cancel": "Kündigen",
     "resume": "Fortsetzen",
     "resolve": "Lösen",
@@ -2600,7 +2651,15 @@
     "user": "Nutzer",
     "reply": "Antwort",
     "sending": "Wird gesendet …",
-    "sendReply": "Antwort senden"
+    "sendReply": "Antwort senden",
+    "unsuspend": "Entsperren",
+    "confirmUnsuspend": "{email} entsperren? Die Person kann sich dann wieder anmelden.",
+    "errors": {
+      "billing_unavailable": "Stripe ist auf diesem Server nicht eingerichtet, daher lassen sich Abos hier nicht ändern.",
+      "cannot_suspend_self": "Du kannst dein eigenes Konto nicht sperren.",
+      "not_found": "Das gibt es nicht mehr. Lade die Seite neu, um den aktuellen Stand zu sehen.",
+      "stripe_failed": "Stripe hat die Änderung nicht angenommen. Versuche es erneut oder prüfe das Abo in Stripe."
+    }
   },
   "Meta": {
     "description": "Ein Live-Copilot für Vorstellungsgespräche: Er hört die Frage und zeigt dir eine kurze, strukturierte Antwort auf dem Bildschirm.",

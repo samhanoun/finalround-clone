@@ -2,8 +2,8 @@ import webPush from 'web-push';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { sendEmail } from '@/lib/email';
 import { appUrl } from '@/lib/emailTemplates';
-import { localizedNotificationEmail } from '@/lib/localizedEmail';
-import type { NotificationI18n } from '@/lib/notificationText';
+import { kitFor, localizedNotificationEmail, userLocaleAndZone } from '@/lib/localizedEmail';
+import { notificationText, type NotificationI18n } from '@/lib/notificationText';
 
 /**
  * One place that delivers a notification, following Settings → Notification
@@ -11,6 +11,8 @@ import type { NotificationI18n } from '@/lib/notificationText';
  * - in-app: a row in `notifications` (the bell), plus a push message to every
  *   browser where the user turned on "Notify me on this device";
  * - email: through SendGrid, when the user allows that type by email.
+ * Push messages and emails are in the user's app language; the bell
+ * translates in the browser.
  * "system" notices (team invites, billing) always go in-app; they are emailed
  * only when `emailAlways` is set. Never throws: a notification must not break
  * the action that caused it.
@@ -97,14 +99,48 @@ export async function userEmail(userId: string): Promise<string | null> {
   return data?.user?.email ?? null;
 }
 
+/**
+ * A push message's title and body in the user's app language (Settings → App
+ * language), as emails are: the notification's message key with its values,
+ * dates in their time zone. The English text when it has no key or the
+ * lookup fails.
+ */
+export async function pushText(
+  userId: string,
+  notification: { title: string; message: string; i18n?: NotificationI18n },
+): Promise<{ title: string; body: string }> {
+  const english = { title: notification.title, body: notification.message };
+  if (!notification.i18n) return english;
+  try {
+    const { locale, timeZone } = await userLocaleAndZone(userId);
+    const { t, format } = await kitFor(locale, timeZone);
+    const text = notificationText(
+      { ...notification, data: { i18n: notification.i18n } },
+      t('Notifications') as unknown as Parameters<typeof notificationText>[1],
+      format,
+      timeZone,
+    );
+    return { title: text.title, body: text.message };
+  } catch (error) {
+    console.error('[notify] push text in English', error instanceof Error ? error.message : error);
+    return english;
+  }
+}
+
 type PushRow = { id: string; endpoint: string; p256dh: string; auth: string };
 
-/** Sends to every device the user enabled; forgets devices the browser has dropped. */
-export async function sendPush(userId: string, payload: { title: string; body: string; url?: string; tag?: string }) {
+type PushPayload = { title: string; body: string; url?: string; tag?: string };
+
+/**
+ * Sends to every device the user enabled; forgets devices the browser has
+ * dropped. A payload given as a function is only built when there is a device.
+ */
+export async function sendPush(userId: string, message: PushPayload | (() => Promise<PushPayload>)) {
   if (!isPushConfigured()) return 0;
   const admin = createAdminClient();
   const { data: rows } = await admin.from('push_subscriptions').select('id, endpoint, p256dh, auth').eq('user_id', userId);
   if (!rows?.length) return 0;
+  const payload = typeof message === 'function' ? await message() : message;
 
   webPush.setVapidDetails(
     process.env.VAPID_SUBJECT || appUrl() || 'mailto:support@apexround.app',
@@ -156,7 +192,8 @@ export async function notify(userId: string, input: NotifyInput): Promise<Notify
       });
       if (error) console.error('[notify] in-app insert failed', error.message);
       else result.inApp = true;
-      result.push = await sendPush(userId, { title: input.title, body: input.message, url: input.url, tag: input.type });
+      // Devices show the message as sent, so it goes out in the user's language.
+      result.push = await sendPush(userId, async () => ({ ...(await pushText(userId, input)), url: input.url, tag: input.type }));
     }
 
     if (channels.email) {

@@ -76,6 +76,39 @@ export async function getOrCreateStripeCustomer(
   return customer.id;
 }
 
+/** States after which Stripe never charges or invoices a subscription again. */
+const ENDED_STATUSES: ReadonlySet<string> = new Set(['canceled', 'incomplete_expired']);
+
+/**
+ * Before an account is deleted: ends every subscription of the user's Stripe customer now (any that
+ * hasn't ended, so a trial or a renewal still being retried can't charge either), then drops the user
+ * id from the customer, so Stripe's later events about it are ignored instead of failing against a
+ * user who no longer exists. Throws when the customer can't be read or a subscription can't be
+ * cancelled; the caller then keeps the account. Returns the ids it cancelled.
+ */
+export async function cancelBillingForDeletion(stripe: Stripe, admin: SupabaseClient, userId: string): Promise<string[]> {
+  const { data, error } = await admin.from('stripe_customers').select('stripe_customer_id').eq('user_id', userId).maybeSingle();
+  if (error) throw new Error(`Could not read the Stripe customer: ${error.message}`);
+  const customer: string | undefined = data?.stripe_customer_id;
+  if (!customer) return [];
+
+  const cancelled: string[] = [];
+  // Every page of the customer's subscriptions, ended ones included (they're skipped).
+  for await (const sub of stripe.subscriptions.list({ customer, status: 'all', limit: 100 })) {
+    if (ENDED_STATUSES.has(sub.status)) continue;
+    await stripe.subscriptions.cancel(sub.id, { cancellation_details: { comment: 'Account deleted in Apex Round' } });
+    cancelled.push(sub.id);
+  }
+
+  try {
+    await stripe.customers.update(customer, { metadata: { user_id: '' } });
+  } catch (e) {
+    // Billing has stopped, which is what matters. Stripe's next events for this customer will fail and be retried.
+    console.warn('[billing] could not unlink the Stripe customer of a deleted account', { customer, error: e instanceof Error ? e.message : e });
+  }
+  return cancelled;
+}
+
 /** Records a customer that carries our user id (created by getOrCreateStripeCustomer). */
 export async function recordStripeCustomer(admin: SupabaseClient, customer: Stripe.Customer): Promise<void> {
   const userId = customer.metadata?.user_id;
@@ -103,6 +136,17 @@ export async function recordCheckout(stripe: Stripe, admin: SupabaseClient, sess
  * Copies a subscription's current state from Stripe. Events can arrive out of
  * order, so the event payload is only a trigger: the subscription is re-read.
  */
+/** True when the auth user no longer exists (a lookup error other than "not found" counts as present). */
+async function accountIsGone(admin: SupabaseClient, userId: string): Promise<boolean> {
+  try {
+    const { data, error } = await admin.auth.admin.getUserById(userId);
+    if (error) return error.status === 404 || /not.?found/i.test(error.message);
+    return !data?.user;
+  } catch {
+    return false;
+  }
+}
+
 export async function syncSubscription(stripe: Stripe, admin: SupabaseClient, subscriptionId: string): Promise<void> {
   const sub = await stripe.subscriptions.retrieve(subscriptionId, { expand: ['customer'] });
   const customer = sub.customer;
@@ -141,7 +185,16 @@ export async function syncSubscription(stripe: Stripe, admin: SupabaseClient, su
     },
     { onConflict: 'stripe_subscription_id' },
   );
-  if (snapshot.error) throw new Error(`Could not save the subscription: ${snapshot.error.message}`);
+  if (snapshot.error) {
+    // The account was deleted outside the app (for example in the Supabase dashboard) while
+    // Stripe still has the customer: the row can't reference a missing user. Throwing would
+    // make Stripe retry the event for days, so it's logged and ignored.
+    if (snapshot.error.code === '23503' && (await accountIsGone(admin, userId))) {
+      console.warn('[billing] subscription event for a deleted account; ignored', { subscriptionId, customerId });
+      return;
+    }
+    throw new Error(`Could not save the subscription: ${snapshot.error.message}`);
+  }
 
   if (!isProPrice(price?.id)) return;
 

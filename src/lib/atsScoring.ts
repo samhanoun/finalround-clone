@@ -10,50 +10,75 @@ export interface KeywordMatch {
   context?: string;
 }
 
+/** A suggestion as a code the page shows in the reader's language (the English is in `suggestions`). */
+export type ATSTip =
+  | { code: 'add_keywords' | 'add_more_keywords'; keywords: string[] }
+  | { code: 'add_contact' | 'expand' };
+
 export interface ATSResult {
   score: number;
   matchedKeywords: string[];
   missingKeywords: string[];
   keywordMatches: KeywordMatch[];
   suggestions: string[];
+  tips: ATSTip[];
   formatIssues: string[];
 }
+
+// Common job keywords to look for
+const COMMON_KEYWORDS = [
+  // Technical skills
+  'javascript', 'typescript', 'python', 'java', 'react', 'angular', 'vue',
+  'node.js', 'express', 'next.js', 'sql', 'postgresql', 'mongodb', 'redis',
+  'aws', 'azure', 'gcp', 'docker', 'kubernetes', 'git', 'ci/cd',
+  'machine learning', 'ai', 'data science', 'analytics',
+  'rest api', 'graphql', 'microservices', 'agile', 'scrum',
+  // Soft skills
+  'leadership', 'communication', 'teamwork', 'problem-solving',
+  'project management', 'collaboration', 'analytical',
+  // General
+  'experience', 'years', 'senior', 'junior', 'mid-level', 'principal',
+  'architecture', 'design', 'implementation', 'optimization',
+];
+
+/** Capitalised words that are grammar or a posting's headings, not skills ("We", "Requirements"). */
+const NOT_SKILLS = new Set([
+  'the', 'and', 'for', 'with', 'you', 'your', 'our', 'are', 'will', 'this', 'that', 'these', 'those',
+  'about', 'what', 'who', 'why', 'how', 'when', 'where', 'while', 'from', 'into', 'also', 'other',
+  'all', 'any', 'each', 'more', 'most', 'some', 'such', 'including', 'join', 'help', 'work', 'apply',
+  'requirements', 'responsibilities', 'qualifications', 'skills', 'benefits', 'perks', 'bonus', 'plus',
+  'nice', 'must', 'strong', 'ability', 'knowledge', 'familiarity', 'preferred', 'required', 'minimum',
+  'role', 'team', 'company', 'job', 'description', 'position', 'location', 'remote', 'salary',
+  'overview', 'summary', 'duties', 'hiring',
+]);
+
+/**
+ * Capitalised terms in a posting, whole: "TypeScript", "PostgreSQL", "Google Cloud".
+ * A word's inner capitals stay part of it (never "Type" and "Script").
+ */
+const CAPITALISED_TERM = /\b[A-Z][A-Za-z0-9+#]*(?:\.[A-Za-z0-9]+)*(?:[ \t]+[A-Z][A-Za-z0-9+#]*(?:\.[A-Za-z0-9]+)*)*/g;
 
 /**
  * Extract keywords from job description
  */
 export function extractJobKeywords(jobDescription: string): string[] {
-  // Common job keywords to look for
-  const commonKeywords = [
-    // Technical skills
-    'javascript', 'typescript', 'python', 'java', 'react', 'angular', 'vue',
-    'node.js', 'express', 'next.js', 'sql', 'postgresql', 'mongodb', 'redis',
-    'aws', 'azure', 'gcp', 'docker', 'kubernetes', 'git', 'ci/cd',
-    'machine learning', 'ai', 'data science', 'analytics',
-    'rest api', 'graphql', 'microservices', 'agile', 'scrum',
-    // Soft skills
-    'leadership', 'communication', 'teamwork', 'problem-solving',
-    'project management', 'collaboration', 'analytical',
-    // General
-    'experience', 'years', 'senior', 'junior', 'mid-level', 'principal',
-    'architecture', 'design', 'implementation', 'optimization',
-  ];
-
   const text = jobDescription.toLowerCase();
   const found: string[] = [];
 
-  for (const keyword of commonKeywords) {
-    if (text.includes(keyword)) {
+  // Whole words or phrases only, as in the résumé: "sql" isn't in "postgresql", nor "ai" in "maintain".
+  for (const keyword of COMMON_KEYWORDS) {
+    if (countKeywordOccurrences(text, keyword) > 0) {
       found.push(keyword);
     }
   }
 
   // Also extract capitalized words and phrases (likely proper nouns/skills)
-  const capitalizedMatches = jobDescription.match(/[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*/g) || [];
-  for (const match of capitalizedMatches) {
-    const lower = match.toLowerCase();
-    if (lower.length > 2 && !found.includes(lower) && !commonKeywords.includes(lower)) {
-      found.push(lower);
+  for (const [match] of jobDescription.matchAll(CAPITALISED_TERM)) {
+    const words = match.toLowerCase().split(/\s+/);
+    while (words.length && NOT_SKILLS.has(words[0])) words.shift();
+    const term = words.join(' ');
+    if (term.length > 2 && !NOT_SKILLS.has(term) && !found.includes(term)) {
+      found.push(term);
     }
   }
 
@@ -64,7 +89,8 @@ export function extractJobKeywords(jobDescription: string): string[] {
  * Count keyword occurrences in resume text
  */
 function countKeywordOccurrences(text: string, keyword: string): number {
-  const regex = new RegExp(`\\b${escapeRegExp(keyword)}\\b`, 'gi');
+  // Not inside a longer word; unlike \b this also works for keywords such as "c++" or "c#".
+  const regex = new RegExp(`(?<![A-Za-z0-9])${escapeRegExp(keyword)}(?![A-Za-z0-9])`, 'gi');
   const matches = text.match(regex);
   return matches ? matches.length : 0;
 }
@@ -126,16 +152,21 @@ export function calculateATSScore(
 
   // Generate suggestions
   const suggestions: string[] = [];
+  const tips: ATSTip[] = [];
   if (missingKeywords.length > 0 && missingKeywords.length <= 5) {
     suggestions.push(`Add these keywords: ${missingKeywords.slice(0, 5).join(', ')}`);
+    tips.push({ code: 'add_keywords', keywords: missingKeywords.slice(0, 5) });
   } else if (missingKeywords.length > 5) {
     suggestions.push(`Add more keywords from the job description (${missingKeywords.slice(0, 5).join(', ')}...)`);
+    tips.push({ code: 'add_more_keywords', keywords: missingKeywords.slice(0, 5) });
   }
   if (!hasContactInfo) {
     suggestions.push('Add contact information (email, phone)');
+    tips.push({ code: 'add_contact' });
   }
   if (wordCount < 200) {
     suggestions.push('Consider expanding your resume content');
+    tips.push({ code: 'expand' });
   }
 
   // Check for format issues
@@ -156,6 +187,7 @@ export function calculateATSScore(
     missingKeywords,
     keywordMatches,
     suggestions,
+    tips,
     formatIssues,
   };
 }

@@ -53,7 +53,8 @@ export async function POST(request: NextRequest) {
   const next = nextSendAt(parse.data.frequency, new Date(), await userTimeZone(user.id));
   const { data, error } = await createAdminClient()
     .from('analytics_report_schedules')
-    .insert({ user_id: user.id, ...parse.data, next_send_at: next.toISOString() })
+    // On from the start (said here rather than left to the column default).
+    .insert({ user_id: user.id, ...parse.data, enabled: true, next_send_at: next.toISOString() })
     .select(COLUMNS)
     .single();
   if (error) return NextResponse.json({ error: 'Failed to create report' }, { status: 500 });

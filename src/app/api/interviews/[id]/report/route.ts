@@ -7,7 +7,7 @@ import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { jsonError } from '@/lib/api';
 import { rateLimit } from '@/lib/rateLimit';
-import { normalizeMockInterviewReport } from '@/lib/mockInterviewReport';
+import { normalizePracticeReport } from '@/lib/mockInterviewReport';
 import { notify } from '@/lib/notify';
 
 const GenerateReportSchema = z.object({
@@ -136,14 +136,12 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       parsedReport = null;
     }
 
-    // Never save a stand-in: without a real score there is no report.
-    const score = (parsedReport as { overall_score?: unknown } | null)?.overall_score;
-    if (typeof score !== 'number' || Number.isNaN(score)) {
+    // The practice rubric (four areas), keeping only what the model wrote. Never
+    // save a stand-in: without a real score there is no report.
+    const normalizedReport = normalizePracticeReport(parsedReport, mode);
+    if (!normalizedReport) {
       throw new Error('The model reply had no usable report');
     }
-
-    // Normalize the report, keeping only what the model wrote in its lists.
-    const normalizedReport = normalizeMockInterviewReport(parsedReport, mode, { pad: false });
 
     // Save report to database
     const { data: savedReport, error: saveErr } = await admin

@@ -6,8 +6,8 @@ import { exportToCSV, exportToPDF } from '@/lib/export';
 import { DownloadIcon } from '@/components/icons';
 
 interface ExportButtonProps {
+  /** The rows of the view, with column names in the user's language: the CSV, and the PDF's table. */
   data?: unknown[];
-  elementId?: string;
   filename: string;
   /** The section's heading, in the user's language: the PDF's title. */
   title: string;
@@ -17,7 +17,6 @@ interface ExportButtonProps {
 /** CSV and PDF downloads of a view: two small secondary buttons. */
 export function ExportButton({
   data,
-  elementId,
   filename,
   title,
   disabled = false
@@ -25,7 +24,7 @@ export function ExportButton({
   const t = useTranslations('Export');
   const [exporting, setExporting] = useState(false);
 
-  const handleCSVExport = async () => {
+  const run = (write: (rows: Record<string, unknown>[]) => void, failed: string) => {
     if (!data || data.length === 0) {
       alert(t('noData'));
       return;
@@ -33,27 +32,10 @@ export function ExportButton({
 
     setExporting(true);
     try {
-      exportToCSV(data as Record<string, unknown>[], filename);
+      write(data as Record<string, unknown>[]);
     } catch (error) {
-      console.error('CSV export failed:', error);
-      alert(t('csvFailed'));
-    } finally {
-      setExporting(false);
-    }
-  };
-
-  const handlePDFExport = async () => {
-    if (!elementId) {
-      alert(t('noData'));
-      return;
-    }
-
-    setExporting(true);
-    try {
-      await exportToPDF(elementId, filename, title);
-    } catch (error) {
-      console.error('PDF export failed:', error);
-      alert(t('pdfFailed'));
+      console.error('Export failed:', error);
+      alert(failed);
     } finally {
       setExporting(false);
     }
@@ -64,7 +46,7 @@ export function ExportButton({
       <button
         type="button"
         className="button buttonSmall"
-        onClick={handleCSVExport}
+        onClick={() => run((rows) => exportToCSV(rows, filename), t('csvFailed'))}
         disabled={disabled || exporting}
         title={t('csv')}
       >
@@ -74,7 +56,7 @@ export function ExportButton({
       <button
         type="button"
         className="button buttonSmall"
-        onClick={handlePDFExport}
+        onClick={() => run((rows) => exportToPDF(rows, filename, title), t('pdfFailed'))}
         disabled={disabled || exporting}
         title={t('pdf')}
       >

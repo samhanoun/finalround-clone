@@ -80,16 +80,20 @@ export function BadgesList() {
     t.has(`kinds.${badge.badge_type}.description`) ? t(`kinds.${badge.badge_type}.description`) : badge.description;
   const [badges, setBadges] = useState<Badge[]>([]);
   const [loading, setLoading] = useState(true);
+  // A failed load says so instead of claiming there are no badges.
+  const [failed, setFailed] = useState(false);
   const [selectedBadge, setSelectedBadge] = useState<Badge | null>(null);
 
   useEffect(() => {
     const fetchBadges = async () => {
       try {
         const response = await fetch('/api/badges');
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const data = await response.json();
         setBadges(data.badges || []);
       } catch (error) {
         console.error('Failed to fetch badges:', error);
+        setFailed(true);
       } finally {
         setLoading(false);
       }
@@ -97,25 +101,6 @@ export function BadgesList() {
 
     fetchBadges();
   }, []);
-
-  const handleShare = async (platform: string) => {
-    if (!selectedBadge) return;
-
-    try {
-      await fetch('/api/social/shares', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          share_type: 'badge',
-          platform,
-          content_id: selectedBadge.id,
-          content_title: t('shareTitle', { badge: titleOf(selectedBadge) }),
-        }),
-      });
-    } catch (error) {
-      console.error('Failed to share badge:', error);
-    }
-  };
 
   return (
     <section className="card" aria-labelledby="badges-heading">
@@ -129,6 +114,10 @@ export function BadgesList() {
 
         {loading ? (
           <p className={styles.note}>{t('loading')}</p>
+        ) : failed ? (
+          <p className={styles.note} role="alert">
+            {t('loadFailed')}
+          </p>
         ) : !badges.length ? (
           <p className={styles.note}>{t('empty')}</p>
         ) : (
@@ -169,12 +158,14 @@ export function BadgesList() {
                 </p>
                 <div className={styles.share}>
                   <span className={styles.shareLabel}>{t('share')}</span>
+                  {/* The menu records each share once, as a badge share. */}
                   <ShareMenu
+                    shareType="badge"
+                    contentId={selectedBadge.id}
                     content={{
                       title: t('shareTitle', { badge: titleOf(selectedBadge) }),
                       summary: descriptionOf(selectedBadge) || t('shareSummary'),
                     }}
-                    onShare={handleShare}
                   />
                 </div>
               </div>

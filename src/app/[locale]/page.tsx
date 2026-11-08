@@ -173,7 +173,7 @@ export default async function Home() {
               <div className={styles.plan}>
                 <h3 className={styles.planName}>{t('free.name')}</h3>
                 <p className={styles.planPrice}>
-                  <span className={styles.planAmount}>$0</span>
+                  <span className={styles.planAmount}>{t('free.price')}</span>
                 </p>
                 <ul className={styles.planList}>
                   <li>{t('free.minutes')}</li>
@@ -187,7 +187,7 @@ export default async function Home() {
               <div className={`${styles.plan} ${styles.planPro}`}>
                 <h3 className={styles.planName}>{t('pro.name')}</h3>
                 <p className={styles.planPrice}>
-                  <span className={styles.planAmount}>$29</span>
+                  <span className={styles.planAmount}>{t('pro.price')}</span>
                   <span className={styles.planPer}>{t('pro.per')}</span>
                 </p>
                 <ul className={styles.planList}>

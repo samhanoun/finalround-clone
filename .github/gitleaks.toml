@@ -1,0 +1,19 @@
+# gitleaks configuration for the Security workflow (GITLEAKS_CONFIG points
+# here). gitleaks' default rules, minus test code and fixtures: unit tests, the
+# end-to-end suites and their fake services, and test mocks carry made-up
+# tokens and passwords. GitHub secret scanning and GitGuardian still scan them.
+
+title = "Apex Round"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Test code and fixtures"
+paths = [
+  '''(^|/)__tests__/''',
+  '''\.test\.(ts|tsx|js|mjs|cjs)$''',
+  '''^e2e/''',
+  '''^test/''',
+  '''^supabase/tests/''',
+]

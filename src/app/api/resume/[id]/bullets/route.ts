@@ -50,6 +50,7 @@ export async function POST(
     original: analysis.original,
     score: analysis.score,
     issues: analysis.issues,
+    issueCodes: analysis.issueCodes,
     suggestions: analysis.suggestions,
     rewritten: parse.data.rewrite ? rewriteBullet(analysis.original) : undefined,
   }));

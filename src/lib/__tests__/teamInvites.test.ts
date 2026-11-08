@@ -2,11 +2,22 @@ jest.mock('@/lib/supabase/admin', () => ({ createAdminClient: jest.fn() }));
 jest.mock('@/lib/notify', () => ({ notify: jest.fn() }));
 jest.mock('@/lib/email', () => ({ sendEmail: jest.fn(async () => true) }));
 
-import { invitationsForUser, invitePath, isExpired, normalizeEmail, respondToInvitation, type Invitee } from '@/lib/teamInvites';
+import {
+  deliverInvitation,
+  invitationsForUser,
+  invitePath,
+  isExpired,
+  normalizeEmail,
+  previewInvitation,
+  respondToInvitation,
+  type InvitationRow,
+  type Invitee,
+} from '@/lib/teamInvites';
 import { safeNextPath } from '@/lib/safeRedirect';
 
 const { createAdminClient } = jest.requireMock('@/lib/supabase/admin') as { createAdminClient: jest.Mock };
 const { notify } = jest.requireMock('@/lib/notify') as { notify: jest.Mock };
+const { sendEmail } = jest.requireMock('@/lib/email') as { sendEmail: jest.Mock };
 
 const TOKEN = '5f0e8c34-2a51-4d7c-9a0e-3b9d6f1c7e21';
 
@@ -127,6 +138,66 @@ describe('respondToInvitation', () => {
     mockAdmin(invitation(), { stillPending: false });
     await respondToInvitation(TOKEN, account('sam@example.com'), 'accept');
     expect(notify).not.toHaveBeenCalled();
+  });
+});
+
+describe('an inviter who has deleted their account (invited_by is null)', () => {
+  /** The invitation above, plus profiles found by id or email; returns the values profiles were looked up by. */
+  function mockProfiles(profiles: Row[]) {
+    const lookups: unknown[] = [];
+    mockAdmin(invitation({ invited_by: null }));
+    const base = createAdminClient();
+    createAdminClient.mockReturnValue({
+      from: (table: string) => {
+        if (table !== 'profiles') return base.from(table);
+        const filters: Array<[string, unknown]> = [];
+        const query: Record<string, unknown> = {
+          select: () => query,
+          eq: (column: string, value: unknown) => {
+            filters.push([column, value]);
+            lookups.push(value);
+            return query;
+          },
+          maybeSingle: async () => ({ data: profiles.find((p) => filters.every(([column, value]) => p[column] === value)) ?? null }),
+        };
+        return query;
+      },
+    });
+    return lookups;
+  }
+
+  it('still joins the team, and skips telling the inviter', async () => {
+    mockProfiles([]);
+    const result = await respondToInvitation(TOKEN, account('sam@example.com'), 'accept');
+    expect(result).toMatchObject({ ok: true, outcome: 'joined' });
+    expect(notify).not.toHaveBeenCalled();
+  });
+
+  it('shows the invitation from "a teammate"', async () => {
+    const lookups = mockProfiles([]);
+    expect(await previewInvitation(TOKEN)).toMatchObject({ teamName: 'Acme', invitedBy: null, status: 'pending' });
+    // No profile lookup for a missing person.
+    expect(lookups).not.toContain(null);
+  });
+
+  it('emails and notifies the invitee in the name of "A teammate"', async () => {
+    const previous = process.env.NEXT_PUBLIC_APP_URL;
+    process.env.NEXT_PUBLIC_APP_URL = 'https://app.example';
+    try {
+      mockProfiles([{ id: 'user-2', email: 'sam@example.com' }]);
+      const row = invitation({ invited_by: null }) as unknown as InvitationRow;
+      expect(await deliverInvitation(row, 'Acme')).toEqual({ emailSent: true });
+      expect(sendEmail).toHaveBeenCalledWith(expect.objectContaining({ to: 'sam@example.com', text: expect.stringContaining('A teammate invited you to join Acme') }));
+      expect(notify).toHaveBeenCalledWith(
+        'user-2',
+        expect.objectContaining({
+          message: 'A teammate invited you as member.',
+          i18n: { key: 'teamInvite', params: { team: 'Acme', inviter: 'A teammate', role: 'member' } },
+        }),
+      );
+    } finally {
+      process.env.NEXT_PUBLIC_APP_URL = previous;
+    }
   });
 });
 

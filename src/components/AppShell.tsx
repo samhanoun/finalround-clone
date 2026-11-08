@@ -68,6 +68,28 @@ function claimReferralOnce(userId: string) {
   void fetch('/api/referrals/claim', { method: 'POST' }).catch(() => undefined);
 }
 
+/** A profile photo address the page can show: http(s) only. */
+function photoUrl(value: unknown): string | null {
+  const url = typeof value === 'string' ? value.trim() : '';
+  return /^https?:\/\/\S+$/i.test(url) ? url : null;
+}
+
+/** The profile photo (Settings → Profile), or the initial when there's none or it doesn't load. */
+function Avatar({ src, initial }: { src: string | null; initial: string }) {
+  const [failed, setFailed] = useState<string | null>(null);
+  return (
+    <span className={styles.avatar} aria-hidden="true">
+      {src && failed !== src ? (
+        // A plain <img>: photos can live on any host, and next/image has no remote patterns for them.
+        // eslint-disable-next-line @next/next/no-img-element
+        <img className={styles.avatarImage} src={src} alt="" width={28} height={28} referrerPolicy="no-referrer" onError={() => setFailed(src)} />
+      ) : (
+        initial
+      )}
+    </span>
+  );
+}
+
 /** `/en/copilot/live` and `/copilot/live` both match the Live item; `also` lists sub-pages kept elsewhere. */
 function isActive(pathname: string | null, href: string, also: string[] = []): boolean {
   if (!pathname) return false;
@@ -83,6 +105,8 @@ function isActive(pathname: string | null, href: string, also: string[] = []): b
  */
 export function AppShell(props: { title?: string; actions?: React.ReactNode; children: React.ReactNode; mobileNav?: boolean }) {
   const [user, setUser] = useState<User | null>(null);
+  // The signed-in user's own profile photo, kept with whose it is.
+  const [photo, setPhoto] = useState<{ userId: string; url: string | null } | null>(null);
   const [moreOpen, setMoreOpen] = useState(false);
   const pathname = usePathname();
   const t = useTranslations('AppShell');
@@ -91,8 +115,18 @@ export function AppShell(props: { title?: string; actions?: React.ReactNode; chi
 
   useEffect(() => {
     const supabase = createClient();
+    let cancelled = false;
+    const loadPhoto = async (userId: string) => {
+      try {
+        const { data } = await supabase.from('profiles').select('avatar_url').eq('id', userId).maybeSingle();
+        if (!cancelled) setPhoto({ userId, url: photoUrl(data?.avatar_url) });
+      } catch {
+        // No photo: the initial shows instead.
+      }
+    };
     supabase.auth.getUser().then(({ data }) => {
       setUser(data.user);
+      if (data.user) void loadPhoto(data.user.id);
       if (data.user?.user_metadata?.referral_code) claimReferralOnce(data.user.id);
     });
     const {
@@ -100,12 +134,16 @@ export function AppShell(props: { title?: string; actions?: React.ReactNode; chi
     } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
     });
-    return () => subscription.unsubscribe();
+    return () => {
+      cancelled = true;
+      subscription.unsubscribe();
+    };
   }, []);
 
   const active = (key: NavKey) => isActive(pathname, ITEMS[key].href, ITEMS[key].also);
   const label = (key: NavKey) => t(`nav.${key}`);
   const initial = user?.email?.trim().charAt(0).toUpperCase() ?? '';
+  const avatarUrl = user && photo?.userId === user.id ? photo.url : null;
 
   const navLink = (key: NavKey, className: string) => {
     const { href, Icon } = ITEMS[key];
@@ -142,9 +180,7 @@ export function AppShell(props: { title?: string; actions?: React.ReactNode; chi
         <div className={styles.account}>
           {user ? (
             <>
-              <span className={styles.avatar} aria-hidden="true">
-                {initial}
-              </span>
+              <Avatar src={avatarUrl} initial={initial} />
               <span className={styles.email} title={user.email ?? undefined}>
                 <span className="srOnly">{t('signedInAs', { email: user.email ?? '' })}</span>
                 <span aria-hidden="true">{user.email}</span>
@@ -208,6 +244,7 @@ export function AppShell(props: { title?: string; actions?: React.ReactNode; chi
           title={t('nav.more')}
           closeLabel={t('close')}
           email={user?.email ?? null}
+          avatar={<Avatar src={avatarUrl} initial={initial} />}
           onClose={() => setMoreOpen(false)}
         >
           {MORE.map((key) => navLink(key, styles.sheetItem))}
@@ -218,7 +255,14 @@ export function AppShell(props: { title?: string; actions?: React.ReactNode; chi
 }
 
 /** The rest of the sections on phones: a bottom sheet (a modal dialog, so focus stays inside). */
-function MoreSheet(props: { title: string; closeLabel: string; email: string | null; onClose: () => void; children: React.ReactNode }) {
+function MoreSheet(props: {
+  title: string;
+  closeLabel: string;
+  email: string | null;
+  avatar: React.ReactNode;
+  onClose: () => void;
+  children: React.ReactNode;
+}) {
   const ref = useRef<HTMLDialogElement>(null);
   const { onClose } = props;
 
@@ -250,6 +294,7 @@ function MoreSheet(props: { title: string; closeLabel: string; email: string | n
       <nav className={styles.sheetList}>{props.children}</nav>
       {props.email ? (
         <div className={styles.sheetAccount}>
+          {props.avatar}
           <span className={styles.email}>{props.email}</span>
           <SignOutButton />
         </div>

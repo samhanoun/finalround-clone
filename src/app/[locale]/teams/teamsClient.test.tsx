@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import React from 'react';
 import TeamsClient from './TeamsClient';
 import type { Organization, OrganizationRole } from '@/lib/organizations';
@@ -22,9 +22,28 @@ const ORG = {
 } as Organization;
 
 const MEMBERS = [
-  { id: 'm1', role: 'owner', status: 'active', joined_at: '2026-09-01T00:00:00Z', user_full_name: 'Ana Ruiz', user_email: 'ana@acme.dev' },
-  { id: 'm2', role: 'member', status: 'active', joined_at: '2026-10-03T00:00:00Z', user_full_name: 'Marcus Webb', user_email: 'marcus@acme.dev' },
+  {
+    id: 'm1',
+    user_id: 'u-ana',
+    role: 'owner',
+    status: 'active',
+    joined_at: '2026-09-01T00:00:00Z',
+    user_full_name: 'Ana Ruiz',
+    user_email: 'ana@acme.dev',
+    user_avatar_url: 'https://cdn.example/ana.png',
+  },
+  { id: 'm2', user_id: 'u-marcus', role: 'member', status: 'active', joined_at: '2026-10-03T00:00:00Z', user_full_name: 'Marcus Webb', user_email: 'marcus@acme.dev' },
+  { id: 'm3', user_id: 'u-lee', role: 'admin', status: 'active', joined_at: '2026-10-05T00:00:00Z', user_full_name: 'Lee Park', user_email: 'lee@acme.dev' },
 ];
+const STATS = {
+  totalMembers: 3,
+  activeMembers: 3,
+  pendingInvitations: 1,
+  practiceInterviews: { total: 12, thisMonth: 3 },
+  liveSessions: { total: 4, thisMonth: 0 },
+};
+let analyticsStatus = 200;
+let membersStatus = 200;
 const INVITES = [{ id: 'i1', email: 'sam@acme.dev', role: 'member', status: 'pending', expires_at: '2026-11-12T00:00:00Z', invitePath: '/teams/join/abc' }];
 const SSO = {
   enabled: true,
@@ -38,14 +57,17 @@ let requests: Array<{ url: string; method: string; body?: unknown }> = [];
 
 beforeEach(() => {
   requests = [];
+  analyticsStatus = 200;
+  membersStatus = 200;
   global.fetch = jest.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     const method = init?.method ?? 'GET';
     requests.push({ url, method, body: init?.body ? JSON.parse(String(init.body)) : undefined });
     const ok = (body: unknown, status = 200) => ({ ok: status < 400, status, json: async () => body }) as Response;
     if (url === '/api/teams/invitations') return ok({ invitations: [] });
-    if (url.endsWith('/members')) return ok({ members: MEMBERS });
-    if (url.endsWith('/analytics')) return ok({ stats: { totalMembers: 2, activeMembers: 2, pendingInvitations: 1, totalInterviews: 12, interviewsThisMonth: 3 } });
+    if (url.endsWith('/members') && method === 'PATCH') return ok({ success: true });
+    if (url.endsWith('/members')) return membersStatus === 200 ? ok({ members: MEMBERS }) : ok({ error: 'Failed to fetch members' }, membersStatus);
+    if (url.endsWith('/analytics')) return analyticsStatus === 200 ? ok({ stats: STATS }) : ok({ error: 'Forbidden' }, analyticsStatus);
     if (url.endsWith('/invitations') && method === 'POST') return ok({ invitation: { invitePath: '/teams/join/new' }, emailSent: false }, 201);
     if (url.endsWith('/invitations')) return ok({ invitations: INVITES });
     if (url.endsWith('/sso') && method === 'PUT') {
@@ -56,8 +78,8 @@ beforeEach(() => {
   }) as unknown as typeof fetch;
 });
 
-function renderAs(role: OrganizationRole) {
-  return render(<TeamsClient initialOrganization={ORG} role={role} />);
+function renderAs(role: OrganizationRole, userId?: string) {
+  return render(<TeamsClient initialOrganization={ORG} role={role} userId={userId} />);
 }
 
 describe('TeamsClient', () => {
@@ -91,6 +113,63 @@ describe('TeamsClient', () => {
     expect(await screen.findByText('_apex-round-sso.acme.dev')).toBeInTheDocument();
     expect(screen.getByText('apex-round-sso=abc123')).toBeInTheDocument();
     expect(screen.getByRole('alert')).toHaveTextContent('First prove you own each domain');
+  });
+
+  it('shows the members’ practice interviews and live sessions, each with this month', async () => {
+    renderAs('owner');
+    const stats = await screen.findByText('Practice interviews');
+    const practice = stats.closest('div') as HTMLElement;
+    await waitFor(() => expect(practice).toHaveTextContent('12'));
+    expect(practice).toHaveTextContent('+3 this month');
+    const live = screen.getByText('Live sessions').closest('div') as HTMLElement;
+    expect(live).toHaveTextContent('4');
+    expect(live).toHaveTextContent('None this month');
+    expect(screen.getByText('Members', { selector: 'dt' }).closest('div')).toHaveTextContent('3');
+  });
+
+  it('shows a dash, not zeros, when the figures don’t load', async () => {
+    analyticsStatus = 500;
+    renderAs('member');
+    await screen.findByText('Marcus Webb');
+    const practice = screen.getByText('Practice interviews').closest('div') as HTMLElement;
+    expect(practice).toHaveTextContent('—');
+    expect(practice).not.toHaveTextContent('0');
+  });
+
+  it('says the team didn’t load instead of showing an empty member list', async () => {
+    membersStatus = 500;
+    renderAs('owner');
+    expect(await screen.findByText('The team didn\'t load. Reload the page to try again.')).toBeInTheDocument();
+    expect(screen.queryByText('No members yet. Invite someone to get started.')).not.toBeInTheDocument();
+  });
+
+  it('shows each member’s profile photo, with the initial when there is none or it doesn’t load', async () => {
+    const { container } = renderAs('owner');
+    await screen.findByText('Marcus Webb');
+    const photo = container.querySelector('img') as HTMLImageElement;
+    expect(photo).toHaveAttribute('src', 'https://cdn.example/ana.png');
+    expect(photo).toHaveAttribute('referrerpolicy', 'no-referrer');
+    expect(container.querySelectorAll('img')).toHaveLength(1);
+    const marcusRow = screen.getByText('Marcus Webb').closest('li') as HTMLElement;
+    expect(within(marcusRow).getByText('M')).toBeInTheDocument();
+
+    fireEvent.error(photo);
+    expect(container.querySelector('img')).toBeNull();
+    expect(within(screen.getByText('Ana Ruiz').closest('li') as HTMLElement).getByText('A')).toBeInTheDocument();
+  });
+
+  it('offers no role change or removal on your own row', async () => {
+    renderAs('admin', 'u-lee');
+    const members = await screen.findByRole('region', { name: /Members/ });
+    const own = (await within(members).findByText('Lee Park')).closest('li') as HTMLElement;
+    expect(within(own).queryByRole('combobox')).not.toBeInTheDocument();
+    expect(within(own).queryByRole('button', { name: 'Remove Lee Park' })).not.toBeInTheDocument();
+    expect(within(own).getByText('Admin')).toBeInTheDocument();
+    // Other members can still be managed.
+    fireEvent.change(within(members).getByRole('combobox', { name: 'Role for marcus@acme.dev' }), { target: { value: 'viewer' } });
+    await waitFor(() =>
+      expect(requests).toContainEqual({ url: '/api/teams/org-1/members', method: 'PATCH', body: { member_id: 'm2', action: 'update_role', role: 'viewer' } }),
+    );
   });
 
   it('keeps invitations, single sign-on and the danger zone from members who can’t manage them', async () => {

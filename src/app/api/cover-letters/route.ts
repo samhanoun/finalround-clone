@@ -122,8 +122,6 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     if (error instanceof LLMUnavailableError) return jsonError(503, 'llm_unavailable');
     console.error('Cover letter generation failed:', error);
-    return jsonError(500, 'generation_failed', { 
-      message: error instanceof Error ? error.message : 'Failed to generate cover letter' 
-    });
+    return jsonError(500, 'generation_failed', { message: 'Failed to generate cover letter' });
   }
 }

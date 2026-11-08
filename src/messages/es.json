@@ -255,7 +255,8 @@
       "link_failed": "Ese enlace no funcionó o ha caducado. Inténtalo de nuevo.",
       "missing_code": "Ese enlace está incompleto. Inténtalo de nuevo.",
       "signin_failed": "El inicio de sesión no terminó. Inténtalo de nuevo o usa tu correo y contraseña."
-    }
+    },
+    "language": "Idioma"
   },
   "ResetPassword": {
     "title": "Elige una contraseña nueva",
@@ -880,6 +881,24 @@
       "status": "Estado",
       "score": "Puntuación",
       "date": "Fecha"
+    },
+    "row": {
+      "menu": "Opciones de {title}",
+      "rename": "Cambiar nombre",
+      "renameTitle": "Cambiar el nombre de {title}",
+      "nameLabel": "Nombre de la entrevista",
+      "save": "Guardar",
+      "saving": "Guardando…",
+      "cancel": "Cancelar",
+      "delete": "Eliminar",
+      "deleteTitle": "Eliminar {title}",
+      "deleting": "Eliminando…",
+      "keep": "Conservar",
+      "confirmDelete": "¿Eliminar «{title}»? También se eliminan sus preguntas, tus respuestas y el informe.",
+      "renamed": "Ahora se llama «{title}»",
+      "deleted": "Se eliminó «{title}»",
+      "renameFailed": "El nombre nuevo no se guardó. Inténtalo de nuevo.",
+      "deleteFailed": "La entrevista no se eliminó. Inténtalo de nuevo."
     }
   },
   "QuestionBank": {
@@ -1102,12 +1121,14 @@
       "startFirst": "Primero empieza una sesión.",
       "screenFailed": "No se pudo leer la pantalla compartida.",
       "submitFailed": "Esa línea no se envió. Inténtalo de nuevo.",
-      "summaryFailed": "El resumen no llegó. Inténtalo de nuevo.",
+      "summaryFailed": "El resumen no llegó y no se guardó nada.",
       "deleteFailed": "La sesión no se eliminó. Inténtalo de nuevo.",
       "exportFailed": "La exportación no se descargó. Inténtalo de nuevo.",
       "purgeFailed": "Tus datos del copiloto no se eliminaron. Inténtalo de nuevo.",
       "stopBeforePurge": "Detén tu sesión activa antes de eliminar todos los datos del copiloto.",
-      "typeConfirm": "Escribe {phrase} para confirmar."
+      "typeConfirm": "Escribe {phrase} para confirmar.",
+      "summaryUnavailable": "Aún no hay un modelo de IA configurado, así que no hay resumen. No se guardó nada.",
+      "summaryNoTranscript": "Aún no hay nada que resumir. Primero añade algunas líneas a la transcripción."
     },
     "startErrors": {
       "resume_not_found": "No se encontró ese currículum. Elige otro.",
@@ -1142,7 +1163,8 @@
       "noStrengths": "Aún no se han identificado puntos fuertes.",
       "noWeaknesses": "Aún no se han identificado puntos débiles.",
       "noNextSteps": "Aún no se han identificado siguientes pasos.",
-      "again": "Generar de nuevo"
+      "again": "Generar de nuevo",
+      "retry": "Intentar de nuevo"
     },
     "history": {
       "label": "Vista del historial de analíticas",
@@ -1188,11 +1210,11 @@
       "export": "Exportar todos los datos del copiloto",
       "exported": "La exportación de datos del copiloto está lista y descargada.",
       "purgeTitle": "Eliminar todos los datos del copiloto",
-      "purgeWarning": "<strong>Atención:</strong> esto elimina de forma permanente cada sesión del copiloto, evento de transcripción y resumen de tu cuenta. No se puede deshacer. Antes debes detener cualquier sesión activa.",
+      "purgeWarning": "<strong>Atención:</strong> esto elimina de forma permanente cada sesión del copiloto, evento de transcripción y resumen de tu cuenta, y los datos que el copiloto aprendió de tus sesiones en Objetivos → Memoria (los que añadiste tú se conservan). No se puede deshacer. Antes debes detener cualquier sesión activa.",
       "purgeConfirm": "Escribe <code>{phrase}</code> para confirmar",
       "purging": "Eliminando todos los datos…",
       "purge": "Eliminar todos los datos del copiloto",
-      "purged": "Se eliminaron todos los datos del copiloto ({sessions, plural, one {# sesión} other {# sesiones}}, {events, plural, one {# evento} other {# eventos}}, {summaries, plural, one {# resumen} other {# resúmenes}})."
+      "purged": "Se eliminaron todos los datos del copiloto ({sessions, plural, one {# sesión} other {# sesiones}}, {events, plural, one {# evento} other {# eventos}}, {summaries, plural, one {# resumen} other {# resúmenes}}, {memories, plural, one {# dato aprendido} other {# datos aprendidos}})."
     },
     "report": {
       "title": "Informe de la entrevista",
@@ -1206,7 +1228,7 @@
       "signal": "Recomendación de contratación",
       "evidence": "Evidencia:",
       "recommendation": "Recomendación:",
-      "notCaptured": "No registrado.",
+      "notCaptured": "No registrado",
       "strengths": "Puntos fuertes",
       "weaknesses": "Puntos débiles",
       "nextSteps": "Siguientes pasos",
@@ -1420,8 +1442,6 @@
     "confirmDesc": "Escribe tu correo electrónico y {word} para confirmar.",
     "email": "Tu correo electrónico",
     "emailPlaceholder": "tu@ejemplo.com",
-    "reason": "¿Por qué te vas? (opcional)",
-    "reasonPlaceholder": "¿Qué podríamos haber hecho mejor?",
     "typeWord": "Escribe <strong>{word}</strong> para confirmar",
     "cancel": "Cancelar",
     "deleting": "Eliminando…",
@@ -1429,10 +1449,12 @@
     "failed": "Tu cuenta no se eliminó. Inténtalo de nuevo.",
     "errors": {
       "email_mismatch": "Ese correo no coincide con tu cuenta.",
-      "rate_limited": "Demasiados intentos. Inténtalo de nuevo en un minuto."
+      "rate_limited": "Demasiados intentos. Inténtalo de nuevo en un minuto.",
+      "billing_cancel_failed": "No se pudo cancelar tu suscripción, así que tu cuenta no se eliminó. Inténtalo de nuevo en unos minutos."
     },
     "deletedTitle": "Cuenta eliminada",
-    "deletedBody": "Tu cuenta se ha eliminado de forma permanente junto con todos tus datos. Te llevamos a la página de inicio…"
+    "deletedBody": "Tu cuenta se ha eliminado de forma permanente junto con todos tus datos. Te llevamos a la página de inicio…",
+    "deletesPlan": "Cualquier plan de pago, cancelado al momento (el resto del periodo no se reembolsa)"
   },
   "Usage": {
     "loading": "Cargando el uso…",
@@ -1448,9 +1470,8 @@
     "copilotMonth": "Copiloto en vivo, este mes",
     "perSession": "Por sesión",
     "copilotToday": "Copiloto en vivo, hoy",
-    "smartMonth": "Modo Smart, este mes",
     "reviewsMonth": "Revisiones de currículum, este mes",
-    "proLimits": "Pro sube los límites a 400 minutos al mes, sesiones de 30 minutos, 45 minutos al día, 80 minutos de modo Smart y 10 revisiones de currículum al mes.",
+    "proLimits": "Pro sube los límites a 400 minutos al mes, sesiones de 30 minutos, 45 minutos al día y 10 revisiones de currículum al mes.",
     "seePlans": "Planes y facturación"
   },
   "Billing": {
@@ -1459,7 +1480,8 @@
       "already_subscribed": "Ya tienes Pro. Usa Gestionar facturación para cambiarlo.",
       "no_billing_account": "Aún no tienes cuenta de facturación. Primero mejora tu plan.",
       "rate_limited": "Demasiados intentos. Inténtalo de nuevo en un minuto.",
-      "unauthorized": "Vuelve a iniciar sesión e inténtalo otra vez."
+      "unauthorized": "Vuelve a iniciar sesión e inténtalo otra vez.",
+      "plan_without_billing": "Tu plan se te asignó directamente, así que no hay pagos que gestionar."
     },
     "unreachable": "No se pudo conectar con la facturación. Inténtalo de nuevo.",
     "returned": {
@@ -1483,7 +1505,7 @@
       "tester": "Tester",
       "team": "Equipo"
     },
-    "proLimits": "Pro sube los límites a 400 minutos al mes, sesiones de 30 minutos, 45 minutos al día, 80 minutos de modo Smart y 10 revisiones de currículum al mes",
+    "proLimits": "Pro sube los límites a 400 minutos al mes, sesiones de 30 minutos, 45 minutos al día y 10 revisiones de currículum al mes",
     "loading": "Cargando el uso…",
     "usageLabel": "Uso de este mes",
     "usage": {
@@ -1491,7 +1513,6 @@
       "count": "{used} / {limit}",
       "copilotMonth": "Copiloto en vivo este mes",
       "copilotToday": "Copiloto en vivo hoy",
-      "smartMonth": "Modo Smart este mes",
       "reviewsMonth": "Revisiones de currículum este mes",
       "minutes": "{used} / {limit} min"
     },
@@ -1619,7 +1640,7 @@
   "Badges": {
     "title": "Logros",
     "loading": "Cargando insignias…",
-    "empty": "Aún no hay insignias. Termina una entrevista de práctica o una sesión en vivo para conseguir la primera.",
+    "empty": "Aún no hay insignias. Termina una entrevista de práctica para conseguir la primera.",
     "badgeLabel": "Insignia: {badge}",
     "close": "Cerrar",
     "awarded": "Conseguida: {date}",
@@ -1632,12 +1653,12 @@
         "description": "Terminaste tu primera entrevista de práctica."
       },
       "five_sessions": {
-        "title": "Cinco sesiones",
-        "description": "Terminaste cinco entrevistas de práctica o sesiones en vivo."
+        "title": "Cinco sesiones en vivo",
+        "description": "Terminaste cinco sesiones en vivo."
       },
       "ten_sessions": {
-        "title": "Diez sesiones",
-        "description": "Terminaste diez entrevistas de práctica o sesiones en vivo."
+        "title": "Diez sesiones en vivo",
+        "description": "Terminaste diez sesiones en vivo."
       },
       "first_offer": {
         "title": "Primera oferta",
@@ -1645,15 +1666,15 @@
       },
       "streak_week": {
         "title": "Racha semanal",
-        "description": "Practicaste siete días seguidos."
+        "description": "Practicaste o hiciste una sesión en vivo siete días seguidos."
       },
       "streak_month": {
         "title": "Racha mensual",
-        "description": "Practicaste cada semana durante un mes."
+        "description": "Practicaste o hiciste una sesión en vivo 30 días seguidos."
       },
       "resume_optimized": {
         "title": "Currículum adaptado",
-        "description": "Adaptaste un currículum a un puesto."
+        "description": "Revisaste o adaptaste un currículum para un puesto."
       },
       "job_applied": {
         "title": "Candidatura enviada",
@@ -1671,7 +1692,8 @@
         "title": "Compartido",
         "description": "Compartiste tu progreso."
       }
-    }
+    },
+    "loadFailed": "Tus logros no se cargaron."
   },
   "Share": {
     "email": "Correo",
@@ -1702,7 +1724,8 @@
       "signed_up": "Registrado",
       "converted": "Pasó a Pro",
       "expired": "Caducada"
-    }
+    },
+    "shareNotRecorded": "Se abrió para compartir, pero no quedó registrado aquí."
   },
   "Landing": {
     "homeLabel": "Inicio de Apex Round",
@@ -1765,7 +1788,8 @@
       "name": "Gratis",
       "minutes": "10 minutos de ayuda en vivo al mes",
       "sessions": "Sesiones de hasta 10 minutos",
-      "tools": "Creador de currículums y seguimiento de empleos"
+      "tools": "Creador de currículums y seguimiento de empleos",
+      "price": "0 $"
     },
     "pro": {
       "name": "Pro",
@@ -1773,7 +1797,8 @@
       "minutes": "400 minutos de ayuda en vivo al mes",
       "sessions": "Sesiones de hasta 30 minutos, 45 minutos al día",
       "cancel": "Cancela cuando quieras desde Ajustes",
-      "cta": "Pasar a Pro"
+      "cta": "Pasar a Pro",
+      "price": "29 $"
     },
     "footer": "Antes de usarlo, consulta las normas de tu entrevista sobre ayuda externa",
     "menu": "Menú",
@@ -1835,9 +1860,8 @@
         "price": "29 $ o 29 € al mes",
         "feature1": "400 minutos de copiloto en vivo al mes",
         "feature2": "Sesiones de hasta 30 minutos, 45 minutos al día",
-        "feature3": "80 minutos de modo Smart al mes",
-        "feature4": "10 revisiones a fondo del currículum al mes",
-        "feature5": "Todo lo del plan Gratis"
+        "feature3": "10 revisiones a fondo del currículum al mes",
+        "feature4": "Todo lo del plan Gratis"
       }
     },
     "profile": {
@@ -1890,7 +1914,8 @@
         "desc": "Súbelo una vez y compáralo con cualquier oferta para ver las palabras clave que faltan."
       }
     },
-    "stepOf": "Paso {current} de {total}"
+    "stepOf": "Paso {current} de {total}",
+    "saveFailed": "Tus respuestas no se guardaron. Revisa tu conexión e inténtalo de nuevo."
   },
   "Resume": {
     "errors": {
@@ -1999,7 +2024,26 @@
     "delete": "Eliminar",
     "noTailored": "Aún no hay versiones adaptadas. Elige un currículum, pega un empleo y elige «Redactar una versión adaptada».",
     "outOf": "sobre 100",
-    "docScore": "{score} % de coincidencia"
+    "docScore": "{score} % de coincidencia",
+    "deleteDocumentLabel": "Eliminar {name}",
+    "confirmDeleteDocument": "¿Eliminar {name}? Las versiones adaptadas que hiciste con él se quedan en tu historial.",
+    "documentDeleted": "Eliminado",
+    "documentDeletedBody": "Se eliminó {name}.",
+    "uploadedUnreadable": "No se pudo leer su texto, así que aún no se puede revisar. Súbelo como PDF o .docx.",
+    "tips": {
+      "add_keywords": "Añade estas palabras clave: {keywords}",
+      "add_more_keywords": "Añade más palabras clave de la oferta, empezando por {keywords}",
+      "add_contact": "Añade tus datos de contacto: email y teléfono",
+      "expand": "Añade más detalle: tiene menos de 200 palabras"
+    },
+    "bulletIssues": {
+      "weak_word": "redacción débil (“{word}”)",
+      "no_metrics": "sin cifras ni resultados",
+      "weak_verb": "no empieza con un verbo de acción",
+      "too_short": "demasiado corto para mostrar el detalle",
+      "too_long": "demasiado largo: hazlo más conciso",
+      "passive": "puede estar en voz pasiva"
+    }
   },
   "PageTitles": {
     "resume": "Currículum",
@@ -2381,8 +2425,9 @@
     "stats": {
       "members": "Miembros",
       "active": "Activos",
-      "interviews": "Entrevistas",
-      "thisMonth": "Este mes"
+      "practice": "Entrevistas de práctica",
+      "live": "Sesiones en vivo",
+      "newThisMonth": "{count, plural, =0 {Ninguna este mes} other {+# este mes}}"
     },
     "sections": "Secciones del equipo",
     "tabs": {
@@ -2438,7 +2483,8 @@
         "domain_taken": "Otro proveedor de identidad ya usa alguno de esos dominios.",
         "invalid_domains": "Introduce al menos un dominio de correo, como acme.com.",
         "public_domain": "Los dominios de correo públicos como gmail.com no se admiten. Introduce el dominio propio de tu empresa.",
-        "domain_unverified": "Primero demuestra que cada dominio es tuyo: añade los registros DNS que se muestran aquí, espera unos minutos a que se propaguen y vuelve a guardar."
+        "domain_unverified": "Primero demuestra que cada dominio es tuyo: añade los registros DNS que se muestran aquí, espera unos minutos a que se propaguen y vuelve a guardar.",
+        "rate_limited": "Has guardado esto varias veces en la última hora. Inténtalo más tarde."
       },
       "failed": "No funcionó. Inténtalo de nuevo.",
       "on": "El inicio de sesión único está activado.",
@@ -2534,11 +2580,10 @@
     "loading": "Cargando…",
     "stats": {
       "users": "Usuarios",
-      "active": "Activos en los últimos 30 días",
-      "revenue": "Ingresos",
       "subscriptions": "Suscripciones activas",
       "tickets": "Tickets de soporte abiertos",
-      "fraud": "Alertas de fraude abiertas"
+      "fraud": "Alertas de fraude abiertas",
+      "newUsers": "{days, plural, one {Altas en el último día} other {Altas en los últimos # días}}"
     },
     "empty": {
       "users": "Ningún usuario coincide.",
@@ -2552,7 +2597,7 @@
       "subscription": "Suscripción",
       "status": "Estado",
       "price": "Precio",
-      "renews": "Renovación",
+      "renews": "Fin del periodo",
       "type": "Tipo",
       "severity": "Gravedad",
       "what": "Qué pasó",
@@ -2577,14 +2622,20 @@
       "medium": "Media",
       "high": "Alta",
       "urgent": "Urgente",
-      "critical": "Crítica"
+      "critical": "Crítica",
+      "canceling": "Termina al final del periodo",
+      "suspended": "Suspendida",
+      "unpaid": "Sin pagar",
+      "incomplete": "Incompleta",
+      "incomplete_expired": "Caducada",
+      "paused": "En pausa"
     },
     "free": "Gratis",
     "confirmAdmin": "¿Hacer administrador a {email}?",
     "makeAdmin": "Hacer administrador",
     "confirmSuspend": "¿Suspender a {email}? No podrá iniciar sesión.",
     "suspend": "Suspender",
-    "confirmCancel": "¿Cancelar la suscripción de {email}?",
+    "confirmCancel": "¿Cancelar la suscripción de {email}? Seguirá activa hasta el final del periodo y luego no se renovará.",
     "cancel": "Cancelar",
     "resume": "Reanudar",
     "resolve": "Resolver",
@@ -2600,7 +2651,15 @@
     "user": "Usuario",
     "reply": "Respuesta",
     "sending": "Enviando…",
-    "sendReply": "Enviar respuesta"
+    "sendReply": "Enviar respuesta",
+    "unsuspend": "Reactivar",
+    "confirmUnsuspend": "¿Reactivar a {email}? Podrá volver a iniciar sesión.",
+    "errors": {
+      "billing_unavailable": "Stripe no está configurado en este servidor, así que aquí no se pueden cambiar suscripciones.",
+      "cannot_suspend_self": "No puedes suspender tu propia cuenta.",
+      "not_found": "Eso ya no existe. Recarga la página para ver lo último.",
+      "stripe_failed": "Stripe no aceptó el cambio. Inténtalo de nuevo o revisa la suscripción en Stripe."
+    }
   },
   "Meta": {
     "description": "Un copiloto de entrevistas en vivo: oye la pregunta y pone en tu pantalla una respuesta breve y estructurada.",

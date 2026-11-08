@@ -6,6 +6,7 @@ import { BillingActions } from '@/components/BillingActions';
 import { Skeleton } from '@/components/Skeleton';
 import { SettingRow, SettingsGroup, settingsStyles as styles } from './SettingsUI';
 
+/** What /api/usage returns. `isPro`: any paid plan (it manages billing rather than upgrading). */
 type Usage = {
   plan: string;
   isPro: boolean;
@@ -13,19 +14,13 @@ type Usage = {
   usage: Record<MeterKey, number>;
 };
 
-type MeterKey =
-  | 'copilot_minutes_monthly'
-  | 'copilot_session_minutes'
-  | 'copilot_daily_minutes'
-  | 'smart_mode_minutes_monthly'
-  | 'resume_deep_reviews_monthly';
+type MeterKey = 'copilot_minutes_monthly' | 'copilot_session_minutes' | 'copilot_daily_minutes' | 'resume_deep_reviews_monthly';
 
 /** What /api/usage counts, in the order people think about it; reviews are a count, the rest minutes. */
 const METERS: Array<{ key: MeterKey; label: string; unit: 'minutes' | 'count' }> = [
   { key: 'copilot_minutes_monthly', label: 'copilotMonth', unit: 'minutes' },
   { key: 'copilot_daily_minutes', label: 'copilotToday', unit: 'minutes' },
   { key: 'copilot_session_minutes', label: 'perSession', unit: 'minutes' },
-  { key: 'smart_mode_minutes_monthly', label: 'smartMonth', unit: 'minutes' },
   { key: 'resume_deep_reviews_monthly', label: 'reviewsMonth', unit: 'count' },
 ];
 

@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useState } from 'react';
 import { useRouter } from '@/i18n/routing';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { createClient } from '@/lib/supabase/browser';
 import { ApexMark } from './ApexMark';
 import { ChartIcon, ChevronLeftIcon, JobsIcon, LiveIcon, PracticeIcon, ResumeIcon } from './icons';
@@ -17,6 +17,10 @@ interface Plan {
   features: number;
 }
 
+/** Pro is billed in either; checkout uses the one picked on the plan step. */
+type Currency = 'usd' | 'eur';
+const CURRENCIES: Currency[] = ['usd', 'eur'];
+
 interface ProfileData {
   fullName: string;
   targetRoles: string[];
@@ -24,10 +28,13 @@ interface ProfileData {
   industry: string;
 }
 
+/** What onboarding_state.profile_data holds: the answers so far, and the currency picked for Pro. */
+type SavedAnswers = Partial<ProfileData> & { currency?: string };
+
 // The plans as billed (see the plans table and /api/billing/checkout).
 const PLANS: Plan[] = [
   { id: 'free', features: 5 },
-  { id: 'pro', features: 5 },
+  { id: 'pro', features: 4 },
 ];
 
 /** Suggested roles; the chosen names are saved as shown, in the app's language. */
@@ -45,6 +52,35 @@ const ROLE_OPTIONS = [
 ] as const;
 
 const EXPERIENCE_LEVELS = ['0-1', '1-3', '3-5', '5-10', '10+'] as const;
+type ExperienceLevel = (typeof EXPERIENCE_LEVELS)[number];
+
+/** profiles.years_experience is a whole number: each level is saved as its first year, so entry level is 0. */
+const EXPERIENCE_YEARS: Record<ExperienceLevel, number> = { '0-1': 0, '1-3': 1, '3-5': 3, '5-10': 5, '10+': 10 };
+
+function yearsFor(level: string): number | null {
+  return (EXPERIENCE_LEVELS as readonly string[]).includes(level) ? EXPERIENCE_YEARS[level as ExperienceLevel] : null;
+}
+
+/** The profile columns the answers fill in; none until there's a name (the profile step requires one). */
+function profileFields(profile: ProfileData) {
+  if (!profile.fullName.trim()) return {};
+  return {
+    full_name: profile.fullName.trim(),
+    target_roles: profile.targetRoles,
+    years_experience: yearsFor(profile.yearsExperience),
+    industry: profile.industry.trim() || null,
+  };
+}
+
+/** The saved answers that still fit the form; anything else keeps its default. */
+function savedAnswers(saved: SavedAnswers): Partial<ProfileData> {
+  const answers: Partial<ProfileData> = {};
+  if (typeof saved.fullName === 'string') answers.fullName = saved.fullName;
+  if (Array.isArray(saved.targetRoles)) answers.targetRoles = saved.targetRoles.filter((role) => typeof role === 'string');
+  if (typeof saved.yearsExperience === 'string') answers.yearsExperience = saved.yearsExperience;
+  if (typeof saved.industry === 'string') answers.industry = saved.industry;
+  return answers;
+}
 
 /** What Apex Round does, in the order the welcome text gives it: in the interview, then before it. */
 const FEATURES = [
@@ -63,10 +99,14 @@ const TIPS = [
 
 export default function OnboardingFlow() {
   const router = useRouter();
+  const locale = useLocale();
+  const t = useTranslations('Onboarding');
   const [supabase] = useState(() => createClient());
   const [currentStep, setCurrentStep] = useState<OnboardingStep>('welcome');
   const [loading, setLoading] = useState(false);
+  const [saveFailed, setSaveFailed] = useState(false);
   const [plan, setPlan] = useState<string>('');
+  const [currency, setCurrency] = useState<Currency>('usd');
   const [profileData, setProfileData] = useState<ProfileData>({
     fullName: '',
     targetRoles: [],
@@ -83,49 +123,51 @@ export default function OnboardingFlow() {
         return;
       }
 
-      // Check existing onboarding state
+      // Where the user left off, if they started before (a new account has no row yet).
       const { data: onboardingState } = await supabase
         .from('onboarding_state')
         .select('*')
         .eq('user_id', user.id)
-        .single();
+        .maybeSingle();
 
       if (onboardingState?.current_step) {
         setCurrentStep(onboardingState.current_step as OnboardingStep);
         if (onboardingState.plan) setPlan(onboardingState.plan);
-        if (onboardingState.profile_data) {
-          setProfileData(onboardingState.profile_data as ProfileData);
+        const saved = onboardingState.profile_data as SavedAnswers | null;
+        if (saved) {
+          setProfileData((current) => ({ ...current, ...savedAnswers(saved) }));
+          if (CURRENCIES.includes(saved.currency as Currency)) setCurrency(saved.currency as Currency);
         }
       }
     }
     loadState();
   }, [supabase, router]);
 
+  /** Saves the step and the answers so far. A failed save is shown, and the next step's save tries again. */
   async function saveState(step: OnboardingStep) {
     setLoading(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // Update onboarding state
-      await supabase.from('onboarding_state').upsert({
-        user_id: user.id,
-        current_step: step,
-        plan: plan || null,
-        profile_data: profileData,
-      });
+      // One row per user (user_id is unique), so each later save updates it.
+      const { error } = await supabase
+        .from('onboarding_state')
+        .upsert(
+          { user_id: user.id, current_step: step, plan: plan || null, profile_data: { ...profileData, currency } },
+          { onConflict: 'user_id' },
+        );
+      if (error) throw error;
 
-      // Also update profile if we have data
-      if (profileData.fullName) {
-        await supabase.from('profiles').update({
-          full_name: profileData.fullName,
-          target_roles: profileData.targetRoles,
-          years_experience: parseInt(profileData.yearsExperience) || null,
-          industry: profileData.industry || null,
-        }).eq('id', user.id);
+      const fields = profileFields(profileData);
+      if (Object.keys(fields).length > 0) {
+        const { error: profileError } = await supabase.from('profiles').update(fields).eq('id', user.id);
+        if (profileError) throw profileError;
       }
+      setSaveFailed(false);
     } catch (error) {
       console.error('Error saving onboarding state:', error);
+      setSaveFailed(true);
     } finally {
       setLoading(false);
     }
@@ -133,21 +175,25 @@ export default function OnboardingFlow() {
 
   async function completeOnboarding() {
     setLoading(true);
+    setSaveFailed(false);
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // Mark onboarding as complete
-      await supabase.from('profiles').update({
-        onboarding_completed: true,
-      }).eq('id', user.id);
+      // Finished. The answers go in again with the flag, in case an earlier save didn't get through.
+      const { error } = await supabase
+        .from('profiles')
+        .update({ ...profileFields(profileData), onboarding_completed: true })
+        .eq('id', user.id);
+      if (error) throw error;
 
-      // Pro was chosen: go straight to checkout. If billing isn't available, Settings has the upgrade button.
+      // Pro was chosen: straight to checkout, in this language and the currency picked with the plan.
+      // If billing isn't available, Settings has the upgrade button.
       if (plan === 'pro') {
         const res = await fetch('/api/billing/checkout', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ currency: 'usd' }),
+          body: JSON.stringify({ currency, locale }),
         }).catch(() => null);
         const json = res?.ok ? await res.json().catch(() => null) : null;
         if (json?.url) {
@@ -161,10 +207,13 @@ export default function OnboardingFlow() {
       router.push('/dashboard');
     } catch (error) {
       console.error('Error completing onboarding:', error);
+      setSaveFailed(true);
     } finally {
       setLoading(false);
     }
   }
+
+  const error = saveFailed ? t('saveFailed') : null;
 
   function nextStep() {
     const next = STEPS[STEPS.indexOf(currentStep) + 1];
@@ -192,7 +241,7 @@ export default function OnboardingFlow() {
   }
 
   if (currentStep === 'welcome') {
-    return <WelcomeStep onNext={nextStep} loading={loading} />;
+    return <WelcomeStep onNext={nextStep} loading={loading} error={error} />;
   }
 
   if (currentStep === 'plan') {
@@ -201,9 +250,12 @@ export default function OnboardingFlow() {
         plans={PLANS}
         selectedPlan={plan}
         onSelect={setPlan}
+        currency={currency}
+        onCurrency={setCurrency}
         onNext={nextStep}
         onBack={prevStep}
         loading={loading}
+        error={error}
       />
     );
   }
@@ -217,12 +269,13 @@ export default function OnboardingFlow() {
         onNext={nextStep}
         onBack={prevStep}
         loading={loading}
+        error={error}
       />
     );
   }
 
   if (currentStep === 'tutorial') {
-    return <TutorialStep onComplete={completeOnboarding} onBack={prevStep} loading={loading} />;
+    return <TutorialStep onComplete={completeOnboarding} onBack={prevStep} loading={loading} error={error} />;
   }
 
   return null;
@@ -235,6 +288,7 @@ function StepFrame({
   description,
   onBack,
   primary,
+  error,
   children,
 }: {
   step: OnboardingStep;
@@ -242,6 +296,8 @@ function StepFrame({
   description: string;
   onBack?: () => void;
   primary: React.ReactNode;
+  /** A save that didn't get through, shown above the actions. */
+  error?: string | null;
   children: React.ReactNode;
 }) {
   const t = useTranslations('Onboarding');
@@ -266,6 +322,11 @@ function StepFrame({
           <p className={styles.description}>{description}</p>
         </div>
         <div className={styles.body}>{children}</div>
+        {error ? (
+          <p className={styles.error} role="alert">
+            {error}
+          </p>
+        ) : null}
         <div className={styles.actions}>
           {onBack ? (
             <button type="button" className={`button buttonGhost ${styles.back}`} onClick={onBack}>
@@ -280,13 +341,14 @@ function StepFrame({
   );
 }
 
-function WelcomeStep({ onNext, loading }: { onNext: () => void; loading: boolean }) {
+function WelcomeStep({ onNext, loading, error }: { onNext: () => void; loading: boolean; error: string | null }) {
   const t = useTranslations('Onboarding.welcome');
   return (
     <StepFrame
       step="welcome"
       title={t('title')}
       description={t('desc')}
+      error={error}
       primary={
         <button type="button" className="button buttonPrimary buttonLarge" onClick={onNext} disabled={loading}>
           {t('start')}
@@ -311,18 +373,25 @@ function PlanStep({
   plans,
   selectedPlan,
   onSelect,
+  currency,
+  onCurrency,
   onNext,
   onBack,
   loading,
+  error,
 }: {
   plans: Plan[];
   selectedPlan: string;
   onSelect: (planId: string) => void;
+  currency: Currency;
+  onCurrency: (currency: Currency) => void;
   onNext: () => void;
   onBack: () => void;
   loading: boolean;
+  error: string | null;
 }) {
   const t = useTranslations('Onboarding');
+  const tBilling = useTranslations('Billing');
   const baseId = useId();
   return (
     <StepFrame
@@ -330,6 +399,7 @@ function PlanStep({
       title={t('plan.title')}
       description={t('plan.desc')}
       onBack={onBack}
+      error={error}
       primary={
         <button
           type="button"
@@ -374,6 +444,21 @@ function PlanStep({
           );
         })}
       </fieldset>
+      {/* Under the Pro option: what checkout will charge in. */}
+      {selectedPlan === 'pro' ? (
+        <div className={styles.currency}>
+          <label className="label">
+            {tBilling('payIn')}
+            <select className="select" value={currency} onChange={(e) => onCurrency(e.target.value as Currency)}>
+              {CURRENCIES.map((code) => (
+                <option key={code} value={code}>
+                  {tBilling(`currencies.${code}`)}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      ) : null}
     </StepFrame>
   );
 }
@@ -385,6 +470,7 @@ function ProfileStep({
   onNext,
   onBack,
   loading,
+  error,
 }: {
   profileData: ProfileData;
   onUpdate: (data: ProfileData) => void;
@@ -392,6 +478,7 @@ function ProfileStep({
   onNext: () => void;
   onBack: () => void;
   loading: boolean;
+  error: string | null;
 }) {
   const t = useTranslations('Onboarding');
   const isValid =
@@ -403,6 +490,7 @@ function ProfileStep({
       title={t('profile.title')}
       description={t('profile.desc')}
       onBack={onBack}
+      error={error}
       primary={
         <button
           type="button"
@@ -485,10 +573,12 @@ function TutorialStep({
   onComplete,
   onBack,
   loading,
+  error,
 }: {
   onComplete: () => void;
   onBack: () => void;
   loading: boolean;
+  error: string | null;
 }) {
   const t = useTranslations('Onboarding');
   return (
@@ -497,6 +587,7 @@ function TutorialStep({
       title={t('tutorial.title')}
       description={t('tutorial.desc')}
       onBack={onBack}
+      error={error}
       primary={
         <button type="button" className="button buttonPrimary buttonLarge" onClick={onComplete} disabled={loading}>
           {loading ? t('finishing') : t('finish')}

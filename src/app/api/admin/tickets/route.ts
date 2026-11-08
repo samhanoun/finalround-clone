@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
+import { jsonError } from '@/lib/api';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { requireAdmin } from '@/lib/adminAuth';
 import { replyAsAdmin } from '@/lib/support';
@@ -98,75 +100,73 @@ export async function GET(request: NextRequest) {
   }
 }
 
+/** Every admin PATCH has one shape: the action, the id of what it acts on, and the action's own fields under `data`. */
+const PatchSchema = z.object({
+  action: z.string().min(1),
+  ticket_id: z.string().uuid(),
+  data: z.record(z.string(), z.unknown()).optional(),
+});
+
+const StatusData = z.object({ status: z.enum(['open', 'in_progress', 'waiting_user', 'resolved', 'closed']) });
+const PriorityData = z.object({ priority: z.enum(['low', 'medium', 'high', 'urgent']) });
+const AssignData = z.object({ assigned_to: z.string().uuid().nullable() });
+
 export async function PATCH(request: NextRequest) {
+  const auth = await requireAdmin();
+  if (!auth.ok) return auth.response;
+
+  const parsed = PatchSchema.safeParse(await request.json().catch(() => null));
+  if (!parsed.success) return jsonError(400, 'invalid_body', parsed.error.flatten());
+  const { action, ticket_id: ticketId, data = {} } = parsed.data;
+
   try {
-    const auth = await requireAdmin();
-    if (!auth.ok) return auth.response;
-
     const supabase = createAdminClient();
-    const body = await request.json();
-    const { ticket_id, action, data, assigned_to } = body;
 
-    if (!ticket_id || !action) {
-      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
-    }
+    /** Applies an update to the ticket; false when there's no such ticket. */
+    const update = async (values: Record<string, unknown>) => {
+      const { data: rows, error } = await supabase.from('support_tickets').update(values).eq('id', ticketId).select('id');
+      if (error) throw error;
+      return (rows?.length ?? 0) > 0;
+    };
 
     switch (action) {
       case 'assign': {
-        const { error } = await supabase
-          .from('support_tickets')
-          .update({ 
-            assigned_to,
-            assigned_at: new Date().toISOString(),
-            status: 'in_progress'
-          })
-          .eq('id', ticket_id);
-
-        if (error) throw error;
-        return NextResponse.json({ success: true });
+        const assign = AssignData.safeParse(data);
+        if (!assign.success) return jsonError(400, 'invalid_body', assign.error.flatten());
+        const found = await update({ assigned_to: assign.data.assigned_to, assigned_at: new Date().toISOString(), status: 'in_progress' });
+        return found ? NextResponse.json({ success: true }) : jsonError(404, 'not_found');
       }
 
       case 'update_status': {
-        const updateData: Record<string, unknown> = { status: data.status };
-        if (data.status === 'resolved' || data.status === 'closed') {
-          updateData.resolved_at = new Date().toISOString();
+        const status = StatusData.safeParse(data);
+        if (!status.success) return jsonError(400, 'invalid_body', status.error.flatten());
+        const values: Record<string, unknown> = { status: status.data.status };
+        if (status.data.status === 'resolved' || status.data.status === 'closed') {
+          values.resolved_at = new Date().toISOString();
         }
-
-        const { error } = await supabase
-          .from('support_tickets')
-          .update(updateData)
-          .eq('id', ticket_id);
-
-        if (error) throw error;
-        return NextResponse.json({ success: true });
+        return (await update(values)) ? NextResponse.json({ success: true }) : jsonError(404, 'not_found');
       }
 
       case 'update_priority': {
-        const { error } = await supabase
-          .from('support_tickets')
-          .update({ priority: data.priority })
-          .eq('id', ticket_id);
-
-        if (error) throw error;
-        return NextResponse.json({ success: true });
+        const priority = PriorityData.safeParse(data);
+        if (!priority.success) return jsonError(400, 'invalid_body', priority.error.flatten());
+        return (await update({ priority: priority.data.priority })) ? NextResponse.json({ success: true }) : jsonError(404, 'not_found');
       }
 
       case 'reply': {
-        const content = typeof data?.content === 'string' ? data.content.trim().slice(0, 5000) : '';
-        if (!content) return NextResponse.json({ error: 'Empty reply' }, { status: 400 });
+        const content = typeof data.content === 'string' ? data.content.trim().slice(0, 5000) : '';
+        if (!content) return jsonError(400, 'empty_reply');
         // Saved as the signed-in admin; the user is notified in the app and by email.
-        if (!(await replyAsAdmin(auth.userId, ticket_id, content))) {
-          return NextResponse.json({ error: 'Ticket not found' }, { status: 404 });
-        }
+        if (!(await replyAsAdmin(auth.userId, ticketId, content))) return jsonError(404, 'not_found');
         return NextResponse.json({ success: true });
       }
 
       default:
-        return NextResponse.json({ error: 'Unknown action' }, { status: 400 });
+        return jsonError(400, 'unknown_action');
     }
   } catch (error) {
-    console.error('Admin ticket action error:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    console.error('[admin tickets] action failed', { action, ticketId, error: (error as { message?: string })?.message ?? error });
+    return jsonError(500, 'action_failed');
   }
 }
 

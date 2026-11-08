@@ -10,6 +10,7 @@ import { RecentActivity } from '@/components/RecentActivity';
 import { QuickActions } from '@/components/QuickActions';
 import { BadgesList } from '@/components/BadgesList';
 import { ReferralPanel } from '@/components/ReferralPanel';
+import { syncBadgesQuietly } from '@/lib/badges';
 import { loadHome } from './homeData';
 import { ScoreTrend } from './ScoreTrend';
 import styles from './dashboard.module.css';
@@ -43,7 +44,9 @@ export default async function DashboardPage() {
   }
 
   const now = new Date();
-  const home = data.user ? await loadHome(supabase, data.user.id, now) : null;
+  // Badges earned since the last visit are awarded before the page goes out, so Achievements lists them.
+  // The sync never throws and is time-boxed: Home loads the same if it fails.
+  const [home] = data.user ? await Promise.all([loadHome(supabase, data.user.id, now), syncBadgesQuietly(data.user.id)]) : [null];
   const date = (iso: string) => format.dateTime(new Date(iso), { dateStyle: 'medium' });
 
   return (

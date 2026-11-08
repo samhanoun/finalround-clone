@@ -222,6 +222,29 @@
   color: var(--text-2);
 }
 
+/* With Pro chosen: the currency, in the Pro option's column */
+.currency {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.currency > label {
+  grid-column: 2;
+}
+
+/* A save that didn't get through */
+.error {
+  margin: 24px 0 0;
+  padding: 10px 12px;
+  border-radius: var(--radius-row);
+  background: var(--negative-soft);
+  color: var(--negative-text);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
 /* About you */
 .form {
   display: grid;
@@ -355,8 +378,13 @@
   }
 
   .plans,
-  .twoUp {
+  .twoUp,
+  .currency {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .currency > label {
+    grid-column: auto;
   }
 
   .actions {
@@ -375,5 +403,9 @@
 
   .body {
     margin-bottom: 24px;
+  }
+
+  .error {
+    margin: 0 0 24px;
   }
 }

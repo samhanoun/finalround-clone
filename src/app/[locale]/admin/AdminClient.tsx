@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useFormatter, useTranslations } from 'next-intl';
 import { SearchIcon } from '@/components/icons';
 import { TableSkeleton } from '@/components/Skeleton';
@@ -9,10 +9,12 @@ import styles from './AdminClient.module.css';
 
 type Tab = 'overview' | 'users' | 'subscriptions' | 'fraud' | 'tickets';
 
+/** The Overview's figures, counted live by /api/admin/analytics. */
 interface Stats {
   totalUsers: number;
-  activeUsers: number;
-  totalRevenue: number;
+  newUsers: number;
+  /** The window newUsers counts. */
+  days: number;
   activeSubscriptions: number;
   openTickets: number;
   openFraudFlags: number;
@@ -25,6 +27,8 @@ interface User {
   avatar_url: string | null;
   created_at: string;
   subscription: { status: string; current_period_end: string } | null;
+  /** From Supabase Auth; null when it couldn't be read. */
+  suspended: boolean | null;
 }
 
 interface Subscription {
@@ -34,13 +38,15 @@ interface Subscription {
   status: string;
   price_id: string;
   current_period_end: string;
+  /** Cancelled by the user or an admin: it runs to the end of the period, then ends. */
+  cancel_at_period_end: boolean;
   created_at: string;
 }
 
 interface FraudFlag {
   id: string;
   user_id: string;
-  user_email: string;
+  user_email: string | null;
   flag_type: string;
   severity: string;
   description: string;
@@ -60,7 +66,23 @@ interface Ticket {
   created_at: string;
 }
 
+/** Every admin PATCH has one shape: the action, the id of what it acts on, and the action's own fields under `data`. */
+type ActionBody = { action: string; data?: Record<string, unknown> } & (
+  | { user_id: string }
+  | { subscription_id: string }
+  | { flag_id: string }
+  | { ticket_id: string }
+);
+
+/** Subscriptions still running, which can be cancelled (or, once set to end, resumed). */
+const LIVE_SUBSCRIPTION = new Set(['active', 'trialing', 'past_due', 'unpaid']);
+
+/** Searching waits for a pause in typing, rather than loading the list on every key. */
+const SEARCH_DELAY_MS = 300;
+
 const TABS: Tab[] = ['overview', 'users', 'subscriptions', 'fraud', 'tickets'];
+/** Support agents answer tickets and look people up; the overview and fraud flags are for admins (their APIs refuse agents). */
+const AGENT_TABS: Tab[] = ['tickets', 'users', 'subscriptions'];
 
 /** Status, priority and severity as quiet text with a dot; colour only where it means something. */
 const TONE: Record<string, 'good' | 'bad' | 'warn' | 'attention'> = {
@@ -70,11 +92,15 @@ const TONE: Record<string, 'good' | 'bad' | 'warn' | 'attention'> = {
   open: 'attention',
   waiting_user: 'attention',
   past_due: 'warn',
+  unpaid: 'warn',
+  incomplete: 'warn',
+  canceling: 'warn',
   medium: 'warn',
   high: 'bad',
   urgent: 'bad',
   critical: 'bad',
   canceled: 'bad',
+  suspended: 'bad',
 };
 
 function Status({ value }: { value: string }) {
@@ -87,20 +113,28 @@ function Status({ value }: { value: string }) {
   );
 }
 
+/** A ticket's topic in the reader's language (the user picked it from Help & support's list). */
+function Category({ value }: { value: string }) {
+  const t = useTranslations('Support');
+  return <>{t.has(`categories.${value}`) ? t(`categories.${value}`) : value.replace(/_/g, ' ')}</>;
+}
+
 function useDates() {
   const format = useFormatter();
   return {
     formatDate: (date: string) => format.dateTime(new Date(date), { year: 'numeric', month: 'short', day: 'numeric' }),
-    formatCurrency: (cents: number) => format.number(cents / 100, { style: 'currency', currency: 'USD' }),
     formatNumber: (n: number) => format.number(n),
   };
 }
 
 export default function AdminClient({ role }: { role: AdminRole }) {
   const t = useTranslations('Admin');
-  const { formatDate, formatCurrency, formatNumber } = useDates();
+  const { formatDate, formatNumber } = useDates();
   const canManage = role === 'admin' || role === 'super_admin';
-  const [activeTab, setActiveTab] = useState<Tab>('overview');
+  // Only a super admin can make someone staff (the route refuses anyone else).
+  const canGrantAdmin = role === 'super_admin';
+  const tabs = canManage ? TABS : AGENT_TABS;
+  const [activeTab, setActiveTab] = useState<Tab>(tabs[0]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [stats, setStats] = useState<Stats | null>(null);
@@ -109,8 +143,17 @@ export default function AdminClient({ role }: { role: AdminRole }) {
   const [fraudFlags, setFraudFlags] = useState<FraudFlag[]>([]);
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [openTicket, setOpenTicket] = useState<Ticket | null>(null);
+  const [searchInput, setSearchInput] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  // While an action is on its way, the action buttons wait (a second click would repeat it).
+  const [pending, setPending] = useState(false);
   const page = 1;
+
+  useEffect(() => {
+    const timer = setTimeout(() => setSearchQuery(searchInput.trim()), SEARCH_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [searchInput]);
+
   // Data is refetched when the tab or search changes, or when an action bumps reloadKey.
   const [reloadKey, setReloadKey] = useState(0);
   const fetchKey = `${activeTab}|${searchQuery}|${reloadKey}`;
@@ -135,12 +178,12 @@ export default function AdminClient({ role }: { role: AdminRole }) {
           const data = await get('/api/admin/analytics?period=30d');
           if (cancelled || !data.totals) return;
           setStats({
-            totalUsers: data.totals.totalUsers || 0,
-            activeUsers: data.totals.activeUsers || 0,
-            totalRevenue: data.totals.totalRevenue || 0,
-            activeSubscriptions: data.totals.activeSubscriptions || 0,
-            openTickets: data.totals.ticketsOpened || 0,
-            openFraudFlags: data.totals.fraudFlags || 0,
+            totalUsers: data.totals.totalUsers ?? 0,
+            newUsers: data.totals.newUsers ?? 0,
+            days: data.period?.days ?? 30,
+            activeSubscriptions: data.totals.activeSubscriptions ?? 0,
+            openTickets: data.totals.openTickets ?? 0,
+            openFraudFlags: data.totals.openFraudFlags ?? 0,
           });
         } else if (activeTab === 'users') {
           const data = await get(`/api/admin/users?page=${page}&limit=20&search=${encodeURIComponent(searchQuery)}`);
@@ -169,25 +212,35 @@ export default function AdminClient({ role }: { role: AdminRole }) {
     };
   }, [activeTab, searchQuery, reloadKey, t]);
 
-  async function act(endpoint: string, action: string, data: Record<string, unknown>, confirmText?: string) {
+  /** Runs an action, then reloads the tab. A refusal is shown in words where there are some for it. */
+  async function act(endpoint: string, body: ActionBody, confirmText?: string) {
     if (confirmText && !window.confirm(confirmText)) return;
+    setPending(true);
+    setError(null);
     try {
       const res = await fetch(endpoint, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action, ...data }),
+        body: JSON.stringify(body),
       });
-      if (!res.ok) throw new Error();
+      if (!res.ok) {
+        const json = await res.json().catch(() => null);
+        const code = typeof json?.error === 'string' ? json.error : '';
+        setError(code && t.has(`errors.${code}`) ? t(`errors.${code}`) : t('actionFailed'));
+        return;
+      }
       setReloadKey((key) => key + 1);
     } catch {
       setError(t('actionFailed'));
+    } finally {
+      setPending(false);
     }
   }
 
   return (
     <div className={styles.page}>
       <nav className={styles.tabs} aria-label={t('sections')}>
-        {TABS.map((tab) => {
+        {tabs.map((tab) => {
           const count = tab === 'tickets' ? stats?.openTickets : tab === 'fraud' ? stats?.openFraudFlags : 0;
           return (
             <button
@@ -218,8 +271,8 @@ export default function AdminClient({ role }: { role: AdminRole }) {
             type="search"
             placeholder={t('searchPlaceholder')}
             aria-label={t('searchLabel')}
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
           />
         </div>
       ) : null}
@@ -228,7 +281,7 @@ export default function AdminClient({ role }: { role: AdminRole }) {
         <div role="status" aria-label={t('loading')}>
           {activeTab === 'overview' ? (
             <div className={styles.stats}>
-              {[0, 1, 2, 3, 4, 5].map((i) => (
+              {[0, 1, 2, 3, 4].map((i) => (
                 <div key={i} className={styles.stat}>
                   <span className={styles.skeletonLine} />
                   <span className={styles.skeletonFigure} />
@@ -243,8 +296,7 @@ export default function AdminClient({ role }: { role: AdminRole }) {
         stats ? (
           <dl className={styles.stats}>
             <Stat label={t('stats.users')} value={formatNumber(stats.totalUsers)} />
-            <Stat label={t('stats.active')} value={formatNumber(stats.activeUsers)} />
-            <Stat label={t('stats.revenue')} value={formatCurrency(stats.totalRevenue)} />
+            <Stat label={t('stats.newUsers', { days: stats.days })} value={formatNumber(stats.newUsers)} />
             <Stat label={t('stats.subscriptions')} value={formatNumber(stats.activeSubscriptions)} />
             <Stat label={t('stats.tickets')} value={formatNumber(stats.openTickets)} />
             <Stat label={t('stats.fraud')} value={formatNumber(stats.openFraudFlags)} />
@@ -257,6 +309,11 @@ export default function AdminClient({ role }: { role: AdminRole }) {
               <td className={styles.primary}>
                 <span className={styles.personName}>{user.full_name || user.email}</span>
                 {user.full_name ? <span className={styles.personEmail}>{user.email}</span> : null}
+                {user.suspended ? (
+                  <span className={styles.personFlag}>
+                    <Status value="suspended" />
+                  </span>
+                ) : null}
               </td>
               <td className={styles.muted} data-label={t('cols.joined')}>
                 {formatDate(user.created_at)}
@@ -266,20 +323,39 @@ export default function AdminClient({ role }: { role: AdminRole }) {
               </td>
               {canManage ? (
                 <td className={styles.actions}>
-                  <button
-                    type="button"
-                    className="button buttonGhost buttonSmall"
-                    onClick={() => act('/api/admin/users', 'set_admin', { user_id: user.id, role: 'admin' }, t('confirmAdmin', { email: user.email }))}
-                  >
-                    {t('makeAdmin')}
-                  </button>
-                  <button
-                    type="button"
-                    className={`button buttonGhost buttonSmall ${styles.dangerText}`}
-                    onClick={() => act('/api/admin/users', 'suspend_user', { user_id: user.id }, t('confirmSuspend', { email: user.email }))}
-                  >
-                    {t('suspend')}
-                  </button>
+                  {canGrantAdmin ? (
+                    <button
+                      type="button"
+                      className="button buttonGhost buttonSmall"
+                      disabled={pending}
+                      onClick={() =>
+                        act('/api/admin/users', { action: 'set_admin', user_id: user.id, data: { role: 'admin' } }, t('confirmAdmin', { email: user.email }))
+                      }
+                    >
+                      {t('makeAdmin')}
+                    </button>
+                  ) : null}
+                  {user.suspended ? (
+                    <button
+                      type="button"
+                      className="button buttonGhost buttonSmall"
+                      disabled={pending}
+                      onClick={() =>
+                        act('/api/admin/users', { action: 'unsuspend_user', user_id: user.id }, t('confirmUnsuspend', { email: user.email }))
+                      }
+                    >
+                      {t('unsuspend')}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className={`button buttonGhost buttonSmall ${styles.dangerText}`}
+                      disabled={pending}
+                      onClick={() => act('/api/admin/users', { action: 'suspend_user', user_id: user.id }, t('confirmSuspend', { email: user.email }))}
+                    >
+                      {t('suspend')}
+                    </button>
+                  )}
                 </td>
               ) : null}
             </tr>
@@ -287,37 +363,50 @@ export default function AdminClient({ role }: { role: AdminRole }) {
         </Table>
       ) : activeTab === 'subscriptions' ? (
         <Table empty={t('empty.subscriptions')} headers={[t('cols.user'), t('cols.status'), t('cols.price'), t('cols.renews'), ...(canManage ? [''] : [])]}>
-          {subscriptions.map((sub) => (
-            <tr key={sub.id}>
-              <td className={styles.primary}>{sub.email}</td>
-              <td data-label={t('cols.status')}>
-                <Status value={sub.status} />
-              </td>
-              <td className={styles.mono} data-label={t('cols.price')}>
-                {sub.price_id || '—'}
-              </td>
-              <td className={styles.muted} data-label={t('cols.renews')}>
-                {sub.current_period_end ? formatDate(sub.current_period_end) : '—'}
-              </td>
-              {canManage ? (
-                <td className={styles.actions}>
-                  {sub.status === 'active' ? (
-                    <button
-                      type="button"
-                      className={`button buttonGhost buttonSmall ${styles.dangerText}`}
-                      onClick={() => act('/api/admin/subscriptions', 'cancel', { subscription_id: sub.id }, t('confirmCancel', { email: sub.email }))}
-                    >
-                      {t('cancel')}
-                    </button>
-                  ) : (
-                    <button type="button" className="button buttonSmall" onClick={() => act('/api/admin/subscriptions', 'resume', { subscription_id: sub.id })}>
-                      {t('resume')}
-                    </button>
-                  )}
+          {subscriptions.map((sub) => {
+            const live = LIVE_SUBSCRIPTION.has(sub.status);
+            // Set to end: it still runs (Stripe keeps it active) until the period is over.
+            const ending = live && sub.cancel_at_period_end;
+            return (
+              <tr key={sub.id}>
+                <td className={styles.primary}>{sub.email}</td>
+                <td data-label={t('cols.status')}>
+                  <Status value={ending ? 'canceling' : sub.status} />
                 </td>
-              ) : null}
-            </tr>
-          ))}
+                <td className={styles.mono} data-label={t('cols.price')}>
+                  {sub.price_id || '—'}
+                </td>
+                <td className={styles.muted} data-label={t('cols.renews')}>
+                  {sub.current_period_end ? formatDate(sub.current_period_end) : '—'}
+                </td>
+                {canManage ? (
+                  <td className={styles.actions}>
+                    {ending ? (
+                      <button
+                        type="button"
+                        className="button buttonSmall"
+                        disabled={pending}
+                        onClick={() => act('/api/admin/subscriptions', { action: 'resume', subscription_id: sub.id })}
+                      >
+                        {t('resume')}
+                      </button>
+                    ) : live ? (
+                      <button
+                        type="button"
+                        className={`button buttonGhost buttonSmall ${styles.dangerText}`}
+                        disabled={pending}
+                        onClick={() =>
+                          act('/api/admin/subscriptions', { action: 'cancel', subscription_id: sub.id }, t('confirmCancel', { email: sub.email }))
+                        }
+                      >
+                        {t('cancel')}
+                      </button>
+                    ) : null}
+                  </td>
+                ) : null}
+              </tr>
+            );
+          })}
         </Table>
       ) : activeTab === 'fraud' ? (
         <Table
@@ -326,7 +415,7 @@ export default function AdminClient({ role }: { role: AdminRole }) {
         >
           {fraudFlags.map((flag) => (
             <tr key={flag.id}>
-              <td className={styles.primary}>{flag.user_email}</td>
+              <td className={styles.primary}>{flag.user_email ?? flag.user_id}</td>
               <td className={styles.muted} data-label={t('cols.type')}>
                 {flag.flag_type.replace(/_/g, ' ')}
               </td>
@@ -339,22 +428,28 @@ export default function AdminClient({ role }: { role: AdminRole }) {
               </td>
               {canManage ? (
                 <td className={styles.actions}>
-                  <button type="button" className="button buttonSmall" onClick={() => act('/api/admin/fraud', 'resolve', { flag_id: flag.id })}>
+                  <button
+                    type="button"
+                    className="button buttonSmall"
+                    disabled={pending}
+                    onClick={() => act('/api/admin/fraud', { action: 'resolve', flag_id: flag.id })}
+                  >
                     {t('resolve')}
                   </button>
-                  <button type="button" className="button buttonGhost buttonSmall" onClick={() => act('/api/admin/fraud', 'escalate', { flag_id: flag.id })}>
+                  <button
+                    type="button"
+                    className="button buttonGhost buttonSmall"
+                    disabled={pending}
+                    onClick={() => act('/api/admin/fraud', { action: 'escalate', flag_id: flag.id })}
+                  >
                     {t('escalate')}
                   </button>
                   <button
                     type="button"
                     className={`button buttonGhost buttonSmall ${styles.dangerText}`}
+                    disabled={pending}
                     onClick={() =>
-                      act(
-                        '/api/admin/fraud',
-                        'suspend_user',
-                        { flag_id: flag.id, description: 'Suspended due to fraud' },
-                        t('confirmSuspend', { email: flag.user_email }),
-                      )
+                      act('/api/admin/fraud', { action: 'suspend_user', flag_id: flag.id }, t('confirmSuspend', { email: flag.user_email ?? flag.user_id }))
                     }
                   >
                     {t('suspend')}
@@ -378,7 +473,7 @@ export default function AdminClient({ role }: { role: AdminRole }) {
                 </td>
                 <td className={styles.description}>{ticket.subject}</td>
                 <td className={styles.muted} data-label={t('cols.category')}>
-                  {ticket.category}
+                  <Category value={ticket.category} />
                 </td>
                 <td data-label={t('cols.priority')}>
                   <Status value={ticket.priority} />
@@ -396,14 +491,16 @@ export default function AdminClient({ role }: { role: AdminRole }) {
                   <button
                     type="button"
                     className="button buttonGhost buttonSmall"
-                    onClick={() => act('/api/admin/tickets', 'update_status', { ticket_id: ticket.id, data: { status: 'in_progress' } })}
+                    disabled={pending}
+                    onClick={() => act('/api/admin/tickets', { action: 'update_status', ticket_id: ticket.id, data: { status: 'in_progress' } })}
                   >
                     {t('start')}
                   </button>
                   <button
                     type="button"
                     className="button buttonGhost buttonSmall"
-                    onClick={() => act('/api/admin/tickets', 'update_status', { ticket_id: ticket.id, data: { status: 'resolved' } })}
+                    disabled={pending}
+                    onClick={() => act('/api/admin/tickets', { action: 'update_status', ticket_id: ticket.id, data: { status: 'resolved' } })}
                   >
                     {t('resolve')}
                   </button>
@@ -426,18 +523,24 @@ function TicketThread({ ticket, onClose }: { ticket: Ticket; onClose: () => void
   const [reply, setReply] = useState('');
   const [sending, setSending] = useState(false);
   const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null);
+  // Only the latest load of the conversation is shown: an earlier one that answers late (it may
+  // already hold a reply sent since) never replaces it, so a reply can't show twice.
+  const latestLoad = useRef(0);
+
+  const load = useCallback(async () => {
+    const request = ++latestLoad.current;
+    const res = await fetch(`/api/admin/tickets?ticket_id=${ticket.id}`).catch(() => null);
+    const data = res?.ok ? await res.json().catch(() => null) : null;
+    if (request === latestLoad.current) setMessages((current) => data?.messages ?? current ?? []);
+  }, [ticket.id]);
 
   useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      const res = await fetch(`/api/admin/tickets?ticket_id=${ticket.id}`).catch(() => null);
-      const data = res?.ok ? await res.json() : { messages: [] };
-      if (!cancelled) setMessages(data.messages ?? []);
-    })();
+    void load();
     return () => {
-      cancelled = true;
+      // Unmounted: whatever is still loading is dropped.
+      latestLoad.current += 1;
     };
-  }, [ticket.id]);
+  }, [load]);
 
   async function send(event: React.FormEvent) {
     event.preventDefault();
@@ -449,15 +552,14 @@ function TicketThread({ ticket, onClose }: { ticket: Ticket; onClose: () => void
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ticket_id: ticket.id, action: 'reply', data: { content: reply } }),
     }).catch(() => null);
-    setSending(false);
     if (!res?.ok) {
+      setSending(false);
       setNote({ ok: false, text: t('replyFailed') });
       return;
     }
-    setMessages((current) => [
-      ...(current ?? []),
-      { id: `local-${Date.now()}`, is_from_admin: true, content: reply.trim(), created_at: new Date().toISOString() },
-    ]);
+    // The conversation as saved, with the reply in it once.
+    await load();
+    setSending(false);
     setReply('');
     setNote({ ok: true, text: t('replySent') });
   }
@@ -468,7 +570,7 @@ function TicketThread({ ticket, onClose }: { ticket: Ticket; onClose: () => void
         <div className={styles.threadTitle}>
           <h3>{ticket.subject}</h3>
           <p className={styles.muted}>
-            {ticket.full_name || ticket.email} · {ticket.category} · {formatDate(ticket.created_at)}
+            {ticket.full_name || ticket.email} · <Category value={ticket.category} /> · {formatDate(ticket.created_at)}
           </p>
         </div>
         <button type="button" className="button buttonGhost buttonSmall" onClick={onClose}>

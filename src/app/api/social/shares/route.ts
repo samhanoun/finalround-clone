@@ -1,6 +1,15 @@
 import { createClient } from '@/lib/supabase/server';
-import { createAdminClient } from '@/lib/supabase/admin';
 import { NextResponse } from 'next/server';
+import { z } from 'zod';
+
+/** The values social_shares' checks allow (share_type: migrations 0016 and 0033; platform: 0016). */
+const ShareSchema = z.object({
+  share_type: z.enum(['interview_report', 'badge', 'achievement', 'job_offer', 'referral']),
+  platform: z.enum(['linkedin', 'twitter', 'facebook', 'email']),
+  content_id: z.string().max(200).nullish(),
+  content_title: z.string().max(500).nullish(),
+  metadata: z.record(z.string(), z.unknown()).nullish(),
+});
 
 // GET /api/social/shares - Get user's social share history
 export async function GET() {
@@ -24,21 +33,25 @@ export async function GET() {
   return NextResponse.json({ shares });
 }
 
-// POST /api/social/shares - Record a social share
+/**
+ * POST /api/social/shares - Record a social share.
+ * 400 `invalid_body` for a type or platform the table doesn't take; 500
+ * `share_not_recorded` when the insert fails, so callers can say so. Sharing
+ * earns no badge: badges come from real milestones (src/lib/badges.ts).
+ */
 export async function POST(request: Request) {
   const supabase = await createClient();
-  
+
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const body = await request.json();
-  const { share_type, platform, content_id, content_title, metadata } = body;
-
-  if (!share_type || !platform) {
-    return NextResponse.json({ error: 'Share type and platform are required' }, { status: 400 });
+  const parse = ShareSchema.safeParse(await request.json().catch(() => null));
+  if (!parse.success) {
+    return NextResponse.json({ error: 'invalid_body' }, { status: 400 });
   }
+  const { share_type, platform, content_id, content_title, metadata } = parse.data;
 
   const { data: share, error } = await supabase
     .from('social_shares')
@@ -46,36 +59,16 @@ export async function POST(request: Request) {
       user_id: user.id,
       share_type,
       platform,
-      content_id,
-      content_title,
-      metadata: metadata || {},
+      content_id: content_id ?? null,
+      content_title: content_title ?? null,
+      metadata: metadata ?? {},
     })
     .select()
     .single();
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-
-  // If sharing a badge or achievement, check for related badges
-  if (share_type === 'badge' || share_type === 'achievement') {
-    // Check if user earned the "social butterfly" badge for sharing first time
-    const { data: existingShares } = await supabase
-      .from('social_shares')
-      .select('id')
-      .eq('user_id', user.id);
-
-    if (existingShares && existingShares.length === 1) {
-      // First share - award badge (badges are written by the server only)
-      await createAdminClient().from('badges').insert({
-        user_id: user.id,
-        badge_type: 'referral_signup',
-        title: 'Social Sharer',
-        description: 'Shared your first achievement',
-        icon: 'share',
-        metadata: { share_id: share.id },
-      });
-    }
+  if (error || !share) {
+    console.error('[shares] could not record a share', { share_type, platform, error: error?.message });
+    return NextResponse.json({ error: 'share_not_recorded' }, { status: 500 });
   }
 
   return NextResponse.json({ share });

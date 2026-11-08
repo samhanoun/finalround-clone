@@ -1,6 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin';
 import { completeChat, extractJsonObject } from '@/lib/practice/practice';
-import { serverDefaultModels } from '@/lib/answerModels';
+import { serverDefaultModels, sessionModels } from '@/lib/answerModels';
 import { isProviderConfigured, providerForModel } from '@/lib/llmRouter';
 import { screenReferenceText } from '@/lib/copilotSecurity';
 
@@ -72,9 +72,15 @@ export async function rememberFromSession(sessionId: string, userId: string, goa
     const { data: profile } = await admin.from('profiles').select('memory_enabled').eq('id', userId).maybeSingle();
     if ((profile as { memory_enabled?: boolean } | null)?.memory_enabled === false) return 0;
 
-    const model = serverDefaultModels().answer;
-    const provider = providerForModel(model);
-    if (!provider || !isProviderConfigured(provider)) return 0;
+    // The model the session ran with (frozen at start), so it works on any configured provider;
+    // the server default only when that model's provider has no key here.
+    const { data: session } = await admin.from('copilot_sessions').select('metadata').eq('id', sessionId).maybeSingle();
+    const candidates = [sessionModels((session as { metadata?: Record<string, unknown> } | null)?.metadata).answer, serverDefaultModels().answer];
+    const model = candidates.find((name) => {
+      const provider = providerForModel(name);
+      return Boolean(provider && isProviderConfigured(provider));
+    });
+    if (!model) return 0;
 
     const { data: events } = await admin
       .from('copilot_events')

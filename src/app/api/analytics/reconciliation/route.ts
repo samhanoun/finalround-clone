@@ -91,9 +91,6 @@ export async function GET() {
 
   // Aggregated metrics from sessions
   const totalSessions = sessions?.length ?? 0;
-  const activeSessions = sessions?.filter(s => s.status === 'active').length ?? 0;
-  const stoppedSessions = sessions?.filter(s => s.status === 'stopped').length ?? 0;
-  const expiredSessions = sessions?.filter(s => s.status === 'expired').length ?? 0;
 
   // Calculate total duration from sessions
   const totalDurationSeconds = sessions?.reduce((acc, s) => acc + (s.duration_seconds ?? 0), 0) ?? 0;

@@ -80,15 +80,15 @@ export function NotificationBell({ placement = 'below' }: { placement?: 'below' 
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    const unreadIds = notifications.filter(n => !n.read).map(n => n.id);
-    if (unreadIds.length === 0) return;
-
-    await supabase
+    // Every unread one, not only the latest ten shown here: the count says "all read" afterwards.
+    const { error } = await supabase
       .from('notifications')
       .update({ read: true, read_at: new Date().toISOString() })
-      .in('id', unreadIds);
+      .eq('user_id', user.id)
+      .eq('read', false);
+    if (error) return;
 
-    setNotifications(prev => prev.map(n => ({ ...n, read: true, read_at: new Date().toISOString() })));
+    setNotifications(prev => prev.map(n => ({ ...n, read: true, read_at: n.read_at ?? new Date().toISOString() })));
     setUnreadCount(0);
   }
 

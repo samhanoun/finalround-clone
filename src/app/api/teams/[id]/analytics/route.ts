@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { 
-  getServerOrganizationClient, 
+import {
+  getServerOrganizationClient,
   getOrganizationAnalytics,
   getTeamStats,
-  checkOrganizationAccess 
+  checkOrganizationAccess
 } from '@/lib/organizations';
+import { createAdminClient } from '@/lib/supabase/admin';
 
-// GET /api/teams/[id]/analytics - Get team analytics
+// GET /api/teams/[id]/analytics - Get team analytics (any member, viewers included: they see the same team page)
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -15,7 +16,7 @@ export async function GET(
     const { id } = await params;
     const supabase = await getServerOrganizationClient();
 
-    const hasAccess = await checkOrganizationAccess(supabase, id, ['owner', 'admin', 'member']);
+    const hasAccess = await checkOrganizationAccess(supabase, id, ['owner', 'admin', 'member', 'viewer']);
     if (!hasAccess) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
@@ -51,7 +52,8 @@ export async function GET(
         startDate.toISOString().split('T')[0], 
         endDate.toISOString().split('T')[0]
       ),
-      getTeamStats(supabase, id),
+      // The members' sessions are private to each of them: counted with the service role, for this team only.
+      getTeamStats(supabase, id, createAdminClient()),
     ]);
 
     return NextResponse.json({

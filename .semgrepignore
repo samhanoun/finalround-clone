@@ -1,0 +1,31 @@
+# Paths Semgrep skips (.github/workflows/semgrep.yml), in .gitignore syntax.
+# Semgrep only reads files git tracks, and once this file exists its built-in
+# default ignores no longer apply, so dependency and build folders are listed
+# here as well.
+
+# Dependencies and build output
+node_modules/
+.next/
+.next-e2e/
+.server/
+out/
+build/
+dist/
+coverage/
+playwright-report/
+test-results/
+desktop/release/
+*.min.js
+
+# Tests, test mocks and fixtures, the end-to-end suites and their fake
+# services: none of it ships.
+/e2e/
+/test/
+/supabase/tests/
+__tests__/
+*.test.ts
+*.test.tsx
+*.test.js
+
+# Lockfiles: the dependency scans in security.yml cover them.
+package-lock.json

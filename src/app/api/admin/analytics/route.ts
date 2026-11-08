@@ -2,123 +2,47 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { MANAGE_ROLES, requireAdmin } from '@/lib/adminAuth';
 
+/** Tickets still needing someone: what the Support tickets tab lists. */
+const OPEN_TICKET_STATUSES = ['open', 'in_progress', 'waiting_user'];
+/** Subscriptions that are running (a past-due one is in trouble, and counted as such by Stripe). */
+const ACTIVE_SUBSCRIPTION_STATUSES = ['active', 'trialing'];
+
+const PERIOD_DAYS: Record<string, number> = { '7d': 7, '30d': 30, '90d': 90 };
+
+/**
+ * GET /api/admin/analytics: the Overview's figures, counted from the live tables on each request.
+ * `period` (7d, 30d or 90d; 30d by default) sets the window for new sign-ups.
+ */
 export async function GET(request: NextRequest) {
   try {
     const auth = await requireAdmin(MANAGE_ROLES);
     if (!auth.ok) return auth.response;
 
     const supabase = createAdminClient();
-    const { searchParams } = new URL(request.url);
-    const period = searchParams.get('period') || '30d'; // 7d, 30d, 90d
-    const startDate = searchParams.get('start_date');
-    const endDate = searchParams.get('end_date');
+    const days = PERIOD_DAYS[new URL(request.url).searchParams.get('period') ?? ''] ?? 30;
+    const end = new Date();
+    const start = new Date(end.getTime() - days * 24 * 60 * 60 * 1000);
 
-    // Calculate date range
-    let start: Date;
-    const end = endDate ? new Date(endDate) : new Date();
-    
-    if (startDate) {
-      start = new Date(startDate);
-    } else {
-      const days = period === '7d' ? 7 : period === '90d' ? 90 : 30;
-      start = new Date();
-      start.setDate(start.getDate() - days);
-    }
-
-    // Get aggregated stats
-    const { data: dailyStats, error: statsError } = await supabase
-      .from('daily_usage_stats')
-      .select('*')
-      .gte('date', start.toISOString().split('T')[0])
-      .lte('date', end.toISOString().split('T')[0])
-      .order('date', { ascending: true });
-
-    if (statsError) {
-      console.error('Error fetching daily stats:', statsError);
-    }
-
-    // Get total counts
-    const [{ count: totalUsers }, { count: totalSubscriptions }] = await Promise.all([
-      supabase.from('profiles').select('*', { count: 'exact', head: true }),
-      supabase.from('stripe_subscriptions').select('*', { count: 'exact', head: true })
+    const count = (table: string) => supabase.from(table).select('*', { count: 'exact', head: true });
+    const results = await Promise.all([
+      count('profiles'),
+      count('profiles').gte('created_at', start.toISOString()),
+      count('stripe_subscriptions').in('status', ACTIVE_SUBSCRIPTION_STATUSES),
+      count('support_tickets').in('status', OPEN_TICKET_STATUSES),
+      count('fraud_flags').eq('resolved', false),
     ]);
 
-    // Get active subscriptions
-    const { count: activeSubscriptions } = await supabase
-      .from('stripe_subscriptions')
-      .select('*', { count: 'exact', head: true })
-      .eq('status', 'active');
+    // A figure that couldn't be counted isn't shown as zero.
+    const failed = results.find((result) => result.error);
+    if (failed?.error) {
+      console.error('[admin analytics] a count failed', failed.error.message);
+      return NextResponse.json({ error: 'load_failed' }, { status: 500 });
+    }
 
-    // Calculate totals from daily stats
-    const initialTotals = {
-      totalUsers: totalUsers || 0,
-      activeUsers: 0,
-      newUsers: 0,
-      totalSessions: 0,
-      totalApiCalls: 0,
-      totalRevenue: 0,
-      totalSubscriptions: totalSubscriptions || 0,
-      activeSubscriptions: activeSubscriptions || 0,
-      churnedSubscriptions: 0,
-      fraudFlags: 0,
-      ticketsOpened: 0,
-      ticketsResolved: 0
-    };
-
-    const totals = dailyStats?.reduce((acc, day) => ({
-      totalUsers: Math.max(acc.totalUsers, day.total_users),
-      activeUsers: acc.activeUsers + day.active_users,
-      newUsers: acc.newUsers + day.new_users,
-      totalSessions: acc.totalSessions + day.total_sessions,
-      totalApiCalls: acc.totalApiCalls + day.total_api_calls,
-      totalRevenue: acc.totalRevenue + day.total_stripe_revenue_cents,
-      totalSubscriptions: acc.totalSubscriptions + day.total_subscriptions,
-      activeSubscriptions: acc.activeSubscriptions + day.active_subscriptions,
-      churnedSubscriptions: acc.churnedSubscriptions + day.churned_subscriptions,
-      fraudFlags: acc.fraudFlags + day.fraud_flags_raised,
-      ticketsOpened: acc.ticketsOpened + day.support_tickets_opened,
-      ticketsResolved: acc.ticketsResolved + day.support_tickets_resolved
-    }), initialTotals) || initialTotals;
-
-    // Get user growth data
-    const { data: userGrowth } = await supabase
-      .from('profiles')
-      .select('created_at')
-      .gte('created_at', start.toISOString())
-      .lte('created_at', end.toISOString());
-
-    const growthByDate = userGrowth?.reduce((acc, u) => {
-      const date = new Date(u.created_at).toISOString().split('T')[0];
-      acc[date] = (acc[date] || 0) + 1;
-      return acc;
-    }, {} as Record<string, number>) || {};
-
-    // Get revenue by day
-    const revenueByDate = dailyStats?.reduce((acc, day) => {
-      acc[day.date] = day.total_stripe_revenue_cents;
-      return acc;
-    }, {} as Record<string, number>) || {};
-
-    // Calculate churn rate
-    const churnRate = totals.totalSubscriptions > 0 
-      ? (totals.churnedSubscriptions / totals.totalSubscriptions) * 100 
-      : 0;
-
-    // Calculate MRR (assuming all plans are monthly)
-    const mrr = totals.activeSubscriptions * 999; // Placeholder - should come from stripe prices
-
+    const [totalUsers, newUsers, activeSubscriptions, openTickets, openFraudFlags] = results.map((result) => result.count ?? 0);
     return NextResponse.json({
-      period: { start: start.toISOString(), end: end.toISOString() },
-      totals: {
-        ...totals,
-        mrr,
-        churnRate: Math.round(churnRate * 100) / 100
-      },
-      daily: dailyStats || [],
-      charts: {
-        userGrowth: growthByDate,
-        revenue: revenueByDate
-      }
+      period: { days, start: start.toISOString(), end: end.toISOString() },
+      totals: { totalUsers, newUsers, activeSubscriptions, openTickets, openFraudFlags },
     });
   } catch (error) {
     console.error('Admin analytics API error:', error);

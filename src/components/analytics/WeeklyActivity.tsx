@@ -69,7 +69,6 @@ export function WeeklyActivity() {
               liveMinutes: t('rows.liveMinutes'),
               applied: t('rows.applied'),
             })}
-            elementId="weekly-detail"
             filename="weekly-activity"
             title={t('title')}
           />

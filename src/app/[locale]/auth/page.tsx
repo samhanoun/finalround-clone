@@ -9,6 +9,7 @@ import { safeNextPath } from '@/lib/safeRedirect';
 import { stripLocalePrefix } from '@/i18n/locales';
 import { domainFromEmail } from '@/lib/ssoDomain';
 import { AuthShell } from './AuthShell';
+import { localeOfPath, savedLocaleToRestore } from './savedLocale';
 import styles from './auth.module.css';
 
 type Mode = 'login' | 'signup' | 'sso' | 'forgot';
@@ -24,6 +25,17 @@ function errorKey(message: string): string | null {
   if (/rate limit|too many/i.test(message)) return 'rateLimited';
   if (/password should be|weak password/i.test(message)) return 'weakPassword';
   return null;
+}
+
+/** The app language saved to the account (Settings → App language), or null: no row, or it couldn't be read. */
+async function savedLanguage(supabase: ReturnType<typeof createClient>, userId: string | undefined): Promise<unknown> {
+  if (!userId) return null;
+  try {
+    const { data } = await supabase.from('user_settings').select('language').eq('user_id', userId).maybeSingle();
+    return (data as { language?: unknown } | null)?.language ?? null;
+  } catch {
+    return null;
+  }
 }
 
 function AuthForm() {
@@ -50,8 +62,10 @@ function AuthForm() {
   const [notice, setNotice] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const callbackUrl = (to: string) =>
-    `${window.location.origin}/api/auth/callback?next=${encodeURIComponent(`/${locale}${to}`)}`;
+  // Signing in opens the app in the account's saved language, unless the link named one.
+  const restoreSavedLocale = !localeOfPath(nextParam);
+  const callbackUrl = (to: string, restoreLocale = false) =>
+    `${window.location.origin}/api/auth/callback?next=${encodeURIComponent(`/${locale}${to}`)}${restoreLocale ? '&restoreLocale=1' : ''}`;
 
   function show(e: unknown) {
     const message = e instanceof Error ? e.message : '';
@@ -72,7 +86,10 @@ function AuthForm() {
       setError(t('errors.workEmail'));
       return;
     }
-    const { data, error } = await createClient().auth.signInWithSSO({ domain, options: { redirectTo: callbackUrl(next) } });
+    const { data, error } = await createClient().auth.signInWithSSO({
+      domain,
+      options: { redirectTo: callbackUrl(next, restoreSavedLocale) },
+    });
     if (error || !data?.url) {
       setError(t('errors.noSso', { domain }));
       return;
@@ -85,7 +102,7 @@ function AuthForm() {
     setLoading(true);
     const { error } = await createClient().auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: callbackUrl(mode === 'signup' && !nextParam ? '/onboarding' : next) },
+      options: { redirectTo: callbackUrl(mode === 'signup' && !nextParam ? '/onboarding' : next, restoreSavedLocale) },
     });
     // On success the browser is already on its way to Google.
     if (error) {
@@ -132,9 +149,12 @@ function AuthForm() {
         // After signup: onboarding, unless a link brought them here (e.g. a team invitation).
         router.push(nextParam ? next : '/onboarding');
       } else {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
-        router.push(next);
+        const saved = restoreSavedLocale ? await savedLanguage(supabase, data?.user?.id) : null;
+        const switchTo = savedLocaleToRestore(saved, locale, nextParam);
+        if (switchTo) router.push(next, { locale: switchTo });
+        else router.push(next);
       }
       router.refresh();
     } catch (e) {

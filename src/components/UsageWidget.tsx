@@ -6,32 +6,22 @@ import { Link } from '@/i18n/routing';
 import { BillingActions } from './BillingActions';
 import styles from './UsageWidget.module.css';
 
+type Meter = 'copilot_minutes_monthly' | 'copilot_session_minutes' | 'copilot_daily_minutes' | 'resume_deep_reviews_monthly';
+
+/** What /api/usage returns. `isPro`: any paid plan. */
 interface UsageData {
   plan: string;
   isPro: boolean;
-  limits: {
-    copilot_minutes_monthly: number;
-    copilot_session_minutes: number;
-    copilot_daily_minutes: number;
-    smart_mode_minutes_monthly: number;
-    resume_deep_reviews_monthly: number;
-  };
-  usage: {
-    copilot_minutes_monthly: number;
-    copilot_session_minutes: number;
-    copilot_daily_minutes: number;
-    smart_mode_minutes_monthly: number;
-    resume_deep_reviews_monthly: number;
-  };
+  limits: Record<Meter, number>;
+  usage: Record<Meter, number>;
 }
 
-const ROWS = [
+const ROWS: ReadonlyArray<{ key: Meter; label: string }> = [
   { key: 'copilot_minutes_monthly', label: 'copilotMonth' },
   { key: 'copilot_session_minutes', label: 'perSession' },
   { key: 'copilot_daily_minutes', label: 'copilotToday' },
-  { key: 'smart_mode_minutes_monthly', label: 'smartMonth' },
   { key: 'resume_deep_reviews_monthly', label: 'reviewsMonth' },
-] as const;
+];
 
 /** A limit counts as nearly used up from 80%: only then does its bar turn red. */
 const NEAR_LIMIT = 0.8;

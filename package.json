@@ -11,8 +11,14 @@
     "check:live": "node scripts/check-live-setup.mjs",
     "lint": "eslint",
     "test": "jest",
+    "test:coverage": "jest --coverage",
+    "test:desktop": "npm --prefix desktop test",
+    "audit:prod": "npm audit --omit=dev --audit-level=high && npm --prefix desktop audit --omit=dev --audit-level=high",
+    "licenses": "node .github/scripts/license-summary.mjs",
     "test:e2e": "playwright test",
-    "test:e2e:ui": "playwright test --ui"
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:app": "playwright test -c playwright.app.config.ts",
+    "test:e2e:desktop": "playwright test -c playwright.desktop.config.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.77.0",

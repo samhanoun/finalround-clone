@@ -319,6 +319,11 @@
   color: var(--text-3);
 }
 
+.docActions {
+  display: inline-flex;
+  gap: 4px;
+}
+
 .docText {
   display: grid;
   min-width: 0;

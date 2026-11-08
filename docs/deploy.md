@@ -37,7 +37,6 @@ must be present when the image is built (Docker build args) and, for server code
 | `OPENAI_API_KEY` | OpenAI models | Required unless Anthropic is used | Runtime |
 | `ANTHROPIC_API_KEY` | Anthropic models (and `claude-*` copilot models) | Optional | Runtime |
 | `GOOGLE_GENERATIVE_AI_API_KEY` | Google models | Optional | Runtime |
-| `DEFAULT_MODEL`, `FALLBACK_MODEL` | Model overrides for non-copilot features | Optional | Runtime |
 | `COPILOT_GATE_MODEL`, `COPILOT_ANSWER_MODEL`, `COPILOT_CODING_MODEL` | Live copilot models | Optional | Runtime |
 | `DEEPGRAM_API_KEY` | Speech-to-text; without it live transcription is off | Required for live sessions | Runtime |
 | `DEEPGRAM_MODEL`, `DEEPGRAM_LANGUAGE`, `DEEPGRAM_LISTEN_URL` | Deepgram model, language, endpoint override | Optional | Runtime |
@@ -53,7 +52,6 @@ must be present when the image is built (Docker build args) and, for server code
 | `SUPABASE_MANAGEMENT_TOKEN` | Registers team SAML identity providers (Supabase personal access token) | Required for team SSO | Runtime |
 | `SUPABASE_PROJECT_REF` | Project ref; derived from the URL when unset | Optional | Runtime |
 | `SSO_VERIFY_SECRET` | Derives the DNS TXT value for team domain verification (falls back to the service role key) | Required for team SSO | Runtime |
-| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI` | `src/lib/google-calendar.ts` only, which no route imports today | Not needed | Runtime |
 
 `.env.example` has the same list with comments. Never commit real values.
 
@@ -90,12 +88,12 @@ must be present when the image is built (Docker build args) and, for server code
 ## 4. Cron jobs
 
 - `/api/cron/notifications` (reminders and weekly digest): the server calls it itself every 5 minutes, so **no external job is needed** unless you set `NOTIFICATION_SCHEDULER=off`. External call: `POST` with `Authorization: Bearer $CRON_SECRET`.
-- `/api/cron/retention` (deletes old copilot data, see `docs/RETENTION_SCHEDULER.md`): schedule daily, for example 03:00 UTC. `GET` or `POST` `https://<your-domain>/api/cron/retention?cronKey=$CRON_SECRET&dryRun=false`. Without `dryRun=false` it only reports. Needs `CRON_SECRET`.
+- `/api/cron/retention` (deletes old copilot data, see `docs/RETENTION_SCHEDULER.md`): schedule daily, for example 03:00 UTC. `POST https://<your-domain>/api/cron/retention?dryRun=false` with the header `Authorization: Bearer $CRON_SECRET` (never put the secret in the URL: URLs end up in logs). Without `dryRun=false` it only reports. Needs `CRON_SECRET`.
 
 There is no `vercel.json`. Use your host's cron (Render Cron Job, Railway cron service, Fly scheduled machine) or any external scheduler, for example:
 
 ```bash
-curl -fsS "https://<your-domain>/api/cron/retention?cronKey=$CRON_SECRET&dryRun=false"
+curl -fsS -X POST -H "Authorization: Bearer $CRON_SECRET" "https://<your-domain>/api/cron/retention?dryRun=false"
 ```
 
 ## 5. Hosting (Docker)

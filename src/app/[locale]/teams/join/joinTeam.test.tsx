@@ -44,6 +44,12 @@ describe('JoinTeam', () => {
     await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/teams'));
   });
 
+  it('names "A teammate" when the inviter has deleted their account', () => {
+    render(<JoinTeam token={'t'.repeat(20)} invitation={{ ...invitation, invitedBy: null }} signedInAs="ada@example.com" />);
+    expect(screen.getByText(/^A teammate invited/)).toHaveTextContent('A teammate invited ada@example.com to join as a member.');
+    expect(screen.getByRole('button', { name: 'Join Northwind Platform' })).toBeInTheDocument();
+  });
+
   it('explains a wrong account instead of offering to join', () => {
     render(<JoinTeam token={'t'.repeat(20)} invitation={invitation} signedInAs="someone@example.com" />);
     expect(screen.getByRole('alert')).toHaveTextContent('This invitation is for a different email address');

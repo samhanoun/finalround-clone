@@ -30,9 +30,9 @@ const NEAR_LIMIT = 0.8;
 const SCORES_SHOWN = 6;
 
 /** This month's live-copilot minutes from /api/usage, or null when it can't say. */
-async function loadMonthlyUsage(): Promise<MonthlyUsage | null> {
+async function loadMonthlyUsage(signal?: AbortSignal): Promise<MonthlyUsage | null> {
   try {
-    const res = await fetch('/api/usage');
+    const res = await fetch('/api/usage', { signal });
     if (!res.ok) return null;
     const json = await res.json();
     const used = json?.usage?.copilot_minutes_monthly;
@@ -79,26 +79,27 @@ export function CustomDashboard({ intro }: { intro?: string }) {
   const [state, setState] = useState<LoadState>({ status: 'loading' });
 
   useEffect(() => {
-    let cancelled = false;
+    // Aborted when the effect ends (leaving the page, Retry): a response nobody reads would
+    // otherwise keep its request open.
+    const controller = new AbortController();
+    const { signal } = controller;
     async function load() {
       try {
-        const [res, usage] = await Promise.all([fetch('/api/analytics/overview'), loadMonthlyUsage()]);
-        if (cancelled) return;
+        const [res, usage] = await Promise.all([fetch('/api/analytics/overview', { signal }), loadMonthlyUsage(signal)]);
+        if (signal.aborted) return;
         if (res.status === 401) {
           setState({ status: 'signed-out' });
           return;
         }
         if (!res.ok) throw new Error(`analytics overview: ${res.status}`);
         const overview = (await res.json()) as OverviewResponse;
-        if (!cancelled) setState({ status: 'ready', overview, usage });
+        if (!signal.aborted) setState({ status: 'ready', overview, usage });
       } catch {
-        if (!cancelled) setState({ status: 'error' });
+        if (!signal.aborted) setState({ status: 'error' });
       }
     }
     load();
-    return () => {
-      cancelled = true;
-    };
+    return () => controller.abort();
   }, [attempt]);
 
   const summary = useMemo(
@@ -143,7 +144,6 @@ export function CustomDashboard({ intro }: { intro?: string }) {
             </div>
             <ExportButton
               data={exportRows}
-              elementId="analytics-overview"
               filename={`activity-last-${range}-days`}
               title={t('title')}
             />

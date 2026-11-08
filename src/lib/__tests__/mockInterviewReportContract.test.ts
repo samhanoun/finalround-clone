@@ -1,195 +1,115 @@
 import {
-  fallbackMockInterviewReport,
-  normalizeMockInterviewReport,
+  HIRING_SIGNALS,
+  LIVE_RUBRIC_KEYS,
   MockInterviewReportSchema,
+  normalizeMockInterviewReport,
+  PracticeReportSchema,
+  normalizePracticeReport,
   reportToLegacyPayload,
+  type MockInterviewReport,
 } from '@/lib/mockInterviewReport';
 
 // ---------------------------------------------------------------------------
-// Contract: every normalized report satisfies PRD acceptance shape
+// Contract: a normalized report holds only what the model wrote. It validates
+// against its schema, every list item came from the input, and every rubric
+// score is the model's (or null), never a stand-in.
 // ---------------------------------------------------------------------------
 
-function assertPrdAcceptanceShape(report: ReturnType<typeof normalizeMockInterviewReport>) {
-  // Overall score present and in range
-  expect(typeof report.overall_score).toBe('number');
-  expect(report.overall_score).toBeGreaterThanOrEqual(0);
-  expect(report.overall_score).toBeLessThanOrEqual(100);
+const MODEL_REPLY = {
+  overall_score: 74,
+  hiring_signal: 'lean_hire',
+  summary: 'Specific answers with numbers; ownership could come through more.',
+  strengths: ['Uses numbers to show impact', 'Answers stay on the question'],
+  weaknesses: ['Too much "we"'],
+  next_steps: ['Rewrite two stories around your own decisions', 'P9 - Practise a 90-second version'],
+  rubric: {
+    communication: { score: 4, evidence: 'Clear openings', recommendation: 'Shorter wrap-ups' },
+    technical_accuracy: { score: 3, evidence: 'Right idea, thin on trade-offs', recommendation: 'Name one trade-off per answer' },
+    problem_solving: { score: 4, evidence: 'Broke the design into steps', recommendation: 'Say the constraints first' },
+    structure: { score: 3, evidence: 'Result came early', recommendation: 'Situation, action, result' },
+    ownership: { score: null, evidence: 'Too little in the log', recommendation: '' },
+  },
+};
 
-  // Hiring signal is one of the accepted enums
-  expect([
-    'strong_no_hire',
-    'no_hire',
-    'lean_no_hire',
-    'lean_hire',
-    'hire',
-    'strong_hire',
-  ]).toContain(report.hiring_signal);
-
-  // ≥3 strengths
-  expect(report.strengths.length).toBeGreaterThanOrEqual(3);
-  for (const s of report.strengths) {
-    expect(typeof s).toBe('string');
-    expect(s.trim().length).toBeGreaterThan(0);
-  }
-
-  // ≥3 weaknesses
-  expect(report.weaknesses.length).toBeGreaterThanOrEqual(3);
-  for (const w of report.weaknesses) {
-    expect(typeof w).toBe('string');
-    expect(w.trim().length).toBeGreaterThan(0);
-  }
-
-  // ≥3 prioritized next_steps (P1, P2, P3…)
-  expect(report.next_steps.length).toBeGreaterThanOrEqual(3);
-  expect(report.next_steps[0]).toMatch(/^P1:/);
-  expect(report.next_steps[1]).toMatch(/^P2:/);
-  expect(report.next_steps[2]).toMatch(/^P3:/);
-
-  // Rubric: all 4 PRD-aligned dimensions present with valid scores
-  const dimensions = [
-    'clarity',
-    'confidence',
-    'relevance',
-    'structure',
-  ] as const;
-
-  for (const dim of dimensions) {
-    const d = report.rubric[dim];
-    expect(d).toBeDefined();
-    expect(d.score).toBeGreaterThanOrEqual(1);
-    expect(d.score).toBeLessThanOrEqual(5);
-    expect(Number.isInteger(d.score)).toBe(true);
-  }
-
-  // Schema validation passes (zod)
+function assertHonest(report: MockInterviewReport, input: typeof MODEL_REPLY) {
   expect(() => MockInterviewReportSchema.parse(report)).not.toThrow();
+  expect(HIRING_SIGNALS).toContain(report.hiring_signal);
+  expect(report.strengths.every((item) => input.strengths.includes(item))).toBe(true);
+  expect(report.weaknesses.every((item) => input.weaknesses.includes(item))).toBe(true);
+  expect(report.next_steps).toHaveLength(input.next_steps.length);
+  const given = input.rubric as Record<string, { score: number | null } | undefined>;
+  for (const key of LIVE_RUBRIC_KEYS) {
+    expect(report.rubric[key].score).toBe(given[key]?.score ?? null);
+  }
 }
 
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
-
-describe('mockInterviewReport contract tests (PRD T5)', () => {
-  describe('fallbackMockInterviewReport always satisfies PRD acceptance', () => {
+describe('mockInterviewReport contract', () => {
+  describe('the live report keeps what the model wrote', () => {
     for (const mode of ['general', 'coding', 'behavioral', 'phone', 'video', '']) {
       it(`mode="${mode}"`, () => {
-        assertPrdAcceptanceShape(fallbackMockInterviewReport(mode));
+        const report = normalizeMockInterviewReport(MODEL_REPLY, mode);
+        expect(report?.mode).toBe(mode);
+        assertHonest(report!, MODEL_REPLY);
+      });
+    }
+
+    it('role_fit, which the reply left out, is not captured', () => {
+      expect(normalizeMockInterviewReport(MODEL_REPLY, 'general')!.rubric.role_fit).toEqual({ score: null, evidence: '', recommendation: '' });
+    });
+  });
+
+  describe('a reply that is not a report is none', () => {
+    for (const [name, input] of Object.entries({ empty: {}, null: null, undefined, string: 'not an object', number: 42, array: [] })) {
+      it(name, () => {
+        expect(normalizeMockInterviewReport(input, 'general')).toBeNull();
+        expect(normalizePracticeReport(input, 'general')).toBeNull();
       });
     }
   });
 
-  describe('normalizeMockInterviewReport satisfies PRD acceptance for edge cases', () => {
-    it('empty object input', () => {
-      assertPrdAcceptanceShape(normalizeMockInterviewReport({}, 'general'));
-    });
-
-    it('null input', () => {
-      assertPrdAcceptanceShape(normalizeMockInterviewReport(null, 'general'));
-    });
-
-    it('undefined input', () => {
-      assertPrdAcceptanceShape(normalizeMockInterviewReport(undefined, 'general'));
-    });
-
-    it('string input (malformed)', () => {
-      assertPrdAcceptanceShape(normalizeMockInterviewReport('not an object', 'general'));
-    });
-
-    it('numeric input (malformed)', () => {
-      assertPrdAcceptanceShape(normalizeMockInterviewReport(42, 'general'));
-    });
-
-    it('array input (malformed)', () => {
-      assertPrdAcceptanceShape(normalizeMockInterviewReport([], 'coding'));
-    });
-
-    it('partial strengths get backfilled to minimum 3', () => {
-      const report = normalizeMockInterviewReport({ strengths: ['Only one'] }, 'general');
-      assertPrdAcceptanceShape(report);
-      expect(report.strengths[0]).toBe('Only one');
-    });
-
-    it('empty arrays get backfilled from fallback', () => {
+  describe('lists', () => {
+    it('next steps get priority labels in order, without double prefixes', () => {
       const report = normalizeMockInterviewReport(
-        { strengths: [], weaknesses: [], next_steps: [] },
+        { overall_score: 60, next_steps: ['P5: Already labeled', 'P99 - Other label', 'Clean text', 'Do W'] },
         'general',
       );
-      assertPrdAcceptanceShape(report);
+      expect(report!.next_steps).toEqual(['P1: Already labeled', 'P2: Other label', 'P3: Clean text', 'P4: Do W']);
     });
 
-    it('next_steps get priority labels re-applied', () => {
+    it('duplicates and blanks are dropped, and nothing is added', () => {
       const report = normalizeMockInterviewReport(
-        { next_steps: ['Do X', 'Do Y', 'Do Z', 'Do W'] },
+        { overall_score: 60, strengths: ['Good communication', 'Good communication', '  ', 'Unique'], weaknesses: ['Needs work', 'Needs work'] },
         'general',
       );
-      expect(report.next_steps[0]).toMatch(/^P1:/);
-      expect(report.next_steps[3]).toMatch(/^P4:/);
+      expect(report!.strengths).toEqual(['Good communication', 'Unique']);
+      expect(report!.weaknesses).toEqual(['Needs work']);
     });
+  });
 
-    it('existing P-labels are normalized (no double-prefix)', () => {
-      const report = normalizeMockInterviewReport(
-        { next_steps: ['P5: Already labeled', 'P99 - Other label', 'Clean text'] },
+  describe('scores', () => {
+    it('clamps the overall score to 0-100 and rubric scores to 1-5', () => {
+      expect(normalizeMockInterviewReport({ overall_score: 150 }, 'general')!.overall_score).toBe(100);
+      expect(normalizeMockInterviewReport({ overall_score: -5 }, 'general')!.overall_score).toBe(0);
+      const report = normalizeMockInterviewReport({ overall_score: 50, rubric: { communication: { score: 10 }, structure: { score: 0 } } }, 'general');
+      expect(report!.rubric.communication.score).toBe(5);
+      expect(report!.rubric.structure.score).toBe(1);
+    });
+  });
+
+  describe('the practice report has its own four-area schema', () => {
+    it('validates, with only the areas the model scored', () => {
+      const report = normalizePracticeReport(
+        { overall_score: 72, rubric: { clarity: { score: 4, evidence: 'Short sentences' }, relevance: { score: null } } },
         'general',
       );
-      expect(report.next_steps[0]).toBe('P1: Already labeled');
-      expect(report.next_steps[1]).toBe('P2: Other label');
-      expect(report.next_steps[2]).toBe('P3: Clean text');
-    });
-
-    it('overall_score out of range gets clamped', () => {
-      const report = normalizeMockInterviewReport({ overall_score: 150 }, 'general');
-      expect(report.overall_score).toBeLessThanOrEqual(100);
-      assertPrdAcceptanceShape(report);
-    });
-
-    it('negative overall_score gets clamped to 0', () => {
-      const report = normalizeMockInterviewReport({ overall_score: -5 }, 'general');
-      expect(report.overall_score).toBe(0);
-    });
-
-    it('NaN overall_score falls back to default', () => {
-      const report = normalizeMockInterviewReport({ overall_score: NaN }, 'general');
-      assertPrdAcceptanceShape(report);
-      expect(report.overall_score).toBe(fallbackMockInterviewReport('general').overall_score);
-    });
-
-    it('rubric score out of range gets clamped', () => {
-      const report = normalizeMockInterviewReport(
-        { rubric: { clarity: { score: 10, evidence: 'Great' } } },
-        'general',
-      );
-      expect(report.rubric.clarity.score).toBe(5);
-    });
-
-    it('rubric score 0 gets clamped to 1', () => {
-      const report = normalizeMockInterviewReport(
-        { rubric: { structure: { score: 0 } } },
-        'general',
-      );
-      expect(report.rubric.structure.score).toBe(1);
-    });
-
-    it('invalid hiring_signal falls back to default', () => {
-      const report = normalizeMockInterviewReport({ hiring_signal: 'maybe' }, 'general');
-      assertPrdAcceptanceShape(report);
-    });
-
-    it('duplicate strengths/weaknesses are deduplicated', () => {
-      const report = normalizeMockInterviewReport(
-        {
-          strengths: ['Good communication', 'Good communication', 'Good communication', 'Unique'],
-          weaknesses: ['Needs work', 'Needs work', 'Needs work', 'Different'],
-        },
-        'general',
-      );
-      // Deduplication means we may have fewer raw items, but minimum 3 enforced
-      assertPrdAcceptanceShape(report);
+      expect(() => PracticeReportSchema.parse(report)).not.toThrow();
+      expect(report!.rubric).toEqual({ clarity: { score: 4, evidence: 'Short sentences', recommendation: '' } });
     });
   });
 
   describe('reportToLegacyPayload', () => {
-    it('wraps report in legacy envelope with required fields', () => {
-      const report = normalizeMockInterviewReport({}, 'behavioral');
+    it('wraps the report in the legacy envelope', () => {
+      const report = normalizeMockInterviewReport(MODEL_REPLY, 'behavioral')!;
       const payload = reportToLegacyPayload(report);
 
       expect(payload.mode).toBe('behavioral');

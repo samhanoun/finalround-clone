@@ -1,4 +1,4 @@
-import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 
@@ -35,9 +35,9 @@ export interface OrganizationMember {
   created_at: string;
   updated_at: string;
   // Joined with profile data
-  user_email?: string;
-  user_full_name?: string;
-  user_avatar_url?: string;
+  user_email?: string | null;
+  user_full_name?: string | null;
+  user_avatar_url?: string | null;
 }
 
 export interface OrganizationInvitation {
@@ -45,7 +45,8 @@ export interface OrganizationInvitation {
   organization_id: string;
   email: string;
   role: OrganizationRole;
-  invited_by: string;
+  /** Null once the person who sent it has deleted their account (migration 0033). */
+  invited_by: string | null;
   token: string;
   status: InvitationStatus;
   expires_at: string;
@@ -172,9 +173,19 @@ export async function getUserOrganizations(
 }
 
 // Team Members
+type MemberProfile = { id: string; email: string | null; full_name: string | null; avatar_url: string | null };
+
+/**
+ * The team's members, each with their name, email and photo. The membership
+ * rows come through the caller's client (RLS: members of the team only).
+ * `profiles` only lets people read their own row, so the teammates' profiles
+ * are read with `profileReader`, the service-role client, and only for the
+ * people in this team. Call it after checkOrganizationAccess.
+ */
 export async function getOrganizationMembers(
   supabase: ReturnType<typeof createServerClient>,
-  organizationId: string
+  organizationId: string,
+  profileReader: SupabaseClient
 ): Promise<OrganizationMember[]> {
   const { data, error } = await supabase
     .from('organization_members')
@@ -183,57 +194,64 @@ export async function getOrganizationMembers(
     .order('created_at', { ascending: true });
 
   if (error) throw error;
-  
-  // If we have members, fetch their profile data
-  if (data && data.length > 0) {
-    const userIds = data.map((m: { user_id: string }) => m.user_id);
-    const { data: profiles } = await supabase
-      .from('profiles')
-      .select('id, email, full_name, avatar_url')
-      .in('id', userIds);
-    
-    const profileMap = new Map<string, { id: string; email?: string; full_name?: string; avatar_url?: string }>(
-      profiles?.map((p: { id: string; email?: string; full_name?: string; avatar_url?: string }) => [p.id, p]) || []
-    );
-    
-    return data.map((member: OrganizationMember) => ({
+  const members = (data ?? []) as OrganizationMember[];
+  if (!members.length) return [];
+
+  const userIds = [...new Set(members.map((member) => member.user_id))];
+  const { data: profiles, error: profileError } = await profileReader
+    .from('profiles')
+    .select('id, email, full_name, avatar_url')
+    .in('id', userIds);
+  if (profileError) throw profileError;
+
+  const byId = new Map(((profiles ?? []) as MemberProfile[]).map((profile) => [profile.id, profile]));
+  return members.map((member) => {
+    const profile = byId.get(member.user_id);
+    return {
       ...member,
-      user_email: profileMap.get(member.user_id)?.email,
-      user_full_name: profileMap.get(member.user_id)?.full_name,
-      user_avatar_url: profileMap.get(member.user_id)?.avatar_url,
-    }));
-  }
-  
-  return data || [];
+      user_email: profile?.email ?? null,
+      user_full_name: profile?.full_name ?? null,
+      user_avatar_url: profile?.avatar_url ?? null,
+    };
+  });
 }
 
+/**
+ * Member rows are written with the service role (`admin`): the database lets
+ * only owners manage members, while owners and admins may through the API, so
+ * the route checks who may do what first. Owners are never changed or removed
+ * here (`neq('role', 'owner')`), even if one became owner in the meantime.
+ * Both return how many rows changed: 0 means nothing did.
+ */
 export async function updateMemberRole(
-  supabase: ReturnType<typeof createServerClient>,
+  admin: SupabaseClient,
   organizationId: string,
   memberId: string,
-  newRole: OrganizationRole
-): Promise<void> {
-  const { error } = await supabase
+  newRole: Exclude<OrganizationRole, 'owner'>
+): Promise<number> {
+  const { data, error } = await admin
     .from('organization_members')
     .update({ role: newRole })
     .eq('id', memberId)
-    .eq('organization_id', organizationId);
+    .eq('organization_id', organizationId)
+    .neq('role', 'owner')
+    .select('id');
 
   if (error) throw error;
+  return data?.length ?? 0;
 }
 
-export async function removeMember(
-  supabase: ReturnType<typeof createServerClient>,
-  organizationId: string,
-  memberId: string
-): Promise<void> {
-  const { error } = await supabase
+export async function removeMember(admin: SupabaseClient, organizationId: string, memberId: string): Promise<number> {
+  const { data, error } = await admin
     .from('organization_members')
     .delete()
     .eq('id', memberId)
-    .eq('organization_id', organizationId);
+    .eq('organization_id', organizationId)
+    .neq('role', 'owner')
+    .select('id');
 
   if (error) throw error;
+  return data?.length ?? 0;
 }
 
 // Invitations
@@ -347,71 +365,69 @@ export async function getOrganizationAnalytics(
   return data || [];
 }
 
-// Calculate team stats
-export async function getTeamStats(
-  supabase: ReturnType<typeof createServerClient>,
-  organizationId: string
-): Promise<{
+export type TeamStats = {
   totalMembers: number;
   activeMembers: number;
   pendingInvitations: number;
-  totalInterviews: number;
-  interviewsThisMonth: number;
-}> {
-  // Get member counts
-  const { data: members } = await supabase
-    .from('organization_members')
-    .select('status')
-    .eq('organization_id', organizationId);
+  /** Practice interviews the members started (interview_sessions): all time, and this calendar month (UTC). */
+  practiceInterviews: { total: number; thisMonth: number };
+  /** Live sessions the members ran (copilot_sessions): all time, and started this calendar month (UTC). */
+  liveSessions: { total: number; thisMonth: number };
+};
 
-  const totalMembers = members?.length || 0;
-  const activeMembers = members?.filter((m: { status: string }) => m.status === 'active').length || 0;
+/**
+ * The team header's figures. Members and invitations come through the
+ * caller's client (RLS). Each person can only read their own sessions, so the
+ * members' practice interviews and live sessions are counted with `counter`,
+ * the service-role client, limited to this team's members. Call it after
+ * checkOrganizationAccess. Months are UTC calendar months, as on Home.
+ */
+export async function getTeamStats(
+  supabase: ReturnType<typeof createServerClient>,
+  organizationId: string,
+  counter: SupabaseClient,
+  now: Date = new Date()
+): Promise<TeamStats> {
+  const [{ data: members, error: membersError }, { count: pendingInvitations, error: invitesError }] = await Promise.all([
+    supabase.from('organization_members').select('user_id, status').eq('organization_id', organizationId),
+    supabase
+      .from('organization_invitations')
+      .select('id', { count: 'exact', head: true })
+      .eq('organization_id', organizationId)
+      .eq('status', 'pending')
+      .gte('expires_at', now.toISOString()),
+  ]);
+  if (membersError) throw membersError;
+  if (invitesError) throw invitesError;
 
-  // Get pending invitations
-  const { count: pendingInvitations } = await supabase
-    .from('organization_invitations')
-    .select('*', { count: 'exact', head: true })
-    .eq('organization_id', organizationId)
-    .eq('status', 'pending')
-    .gte('expires_at', new Date().toISOString());
-
-  // Get interview counts (from org members)
-  const { data: orgMembers } = await supabase
-    .from('organization_members')
-    .select('user_id')
-    .eq('organization_id', organizationId);
-
-  const userIds = orgMembers?.map((m: { user_id: string }) => m.user_id) || [];
-  
-  let totalInterviews = 0;
-  let interviewsThisMonth = 0;
+  const rows = (members ?? []) as Array<{ user_id: string; status: string }>;
+  const userIds = [...new Set(rows.map((member) => member.user_id))];
+  const practiceInterviews = { total: 0, thisMonth: 0 };
+  const liveSessions = { total: 0, thisMonth: 0 };
 
   if (userIds.length > 0) {
-    const startOfMonth = new Date();
-    startOfMonth.setDate(1);
-    startOfMonth.setHours(0, 0, 0, 0);
-
-    const { count: total } = await supabase
-      .from('interviews')
-      .select('*', { count: 'exact', head: true })
-      .in('user_id', userIds);
-
-    const { count: monthCount } = await supabase
-      .from('interviews')
-      .select('*', { count: 'exact', head: true })
-      .in('user_id', userIds)
-      .gte('created_at', startOfMonth.toISOString());
-
-    totalInterviews = total || 0;
-    interviewsThisMonth = monthCount || 0;
+    const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
+    const count = async (table: 'interview_sessions' | 'copilot_sessions', since?: { column: string; from: string }) => {
+      let query = counter.from(table).select('id', { count: 'exact', head: true }).in('user_id', userIds);
+      if (since) query = query.gte(since.column, since.from);
+      const { count: found, error } = await query;
+      if (error) throw error;
+      return found ?? 0;
+    };
+    [practiceInterviews.total, practiceInterviews.thisMonth, liveSessions.total, liveSessions.thisMonth] = await Promise.all([
+      count('interview_sessions'),
+      count('interview_sessions', { column: 'created_at', from: monthStart }),
+      count('copilot_sessions'),
+      count('copilot_sessions', { column: 'started_at', from: monthStart }),
+    ]);
   }
 
   return {
-    totalMembers,
-    activeMembers,
-    pendingInvitations: pendingInvitations || 0,
-    totalInterviews,
-    interviewsThisMonth,
+    totalMembers: rows.length,
+    activeMembers: rows.filter((member) => member.status === 'active').length,
+    pendingInvitations: pendingInvitations ?? 0,
+    practiceInterviews,
+    liveSessions,
   };
 }
 

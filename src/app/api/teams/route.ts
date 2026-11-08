@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerOrganizationClient, createOrganization, getUserOrganizations } from '@/lib/organizations';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { requireEnv } from '@/lib/env';
 
 // GET /api/teams - List user's organizations
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
     const supabase = await getServerOrganizationClient();
     const { data: { user } } = await supabase.auth.getUser();
@@ -32,23 +31,23 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Name and slug are required' }, { status: 400 });
     }
 
-    // Check if slug is taken
-    const { data: existing } = await supabase
-      .from('organizations')
-      .select('id')
-      .eq('slug', slug)
-      .single();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
+    // Other teams' rows aren't visible to the user under RLS, so the check runs with the
+    // service role; the unique index still decides if two requests race.
+    const admin = createAdminClient();
+    const { data: existing } = await admin.from('organizations').select('id').eq('slug', slug).maybeSingle();
     if (existing) {
       return NextResponse.json({ error: 'Slug already taken' }, { status: 409 });
     }
 
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-    const organization = await createOrganization(createAdminClient(), user.id, { name, slug });
+    const organization = await createOrganization(admin, user.id, { name, slug });
     return NextResponse.json({ organization }, { status: 201 });
   } catch (error) {
+    if ((error as { code?: string } | null)?.code === '23505') {
+      return NextResponse.json({ error: 'Slug already taken' }, { status: 409 });
+    }
     console.error('Error creating organization:', error);
     return NextResponse.json({ error: 'Failed to create organization' }, { status: 500 });
   }

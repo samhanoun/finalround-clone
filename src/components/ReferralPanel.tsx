@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useFormatter, useTranslations } from 'next-intl';
 import { CopyIcon } from './icons';
 import styles from './ReferralPanel.module.css';
@@ -45,6 +45,8 @@ export function ReferralPanel() {
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState<'link' | 'code' | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // The share itself opens on the other site; this says when recording it here failed.
+  const [shareNotRecorded, setShareNotRecorded] = useState(false);
 
   useEffect(() => {
     const fetchReferralData = async () => {
@@ -69,55 +71,36 @@ export function ReferralPanel() {
     fetchReferralData();
   }, [t]);
 
+  // The link field: when the browser won't let us copy, its text is selected so it can be copied by hand.
+  const linkField = useRef<HTMLInputElement>(null);
+
+  const copy = useCallback((text: string, which: 'link' | 'code') => {
+    navigator.clipboard
+      .writeText(text)
+      .then(() => {
+        setCopied(which);
+        setTimeout(() => setCopied(null), 2000);
+      })
+      .catch(() => {
+        linkField.current?.focus();
+        linkField.current?.select();
+      });
+  }, []);
+
   const copyReferralLink = useCallback(() => {
-    if (!referralCode) return;
-    
-    navigator.clipboard.writeText(referralLink(referralCode.code)).then(() => {
-      setCopied('link');
-      setTimeout(() => setCopied(null), 2000);
-    });
-  }, [referralCode]);
+    if (referralCode) copy(referralLink(referralCode.code), 'link');
+  }, [referralCode, copy]);
 
   const copyCode = useCallback(() => {
+    if (referralCode) copy(referralCode.code, 'code');
+  }, [referralCode, copy]);
+
+  /** Shares on LinkedIn and X are recorded; the link itself opens the site (or the mail app). */
+  const recordShare = useCallback(async (platform: 'linkedin' | 'twitter') => {
     if (!referralCode) return;
-    
-    navigator.clipboard.writeText(referralCode.code).then(() => {
-      setCopied('code');
-      setTimeout(() => setCopied(null), 2000);
-    });
-  }, [referralCode]);
-
-  const shareReferral = useCallback(async (platform: string) => {
-    if (!referralCode) return;
-
-    const referralUrl = referralLink(referralCode.code);
-    const shareText = t('shareText', { code: referralCode.code });
-    
-    let shareUrl = '';
-    const encodedUrl = encodeURIComponent(referralUrl);
-    const encodedText = encodeURIComponent(shareText);
-
-    switch (platform) {
-      case 'linkedin':
-        shareUrl = `https://www.linkedin.com/shareArticle?mini=true&url=${encodedUrl}&title=${encodedText}`;
-        break;
-      case 'twitter':
-        shareUrl = `https://twitter.com/intent/tweet?text=${encodedText}&url=${encodedUrl}`;
-        break;
-      case 'email':
-        window.location.href = `mailto:?subject=${encodeURIComponent(t('emailSubject'))}&body=${encodedText}%0A%0A${encodedUrl}`;
-        return;
-      default:
-        return;
-    }
-
-    if (shareUrl) {
-      window.open(shareUrl, '_blank', 'width=600,height=400');
-    }
-
-    // Record the share
+    setShareNotRecorded(false);
     try {
-      await fetch('/api/social/shares', {
+      const res = await fetch('/api/social/shares', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -127,10 +110,12 @@ export function ReferralPanel() {
           content_title: 'Referral link shared',
         }),
       });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
     } catch (error) {
       console.error('Failed to record share:', error);
+      setShareNotRecorded(true);
     }
-  }, [referralCode, t]);
+  }, [referralCode]);
 
   const heading = (
     <div className={styles.head}>
@@ -159,6 +144,13 @@ export function ReferralPanel() {
   }
 
   const referralUrl = referralCode ? referralLink(referralCode.code) : '';
+  const encodedUrl = encodeURIComponent(referralUrl);
+  const encodedText = encodeURIComponent(t('shareText', { code: referralCode?.code ?? '' }));
+  const shareLinks = {
+    linkedin: `https://www.linkedin.com/shareArticle?mini=true&url=${encodedUrl}&title=${encodedText}`,
+    twitter: `https://twitter.com/intent/tweet?text=${encodedText}&url=${encodedUrl}`,
+    email: `mailto:?subject=${encodeURIComponent(t('emailSubject'))}&body=${encodedText}%0A%0A${encodedUrl}`,
+  };
 
   return (
     <section className="card" aria-labelledby="referrals-heading">
@@ -166,7 +158,7 @@ export function ReferralPanel() {
         {heading}
 
         <div className={styles.linkRow}>
-          <input className={`input ${styles.link}`} type="text" readOnly value={referralUrl} aria-label={t('link')} />
+          <input ref={linkField} className={`input ${styles.link}`} type="text" readOnly value={referralUrl} aria-label={t('link')} />
           <button type="button" className="button" onClick={copyReferralLink}>
             <CopyIcon size={16} className={styles.buttonIcon} />
             {copied === 'link' ? t('copied') : t('copyLink')}
@@ -184,16 +176,34 @@ export function ReferralPanel() {
 
         <div className={styles.share}>
           <span className={styles.shareLabel}>{t('shareOn')}</span>
-          <button type="button" className="button buttonSmall" onClick={() => shareReferral('linkedin')}>
+          <a
+            className="button buttonSmall"
+            href={shareLinks.linkedin}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={() => void recordShare('linkedin')}
+          >
             {t('linkedin')}
-          </button>
-          <button type="button" className="button buttonSmall" onClick={() => shareReferral('twitter')} aria-label={t('shareOnX')}>
+          </a>
+          <a
+            className="button buttonSmall"
+            href={shareLinks.twitter}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={() => void recordShare('twitter')}
+            aria-label={t('shareOnX')}
+          >
             X
-          </button>
-          <button type="button" className="button buttonSmall" onClick={() => shareReferral('email')} aria-label={t('shareByEmail')}>
+          </a>
+          <a className="button buttonSmall" href={shareLinks.email} aria-label={t('shareByEmail')}>
             {t('email')}
-          </button>
+          </a>
         </div>
+        {shareNotRecorded ? (
+          <p className={styles.note} role="status">
+            {t('shareNotRecorded')}
+          </p>
+        ) : null}
 
         <dl className={styles.stats}>
           <div>

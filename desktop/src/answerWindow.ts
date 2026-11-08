@@ -41,6 +41,8 @@ export class AnswerWindow {
   private refocus = false;
   private safetyTimer: NodeJS.Timeout | null = null;
   private saveTimer: NodeJS.Timeout | null = null;
+  /** Where the window was when the waiting save was scheduled (written even if it closes first). */
+  private pendingBounds: Rect | null = null;
   private registered: string[] = [];
 
   constructor(private readonly options: Options) {}
@@ -90,9 +92,12 @@ export class AnswerWindow {
     win.on('moved', () => this.scheduleSave());
     win.on('resized', () => this.scheduleSave());
     win.on('show', () => win.setAlwaysOnTop(true, 'screen-saver'));
+    // A close from the OS (the window's X) comes with 'close'. One from the page ("Bring back
+    // here", the session ending) only with 'closed', so a move it cut short is written then.
     win.on('close', () => this.saveNow(win));
     win.once('closed', () => {
       if (this.win !== win) return;
+      this.flushPendingSave();
       this.win = null;
       this.unregisterShortcuts();
       this.holds = 0;
@@ -204,17 +209,33 @@ export class AnswerWindow {
   }
 
   private scheduleSave(): void {
+    const win = this.window;
+    if (!win) return;
+    this.pendingBounds = win.getBounds();
     if (this.saveTimer) clearTimeout(this.saveTimer);
     this.saveTimer = setTimeout(() => {
       this.saveTimer = null;
-      const win = this.window;
-      if (win) this.options.saveBounds(win.getBounds());
+      const current = this.window;
+      const bounds = current ? current.getBounds() : this.pendingBounds;
+      this.pendingBounds = null;
+      if (bounds) this.options.saveBounds(bounds);
     }, SAVE_DELAY_MS);
+  }
+
+  /** Writes a save still waiting on its timer, from where the window last was. */
+  private flushPendingSave(): void {
+    if (!this.saveTimer) return;
+    clearTimeout(this.saveTimer);
+    this.saveTimer = null;
+    const bounds = this.pendingBounds;
+    this.pendingBounds = null;
+    if (bounds) this.options.saveBounds(bounds);
   }
 
   private saveNow(win: BrowserWindow): void {
     if (this.saveTimer) clearTimeout(this.saveTimer);
     this.saveTimer = null;
+    this.pendingBounds = null;
     if (!win.isDestroyed()) this.options.saveBounds(win.getBounds());
   }
 }

@@ -5,6 +5,8 @@ import { useFormatter, useTranslations } from 'next-intl';
 import { useToastHook } from '@/components/Toast';
 import { ResumeIcon } from '@/components/icons';
 import { createClient } from '@/lib/supabase/browser';
+import type { ATSTip } from '@/lib/atsScoring';
+import type { BulletIssue } from '@/lib/bulletRewriter';
 import styles from './ResumeClient.module.css';
 
 type Doc = {
@@ -86,6 +88,8 @@ async function downloadPdf(gen: Gen) {
 type ATSResult = {
   atsScore: number;
   matchedKeywords: string[];
+  /** The suggestions as codes, shown in the reader's language; `suggestions` is the English. */
+  tips?: ATSTip[];
   missingKeywords: string[];
   suggestions: string[];
   formatIssues: string[];
@@ -94,6 +98,8 @@ type ATSResult = {
 type BulletAnalysis = {
   original: string;
   score: number;
+  /** The issues as codes, shown in the reader's language; `issues` is the English. */
+  issueCodes?: BulletIssue[];
   issues: string[];
   rewritten?: string;
   suggestions: string[];
@@ -168,7 +174,8 @@ export function ResumeClient(props: { initialDocs: Doc[]; initialGenerations: Ge
       setSelectedDocId(json.document.id);
       setFile(null);
       setFileKey((key) => key + 1);
-      toast.success(t('uploaded'), json.parsed?.status === 'completed' ? t('uploadedReady') : t('uploadedReading'));
+      const parse = json.parsed?.status;
+      toast.success(t('uploaded'), parse === 'completed' ? t('uploadedReady') : parse === 'failed' ? t('uploadedUnreadable') : t('uploadedReading'));
     } catch (e) {
       const message = e instanceof Error ? e.message : t('uploadFailed');
       toast.error(t('uploadFailed'), message);
@@ -207,6 +214,23 @@ export function ResumeClient(props: { initialDocs: Doc[]; initialGenerations: Ge
       return;
     }
     setGens((current) => current.filter((gen) => gen.id !== id));
+  }
+
+  async function removeDocument(doc: Doc) {
+    const name = doc.filename ?? t('document');
+    if (!window.confirm(t('confirmDeleteDocument', { name }))) return;
+    const res = await fetch(`/api/resume/documents/${doc.id}`, { method: 'DELETE' }).catch(() => null);
+    if (!res?.ok) {
+      toast.error(t('notDeleted'), t('tryAgain'));
+      return;
+    }
+    setDocs((current) => current.filter((d) => d.id !== doc.id));
+    if (selectedDocId === doc.id) {
+      setSelectedDocId('');
+      setAtsResult(null);
+      setKeywordResult(null);
+    }
+    toast.success(t('documentDeleted'), t('documentDeletedBody', { name }));
   }
 
   async function copyResume(gen: Gen) {
@@ -315,6 +339,10 @@ export function ResumeClient(props: { initialDocs: Doc[]; initialGenerations: Ge
   }
 
   const score = atsResult ? Math.max(0, Math.min(100, Math.round(atsResult.atsScore))) : 0;
+  const tipText = (tip: ATSTip) => ('keywords' in tip ? t(`tips.${tip.code}`, { keywords: tip.keywords.join(', ') }) : t(`tips.${tip.code}`));
+  const tips = atsResult ? (atsResult.tips ? atsResult.tips.map(tipText) : atsResult.suggestions) : [];
+  const issueText = (issue: BulletIssue) => (issue.code === 'weak_word' ? t('bulletIssues.weak_word', { word: issue.word }) : t(`bulletIssues.${issue.code}`));
+  const issuesOf = (analysis: BulletAnalysis) => (analysis.issueCodes ? analysis.issueCodes.map(issueText) : analysis.issues);
 
   return (
     <div className={styles.layout}>
@@ -465,11 +493,11 @@ export function ResumeClient(props: { initialDocs: Doc[]; initialGenerations: Ge
                   </div>
                 ) : null}
               </div>
-              {atsResult.suggestions.length > 0 ? (
+              {tips.length > 0 ? (
                 <div className={styles.keywordGroup}>
                   <h4 className={styles.groupTitle}>{t('suggestions')}</h4>
                   <ul className={styles.points}>
-                    {atsResult.suggestions.map((s, i) => (
+                    {tips.map((s, i) => (
                       <li key={i}>{s}</li>
                     ))}
                   </ul>
@@ -548,7 +576,7 @@ export function ResumeClient(props: { initialDocs: Doc[]; initialGenerations: Ge
                       <p className={styles.bulletMeta}>
                         <span className="srOnly">{t('bulletScoreLabel', { score: analysis.score })}</span>
                         <span aria-hidden="true">{t('bulletScore', { score: analysis.score })}</span>
-                        {analysis.issues.length > 0 ? <span>{t('issues', { issues: analysis.issues.join(', ') })}</span> : null}
+                        {issuesOf(analysis).length > 0 ? <span>{t('issues', { issues: issuesOf(analysis).join(', ') })}</span> : null}
                       </p>
                     </article>
                   </li>
@@ -590,14 +618,24 @@ export function ResumeClient(props: { initialDocs: Doc[]; initialGenerations: Ge
                         {d.ats_score ? <span>{t('docScore', { score: d.ats_score })}</span> : null}
                       </span>
                     </span>
-                    <button
-                      className="button buttonGhost buttonSmall"
-                      type="button"
-                      onClick={() => void download(d.id)}
-                      aria-label={t('downloadLabel', { name })}
-                    >
-                      {t('download')}
-                    </button>
+                    <span className={styles.docActions}>
+                      <button
+                        className="button buttonGhost buttonSmall"
+                        type="button"
+                        onClick={() => void download(d.id)}
+                        aria-label={t('downloadLabel', { name })}
+                      >
+                        {t('download')}
+                      </button>
+                      <button
+                        className={`button buttonGhost buttonSmall ${styles.delete}`}
+                        type="button"
+                        onClick={() => void removeDocument(d)}
+                        aria-label={t('deleteDocumentLabel', { name })}
+                      >
+                        {t('delete')}
+                      </button>
+                    </span>
                   </li>
                 );
               })}

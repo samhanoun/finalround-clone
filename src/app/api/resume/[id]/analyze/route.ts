@@ -68,6 +68,7 @@ export async function POST(
     missingKeywords: atsResult.missingKeywords,
     keywordMatches: atsResult.keywordMatches,
     suggestions: atsResult.suggestions,
+    tips: atsResult.tips,
     formatIssues: atsResult.formatIssues,
     suggestedKeywords: suggested,
   });

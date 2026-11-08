@@ -1,0 +1,9 @@
+# ggshield (GitGuardian) settings. Test files and the e2e fakes hold made-up
+# tokens and passwords on purpose; real code is still scanned.
+version: 2
+secret:
+  ignored_paths:
+    - '**/__tests__/**'
+    - '**/*.test.ts'
+    - '**/*.test.tsx'
+    - 'e2e/**'

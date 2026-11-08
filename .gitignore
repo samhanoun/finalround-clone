@@ -47,6 +47,10 @@ next-env.d.ts
 # End-to-end runs (playwright.live.config.ts)
 /.next-e2e/
 /e2e/.artifacts/
+# Playwright's own output (the CI jobs upload the report as an artifact)
+/test-results/
+/playwright-report/
+/playwright-report-desktop/
 
 # Desktop app (desktop/): dependencies, compiled main process, installers
 /desktop/node_modules/

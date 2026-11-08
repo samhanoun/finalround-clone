@@ -57,19 +57,23 @@ export async function DELETE(req: NextRequest) {
     { count: summaryCount, error: summaryCountError },
     { count: sessionCount, error: sessionCountError },
     { count: activeSessionCount, error: activeSessionCountError },
+    { count: memoryCount, error: memoryCountError },
   ] = await Promise.all([
     supabase.from('copilot_events').select('id', { count: 'exact', head: true }).eq('user_id', userId),
     supabase.from('copilot_summaries').select('id', { count: 'exact', head: true }).eq('user_id', userId),
     supabase.from('copilot_sessions').select('id', { count: 'exact', head: true }).eq('user_id', userId),
     supabase.from('copilot_sessions').select('id', { count: 'exact', head: true }).eq('user_id', userId).eq('status', 'active'),
+    // Memories learned from live sessions go with them; ones the user added in Goals stay.
+    supabase.from('memories').select('id', { count: 'exact', head: true }).eq('user_id', userId).eq('source', 'session'),
   ]);
 
-  if (eventCountError || summaryCountError || sessionCountError || activeSessionCountError) {
+  if (eventCountError || summaryCountError || sessionCountError || activeSessionCountError || memoryCountError) {
     logCopilotRouteError('/api/copilot/sessions/purge', requestId, 'db_count_records_failed', {
       eventsCode: eventCountError?.code ?? null,
       summariesCode: summaryCountError?.code ?? null,
       sessionsCode: sessionCountError?.code ?? null,
       activeSessionsCode: activeSessionCountError?.code ?? null,
+      memoriesCode: memoryCountError?.code ?? null,
     });
     return internalError(requestId);
   }
@@ -94,6 +98,14 @@ export async function DELETE(req: NextRequest) {
     return internalError(requestId);
   }
 
+  const { error: memoriesDeleteError } = await supabase.from('memories').delete().eq('user_id', userId).eq('source', 'session');
+  if (memoriesDeleteError) {
+    logCopilotRouteError('/api/copilot/sessions/purge', requestId, 'db_delete_memories_failed', {
+      code: memoriesDeleteError.code ?? null,
+    });
+    return internalError(requestId);
+  }
+
   const { error: sessionsDeleteError } = await supabase.from('copilot_sessions').delete().eq('user_id', userId);
   if (sessionsDeleteError) {
     logCopilotRouteError('/api/copilot/sessions/purge', requestId, 'db_delete_sessions_failed', {
@@ -109,6 +121,7 @@ export async function DELETE(req: NextRequest) {
       events: eventCount ?? 0,
       summaries: summaryCount ?? 0,
       sessions: sessionCount ?? 0,
+      memories: memoryCount ?? 0,
     },
   });
 }

@@ -17,6 +17,7 @@ import { AutoEndNotice } from './copilot/AutoEndNotice';
 import { MeetingEndedNotice, MeetingStartedNotice } from './copilot/MeetingNotices';
 import { LatencyDrawer, LatencyTable } from './copilot/LatencyDrawer';
 import { isLatencyPayload, summarizeLatencyEvents } from '@/lib/copilot/latency';
+import { HIRING_SIGNALS, LIVE_RUBRIC_KEYS, type HiringSignal, type LiveRubricKey as RubricKey } from '@/lib/copilot/reportRubric';
 import { grabScreenFrame, screenSignature } from '@/lib/copilot/screenFrame';
 import { AutoScreenWatcher } from '@/lib/copilot/autoScreen';
 import { onDesktopCommand, onDesktopMeeting, withAnswerWindowHidden } from '@/lib/desktop';
@@ -118,9 +119,6 @@ function listOfStrings(value: unknown): string[] {
   return value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0);
 }
 
-type HiringSignal = 'strong_no_hire' | 'no_hire' | 'lean_no_hire' | 'lean_hire' | 'hire' | 'strong_hire';
-type RubricKey = 'communication' | 'technical_accuracy' | 'problem_solving' | 'structure' | 'ownership' | 'role_fit';
-
 type ReportDimensionView = {
   score: number | null;
   evidence: string;
@@ -138,17 +136,14 @@ type ReportViewModel = {
   source: 'api' | 'legacy';
 };
 
-const RUBRIC_KEYS: RubricKey[] = ['communication', 'technical_accuracy', 'problem_solving', 'structure', 'ownership', 'role_fit'];
+/** The six areas the report's prompt and normalizer use, from the same list. */
+const RUBRIC_KEYS = LIVE_RUBRIC_KEYS;
 
 function defaultRubric(): Record<RubricKey, ReportDimensionView> {
-  return {
-    communication: { score: null, evidence: '', recommendation: '' },
-    technical_accuracy: { score: null, evidence: '', recommendation: '' },
-    problem_solving: { score: null, evidence: '', recommendation: '' },
-    structure: { score: null, evidence: '', recommendation: '' },
-    ownership: { score: null, evidence: '', recommendation: '' },
-    role_fit: { score: null, evidence: '', recommendation: '' },
-  };
+  return Object.fromEntries(RUBRIC_KEYS.map((key) => [key, { score: null, evidence: '', recommendation: '' }])) as Record<
+    RubricKey,
+    ReportDimensionView
+  >;
 }
 
 function asObject(value: unknown): Record<string, unknown> {
@@ -166,9 +161,7 @@ function asRubricScore(value: unknown): number | null {
 }
 
 function asHiringSignal(value: unknown): HiringSignal | null {
-  return value === 'strong_no_hire' || value === 'no_hire' || value === 'lean_no_hire' || value === 'lean_hire' || value === 'hire' || value === 'strong_hire'
-    ? value
-    : null;
+  return (HIRING_SIGNALS as readonly unknown[]).includes(value) ? (value as HiringSignal) : null;
 }
 
 function asPercent(value: number | null, max: number): number {
@@ -557,6 +550,7 @@ export function LiveCopilotClient({
     setHistoryOpen(next);
     setSettingsError(null);
     setSettingsSuccess(null);
+    setDeleteSuccess(null);
     if (next) void loadHistory();
   }
 
@@ -1256,9 +1250,19 @@ export function LiveCopilotClient({
       const json = (await res.json().catch(() => ({}))) as {
         summary?: { content?: string; payload?: { strengths?: string[]; weaknesses?: string[]; next_steps?: string[] } };
         error?: string;
+        extra?: { requestId?: string };
       };
 
-      if (!res.ok || !json.summary) throw new Error(t('errors.summaryFailed'));
+      // A failed summary saves nothing; the button then offers Try again.
+      if (!res.ok || !json.summary) {
+        throw new Error(
+          json.error === 'summary_unavailable'
+            ? t('errors.summaryUnavailable')
+            : json.error === 'no_events'
+              ? t('errors.summaryNoTranscript')
+              : formatCopilotActionError(json, t('errors.summaryFailed'), tErrors),
+        );
+      }
 
       setSummary({
         content: json.summary.content ?? '',
@@ -1364,7 +1368,7 @@ export function LiveCopilotClient({
       });
       const json = (await res.json().catch(() => ({}))) as {
         ok?: boolean;
-        deleted?: { sessions?: number; events?: number; summaries?: number };
+        deleted?: { sessions?: number; events?: number; summaries?: number; memories?: number };
         error?: string;
         extra?: { requestId?: string };
       };
@@ -1386,6 +1390,7 @@ export function LiveCopilotClient({
           sessions: json.deleted?.sessions ?? 0,
           events: json.deleted?.events ?? 0,
           summaries: json.deleted?.summaries ?? 0,
+          memories: json.deleted?.memories ?? 0,
         }),
       );
 
@@ -1475,10 +1480,8 @@ export function LiveCopilotClient({
     const viewing = historyOpen && selectedHistoryId !== null;
     setHistoryInputs({ open: historyOpen, id: selectedHistoryId, detail: historyDetail });
 
-    if (idChanged) {
-      setDeleteError(null);
-      setDeleteSuccess(null);
-    }
+    // A delete's confirmation stays while the list moves on to another session; picking one clears it.
+    if (idChanged) setDeleteError(null);
     if (viewChanged && viewing) {
       setDetailLoading(true);
       setDetailError(null);
@@ -1757,7 +1760,7 @@ export function LiveCopilotClient({
                 ) : null}
                 <div>
                   <button className="button" type="button" onClick={generateSummary} disabled={!session || summaryLoading || submitting}>
-                    {summaryLoading ? t('generating') : summary ? t('summary.again') : t('composer.summarize')}
+                    {summaryLoading ? t('generating') : summaryError ? t('summary.retry') : summary ? t('summary.again') : t('composer.summarize')}
                   </button>
                 </div>
               </div>
@@ -1829,7 +1832,10 @@ export function LiveCopilotClient({
                             className={styles.sessionItem}
                             type="button"
                             aria-pressed={selectedHistoryId === item.id}
-                            onClick={() => setSelectedHistoryId(item.id)}
+                            onClick={() => {
+                              setSelectedHistoryId(item.id);
+                              setDeleteSuccess(null);
+                            }}
                           >
                             <span className={styles.sessionTop}>
                               <span className={styles.sessionTitle}>{item.title?.trim() || t('untitled')}</span>
@@ -1851,6 +1857,12 @@ export function LiveCopilotClient({
               </div>
 
               <section className={styles.historyDetail} aria-label={t('history.detailLabel')}>
+                {/* Outside the session's own block: after a delete, that session is gone. */}
+                {deleteSuccess ? (
+                  <div className="success" role="status" aria-live="polite">
+                    {deleteSuccess}
+                  </div>
+                ) : null}
                 {!selectedHistoryId ? <p className={styles.quietState}>{t('history.selectOne')}</p> : null}
                 {selectedHistoryId && detailLoading ? <p className={styles.quietState}>{t('history.loadingDetail')}</p> : null}
                 {selectedHistoryId && detailError ? (
@@ -1893,12 +1905,6 @@ export function LiveCopilotClient({
                         {deleteError}
                       </div>
                     ) : null}
-                    {deleteSuccess ? (
-                      <div className="success" role="status" aria-live="polite">
-                        {deleteSuccess}
-                      </div>
-                    ) : null}
-
                     <dl className={styles.stats}>
                       <div>
                         <dt>{t('history.lines')}</dt>
@@ -2008,21 +2014,33 @@ export function LiveCopilotClient({
                           <ul className={styles.rubric}>
                             {RUBRIC_KEYS.map((key) => {
                               const item = historyReport.rubric[key];
+                              // An area the model didn't score says so, with no score, bar or stock advice.
+                              const captured = item.score !== null;
                               return (
                                 <li key={key} className={styles.rubricRow}>
                                   <div className={styles.rubricHead}>
                                     <span className={styles.rubricName}>{t(`rubric.${key}`)}</span>
-                                    <span className={styles.rubricScore}>{item.score ?? '—'}/5</span>
+                                    {captured ? (
+                                      <span className={styles.rubricScore}>{item.score}/5</span>
+                                    ) : (
+                                      <span className={`${styles.rubricScore} ${styles.muted}`}>{t('report.notCaptured')}</span>
+                                    )}
                                   </div>
-                                  <div className={styles.bar} aria-hidden="true">
-                                    <span className={styles.barFill} style={{ transform: `scaleX(${asPercent(item.score, 5) / 100})` }} />
-                                  </div>
-                                  <p className={styles.rubricText}>
-                                    <span className={styles.rubricLabel}>{t('report.evidence')}</span> {item.evidence || t('report.notCaptured')}
-                                  </p>
-                                  <p className={styles.rubricText}>
-                                    <span className={styles.rubricLabel}>{t('report.recommendation')}</span> {item.recommendation || t('report.notCaptured')}
-                                  </p>
+                                  {captured ? (
+                                    <div className={styles.bar} aria-hidden="true">
+                                      <span className={styles.barFill} style={{ transform: `scaleX(${asPercent(item.score, 5) / 100})` }} />
+                                    </div>
+                                  ) : null}
+                                  {captured || item.evidence ? (
+                                    <p className={styles.rubricText}>
+                                      <span className={styles.rubricLabel}>{t('report.evidence')}</span> {item.evidence || t('report.notCaptured')}
+                                    </p>
+                                  ) : null}
+                                  {captured || item.recommendation ? (
+                                    <p className={styles.rubricText}>
+                                      <span className={styles.rubricLabel}>{t('report.recommendation')}</span> {item.recommendation || t('report.notCaptured')}
+                                    </p>
+                                  ) : null}
                                 </li>
                               );
                             })}

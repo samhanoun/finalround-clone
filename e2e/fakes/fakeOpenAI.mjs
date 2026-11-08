@@ -54,6 +54,25 @@ const PRACTICE_REPLIES = {
       structure: { score: 3, evidence: 'Result came early, action was thin', recommendation: 'Use situation, action, result in that order.' },
     },
   },
+  // The live session's report (src/lib/copilot/sessionReport.ts; checked by normalizeMockInterviewReport):
+  // the six areas of LIVE_RUBRIC_KEYS. role_fit is left unscored, as the prompt allows when the log is
+  // too thin to judge it, so Past sessions shows it as "Not captured".
+  'TASK: live_report': {
+    overall_score: 74,
+    hiring_signal: 'lean_hire',
+    summary: 'Clear, well-ordered answers with a measured result; the trade-offs behind each choice need saying.',
+    strengths: ['Led with the outcome: checkout latency down 40%', 'Kept every answer on the question asked'],
+    weaknesses: ['Named trade-offs without explaining them', 'Said little about how success was measured'],
+    next_steps: ['Explain one trade-off in each design answer', 'Close every story with the number it moved'],
+    rubric: {
+      communication: { score: 4, evidence: 'Short answers in a clear order', recommendation: 'Keep the one-line opener.' },
+      technical_accuracy: { score: 4, evidence: 'The in-place reversal was correct', recommendation: 'Give the complexity before being asked.' },
+      problem_solving: { score: 3, evidence: 'Reached a working plan after one hint', recommendation: 'Think aloud before picking an approach.' },
+      structure: { score: 4, evidence: 'Situation, action, result, in that order', recommendation: 'Spend less time on the situation.' },
+      ownership: { score: 3, evidence: 'Several answers said "we" for your own decisions', recommendation: 'Say which decisions were yours.' },
+      role_fit: { score: null, evidence: '', recommendation: '' },
+    },
+  },
   'TASK: tailored_resume': {
     target: 'Staff Engineer at Acme',
     summary: 'Leads with the payments migration and on-call work, which match Acme’s reliability focus.',

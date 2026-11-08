@@ -12,7 +12,7 @@ const preferencesSchema = z.object({
   in_app_ai_suggestions: z.boolean().optional(),
 });
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 

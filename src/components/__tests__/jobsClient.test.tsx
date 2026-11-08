@@ -108,6 +108,45 @@ describe('JobsClient', () => {
     expect(screen.getByRole('status', { hidden: true })).toHaveTextContent('Moved Staff Engineer to Offer.');
   });
 
+  it('stamps the applied date when a job leaves Saved for any column, not only Applied', async () => {
+    renderJobs();
+    fireEvent.click(await screen.findByRole('button', { name: 'Actions for Engineering Manager at Initech' }));
+    fireEvent.change(screen.getByLabelText('Move to'), { target: { value: 'interview' } });
+
+    await waitFor(() => expect(updates).toContainEqual({ stage: 'interview', applied_at: expect.any(String) }));
+    const stamped = updates.find((patch) => patch.stage === 'interview')?.applied_at as string;
+    expect(Math.abs(Date.parse(stamped) - Date.now())).toBeLessThan(60_000);
+    // The card now says when it was sent.
+    const board = screen.getByRole('region', { name: /Jobs board/ });
+    await waitFor(() => expect(within(board).getByRole('group', { name: 'Interview: 2 jobs' })).toHaveTextContent('Initech'));
+    expect(within(board).getByRole('group', { name: 'Interview: 2 jobs' })).toHaveTextContent(/Applied/);
+  });
+
+  it('keeps the first applied date on later moves, and sets none for Saved', async () => {
+    renderJobs();
+    // Northwind was applied on Nov 3: moving it on keeps that date.
+    fireEvent.click(await screen.findByRole('button', { name: 'Actions for Backend Engineer at Northwind' }));
+    fireEvent.change(screen.getByLabelText('Move to'), { target: { value: 'offer' } });
+    await waitFor(() => expect(updates).toContainEqual({ stage: 'offer' }));
+
+    // Back to Saved isn't sending anything.
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for Staff Engineer at Acme' }));
+    fireEvent.change(screen.getByLabelText('Move to'), { target: { value: 'saved' } });
+    await waitFor(() => expect(updates).toContainEqual({ stage: 'saved' }));
+    expect(updates.some((patch) => 'applied_at' in patch)).toBe(false);
+  });
+
+  it('stamps the applied date when a saved job is dragged to another column', async () => {
+    renderJobs();
+    const board = await screen.findByRole('region', { name: /Jobs board/ });
+    const card = within(board).getByText('Initech').closest('[draggable="true"]') as HTMLElement;
+    const target = within(within(board).getByRole('group', { name: 'Online assessment: 0 jobs' })).getByRole('list');
+    fireEvent.dragStart(card);
+    fireEvent.dragOver(target);
+    fireEvent.drop(target);
+    await waitFor(() => expect(updates).toContainEqual({ stage: 'oa', applied_at: expect.any(String) }));
+  });
+
   it('opens the edit dialog from the menu, and closes the menu on Escape', async () => {
     renderJobs();
     const trigger = await screen.findByRole('button', { name: 'Actions for Engineering Manager at Initech' });

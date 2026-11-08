@@ -64,5 +64,13 @@ create trigger guard_organization_plan
 before insert or update on public.organizations
 for each row execute function public.guard_organization_plan();
 
--- An event-trigger function: nothing should call it through the API.
-revoke execute on function public.rls_auto_enable() from public, anon, authenticated;
+-- An event-trigger function: nothing should call it through the API. It only
+-- exists where the dashboard's automatic-RLS option created it, so a fresh
+-- database (supabase db reset, a new project) skips this.
+do $$
+begin
+  if to_regprocedure('public.rls_auto_enable()') is not null then
+    execute 'revoke execute on function public.rls_auto_enable() from public, anon, authenticated';
+  end if;
+end;
+$$;

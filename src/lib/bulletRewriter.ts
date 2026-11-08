@@ -3,10 +3,16 @@
  * Helps transform weak bullet points into impactful achievement statements
  */
 
+/** What's wrong with a bullet, as a code the page shows in the reader's language (the English is in `issues`). */
+export type BulletIssue =
+  | { code: 'weak_word'; word: string }
+  | { code: 'no_metrics' | 'weak_verb' | 'too_short' | 'too_long' | 'passive' };
+
 export interface BulletAnalysis {
   original: string;
   score: number;
   issues: string[];
+  issueCodes: BulletIssue[];
   rewritten?: string;
   suggestions: string[];
 }
@@ -60,6 +66,7 @@ export function analyzeBullet(bullet: string): BulletAnalysis {
   const lower = trimmed.toLowerCase();
 
   const issues: string[] = [];
+  const issueCodes: BulletIssue[] = [];
   const suggestions: string[] = [];
   let score = 50; // Base score
 
@@ -67,6 +74,7 @@ export function analyzeBullet(bullet: string): BulletAnalysis {
   for (const weak of WEAK_WORDS) {
     if (lower.includes(weak)) {
       issues.push(`Contains weak word: "${weak}"`);
+      issueCodes.push({ code: 'weak_word', word: weak });
       score -= 10;
     }
   }
@@ -75,6 +83,7 @@ export function analyzeBullet(bullet: string): BulletAnalysis {
   const hasMetrics = STRONG_METRICS.some((m) => lower.includes(m));
   if (!hasMetrics) {
     issues.push('Missing quantifiable metrics');
+    issueCodes.push({ code: 'no_metrics' });
     suggestions.push('Add numbers, percentages, or specific outcomes');
     score -= 15;
   } else {
@@ -88,6 +97,7 @@ export function analyzeBullet(bullet: string): BulletAnalysis {
   
   if (!hasActionVerb) {
     issues.push('Should start with a strong action verb');
+    issueCodes.push({ code: 'weak_verb' });
     suggestions.push('Begin with a powerful action verb like: Led, Achieved, Developed, etc.');
     score -= 15;
   } else {
@@ -97,9 +107,11 @@ export function analyzeBullet(bullet: string): BulletAnalysis {
   // Check length
   if (trimmed.length < 20) {
     issues.push('Too short - lacks detail');
+    issueCodes.push({ code: 'too_short' });
     score -= 10;
   } else if (trimmed.length > 150) {
     issues.push('Too long - should be more concise');
+    issueCodes.push({ code: 'too_long' });
     score -= 10;
   } else {
     score += 10;
@@ -108,6 +120,7 @@ export function analyzeBullet(bullet: string): BulletAnalysis {
   // Check for passive voice
   if (/was|were|been|being/.test(lower) && !/\bby\b/.test(lower)) {
     issues.push('May use passive voice');
+    issueCodes.push({ code: 'passive' });
     suggestions.push('Use active voice instead of passive');
     score -= 10;
   }
@@ -121,6 +134,7 @@ export function analyzeBullet(bullet: string): BulletAnalysis {
     original: trimmed,
     score: Math.max(0, Math.min(100, score)),
     issues,
+    issueCodes,
     suggestions,
   };
 }

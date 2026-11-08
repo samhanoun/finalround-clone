@@ -14,6 +14,7 @@ import {
   type StoredPracticeSetup,
 } from '@/lib/practice/practice';
 import { loadBank, pickBankQuestions, saveToBank } from '@/lib/questionBank';
+import { LOCALES } from '@/i18n/locales';
 import { kitFor } from '@/lib/localizedEmail';
 
 /**
@@ -23,6 +24,12 @@ import { kitFor } from '@/lib/localizedEmail';
  * model writes only the rest. New questions join the user's private bank for
  * that company.
  */
+/** The "Practice interview" title new interviews get, in any language. */
+async function isDefaultPracticeTitle(title: string): Promise<boolean> {
+  const defaults = await Promise.all(LOCALES.map(async (locale) => (await kitFor(locale)).t('NewPractice')('defaultTitle')));
+  return defaults.includes(title);
+}
+
 export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
   const supabase = await createClient();
@@ -39,10 +46,10 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
 
   const { data: session } = await supabase
     .from('interview_sessions')
-    .select('id, user_id, meta')
+    .select('id, user_id, meta, title')
     .eq('id', id)
     .eq('user_id', userId)
-    .maybeSingle<{ id: string; user_id: string; meta: Record<string, unknown> | null }>();
+    .maybeSingle<{ id: string; user_id: string; meta: Record<string, unknown> | null; title: string | null }>();
   if (!session) return jsonError(404, 'not_found');
 
   const { count } = await supabase
@@ -146,10 +153,13 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     hasResume: Boolean(resume),
     hasJob: Boolean(setup.jobDescription?.trim()),
   };
-  // Shown in lists and on Home, so in the language the interview was set up in.
-  const title = setup.company
+  // Shown in lists and on Home, so in the language the interview was set up in. A title
+  // the user already gave it (renamed before starting) is kept; only the default is replaced.
+  const generated = setup.company
     ? (await kitFor(setup.locale ?? 'en')).t('PracticePages')('titleAt', { role: setup.role, company: setup.company })
     : setup.role;
+  const current = typeof session.title === 'string' ? session.title.trim() : '';
+  const title = current && !(await isDefaultPracticeTitle(current)) ? current : generated;
   const { error: updateError } = await supabase
     .from('interview_sessions')
     .update({

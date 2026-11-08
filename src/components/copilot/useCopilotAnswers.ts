@@ -206,10 +206,11 @@ export function useCopilotAnswers({ sessionId }: { sessionId: string | null }) {
     return gateRef.current?.answerNow(liveInterviewerText) != null;
   }, []);
 
-  /** A line typed in the composer: interviewer lines are always answered. */
+  /** A line typed in the composer: interviewer lines are always answered, and Answer now can answer them again. */
   const addTypedLine = useCallback(
     (speaker: TranscriptLine['speaker'], text: string) => {
       const controller = controllerRef.current;
+      if (speaker === 'interviewer') gateRef.current?.noteTyped(text);
       if (speaker === 'interviewer' && controller) {
         void controller.request({
           text,

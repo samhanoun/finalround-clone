@@ -31,23 +31,28 @@ export async function GET() {
     .maybeSingle();
 
   if (codeError) {
-    return NextResponse.json({ error: codeError.message }, { status: 500 });
+    console.error('[referrals] code read failed', codeError.message);
+    return NextResponse.json({ error: 'referrals_failed' }, { status: 500 });
   }
 
   let referralCodeData = existingCode;
 
   if (!referralCodeData) {
-    const { data: newReferralCode, error: insertError } = await createAdminClient()
+    // Two first visits at once (two tabs) would both insert; user_id is unique, so the second
+    // insert is ignored and both read back the one code.
+    const admin = createAdminClient();
+    const { error: insertError } = await admin
       .from('referral_codes')
-      .insert({ user_id: user.id, code: generateReferralCode() })
-      .select()
-      .single();
-
-    if (insertError) {
-      return NextResponse.json({ error: insertError.message }, { status: 500 });
+      .upsert({ user_id: user.id, code: generateReferralCode() }, { onConflict: 'user_id', ignoreDuplicates: true });
+    const { data: created, error: readError } = insertError
+      ? { data: null, error: insertError }
+      : await admin.from('referral_codes').select('*').eq('user_id', user.id).maybeSingle();
+    if (readError || !created) {
+      console.error('[referrals] code not created', readError?.message);
+      return NextResponse.json({ error: 'referrals_failed' }, { status: 500 });
     }
 
-    referralCodeData = newReferralCode;
+    referralCodeData = created;
   }
 
   const { data: referrals, error: referralsError } = await supabase
@@ -57,7 +62,8 @@ export async function GET() {
     .order('created_at', { ascending: false });
 
   if (referralsError) {
-    return NextResponse.json({ error: referralsError.message }, { status: 500 });
+    console.error('[referrals] list failed', referralsError.message);
+    return NextResponse.json({ error: 'referrals_failed' }, { status: 500 });
   }
 
   const rows = referrals ?? [];

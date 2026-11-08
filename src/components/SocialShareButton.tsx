@@ -5,6 +5,9 @@ import { useTranslations } from 'next-intl';
 
 type Platform = 'linkedin' | 'twitter' | 'facebook' | 'email';
 
+/** What is being shared, as social_shares.share_type allows it (migrations 0016, 0033). */
+export type ShareType = 'interview_report' | 'badge' | 'achievement' | 'job_offer' | 'referral';
+
 interface ShareContent {
   title: string;
   summary?: string;
@@ -14,6 +17,10 @@ interface ShareContent {
 interface SocialShareButtonProps {
   platform: Platform;
   content: ShareContent;
+  /** Recorded with the share, once, by this button. */
+  shareType: ShareType;
+  /** The shared thing's id (a badge, a report), recorded with the share. */
+  contentId?: string;
   onShare?: (platform: Platform) => void;
   variant?: 'icon' | 'button';
   size?: 'sm' | 'md' | 'lg';
@@ -41,7 +48,24 @@ const platformConfig: Record<Platform, { label: string; icon: string }> = {
 
 const SIZE_CLASS = { sm: 'buttonSmall', md: '', lg: 'buttonLarge' } as const;
 
-export function SocialShareButton({ platform, content, onShare, variant = 'button', size = 'sm' }: SocialShareButtonProps) {
+/** The share link for a platform, built here so the window opens within the click. */
+export function shareLink(platform: Platform, content: ShareContent): string {
+  const url = encodeURIComponent(content.url ?? '');
+  const title = encodeURIComponent(content.title);
+  const summary = encodeURIComponent(content.summary ?? content.title);
+  switch (platform) {
+    case 'linkedin':
+      return `https://www.linkedin.com/sharing/share-offsite/?url=${url}`;
+    case 'twitter':
+      return `https://twitter.com/intent/tweet?text=${title}&url=${url}`;
+    case 'facebook':
+      return `https://www.facebook.com/sharer/sharer.php?u=${url}&quote=${title}`;
+    case 'email':
+      return `mailto:?subject=${title}&body=${summary}%0A%0A${url}`;
+  }
+}
+
+export function SocialShareButton({ platform, content, shareType, contentId, onShare, variant = 'button', size = 'sm' }: SocialShareButtonProps) {
   const t = useTranslations('Share');
   const [loading, setLoading] = useState(false);
   const config = platformConfig[platform];
@@ -49,50 +73,34 @@ export function SocialShareButton({ platform, content, onShare, variant = 'butto
   const label = platform === 'email' ? t('email') : config.label;
 
   const handleShare = useCallback(async () => {
+    // Open the share window first, inside the click: popup blockers allow a window opened
+    // directly by a click, but not one opened after waiting for a network request.
+    const shareUrl = shareLink(platform, content);
+    if (platform === 'email') window.location.href = shareUrl;
+    else window.open(shareUrl, '_blank', 'noopener,noreferrer,width=600,height=400');
+
     setLoading(true);
     try {
-      // Get share URL from API
-      const response = await fetch('/api/social/shares', {
-        method: 'PUT',
+      // Record the share, once, as what it is.
+      const recorded = await fetch('/api/social/shares', {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          share_type: shareType,
           platform,
+          content_id: contentId,
           content_title: content.title,
-          content_url: content.url,
-          content_summary: content.summary,
+          ...(content.url ? { metadata: { url: content.url } } : {}),
         }),
       });
-
-      const data = await response.json();
-
-      if (data.share_url) {
-        // Open share URL in a new window
-        if (platform === 'email') {
-          window.location.href = data.share_url;
-        } else {
-          window.open(data.share_url, '_blank', 'width=600,height=400');
-        }
-
-        // Record the share
-        await fetch('/api/social/shares', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            share_type: 'interview_report',
-            platform,
-            content_title: content.title,
-            content_url: content.url,
-          }),
-        });
-
-        onShare?.(platform);
-      }
+      if (!recorded.ok) console.error('Share not recorded:', recorded.status);
+      onShare?.(platform);
     } catch (error) {
       console.error('Share error:', error);
     } finally {
       setLoading(false);
     }
-  }, [platform, content, onShare]);
+  }, [platform, content, shareType, contentId, onShare]);
 
   const iconSize = size === 'lg' ? 18 : 16;
 
@@ -116,16 +124,19 @@ export function SocialShareButton({ platform, content, onShare, variant = 'butto
 
 interface ShareMenuProps {
   content: ShareContent;
+  shareType: ShareType;
+  contentId?: string;
   onShare?: (platform: Platform) => void;
 }
 
-export function ShareMenu({ content, onShare }: ShareMenuProps) {
+export function ShareMenu({ content, shareType, contentId, onShare }: ShareMenuProps) {
+  const common = { content, shareType, contentId, onShare };
   return (
     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-      <SocialShareButton platform="linkedin" content={content} onShare={onShare} />
-      <SocialShareButton platform="twitter" content={content} onShare={onShare} />
-      <SocialShareButton platform="facebook" content={content} onShare={onShare} />
-      <SocialShareButton platform="email" content={content} onShare={onShare} />
+      <SocialShareButton platform="linkedin" {...common} />
+      <SocialShareButton platform="twitter" {...common} />
+      <SocialShareButton platform="facebook" {...common} />
+      <SocialShareButton platform="email" {...common} />
     </div>
   );
 }

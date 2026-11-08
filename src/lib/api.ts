@@ -1,10 +1,26 @@
 import { NextResponse } from 'next/server';
 
+/** A database or runtime error object (Postgrest errors carry code/details/hint). */
+function isInternalError(value: unknown): boolean {
+  if (value instanceof Error) return true;
+  if (!value || typeof value !== 'object') return false;
+  const v = value as Record<string, unknown>;
+  return typeof v.message === 'string' && ('code' in v || 'details' in v || 'hint' in v || 'stack' in v);
+}
+
+/**
+ * A JSON error response. `extra` carries client-safe details (validation
+ * errors, a request id). Raw database and runtime error objects are logged
+ * here instead of being sent, so responses never reveal schema names,
+ * queries or stack traces.
+ */
 export function jsonError(status: number, message: string, extra?: unknown) {
-  return NextResponse.json(
-    { error: message, ...(extra ? { extra } : {}) },
-    { status },
-  );
+  const internal = isInternalError(extra);
+  if (extra && internal) {
+    const detail = extra instanceof Error ? extra.message : extra;
+    console.error(`[api] ${status} ${message}`, detail);
+  }
+  return NextResponse.json({ error: message, ...(extra && !internal ? { extra } : {}) }, { status });
 }
 
 export type LimitedJson = { ok: true; data: unknown } | { ok: false; tooLarge: boolean };

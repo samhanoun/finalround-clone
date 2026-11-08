@@ -255,7 +255,8 @@
       "link_failed": "That link didn’t work or has expired. Try again.",
       "missing_code": "That link is incomplete. Try again.",
       "signin_failed": "Sign-in didn’t finish. Try again, or use your email and password."
-    }
+    },
+    "language": "Language"
   },
   "ResetPassword": {
     "title": "Choose a new password",
@@ -880,6 +881,24 @@
       "status": "Status",
       "score": "Score",
       "date": "Date"
+    },
+    "row": {
+      "menu": "Options for {title}",
+      "rename": "Rename",
+      "renameTitle": "Rename {title}",
+      "nameLabel": "Interview name",
+      "save": "Save",
+      "saving": "Saving…",
+      "cancel": "Cancel",
+      "delete": "Delete",
+      "deleteTitle": "Delete {title}",
+      "deleting": "Deleting…",
+      "keep": "Keep",
+      "confirmDelete": "Delete “{title}”? Its questions, answers and report go with it.",
+      "renamed": "Renamed to “{title}”",
+      "deleted": "Deleted “{title}”",
+      "renameFailed": "The new name wasn't saved. Try again.",
+      "deleteFailed": "The interview wasn't deleted. Try again."
     }
   },
   "QuestionBank": {
@@ -1102,12 +1121,14 @@
       "startFirst": "Start a session first.",
       "screenFailed": "Could not read the shared screen.",
       "submitFailed": "That line didn't send. Try again.",
-      "summaryFailed": "The summary didn't come through. Try again.",
+      "summaryFailed": "The summary didn't come through, and nothing was saved.",
       "deleteFailed": "The session wasn't deleted. Try again.",
       "exportFailed": "The export didn't download. Try again.",
       "purgeFailed": "Your copilot data wasn't deleted. Try again.",
       "stopBeforePurge": "Stop your active session before deleting all copilot data.",
-      "typeConfirm": "Type {phrase} to confirm."
+      "typeConfirm": "Type {phrase} to confirm.",
+      "summaryUnavailable": "No AI model is set up for this app yet, so there's no summary. Nothing was saved.",
+      "summaryNoTranscript": "There's nothing to summarize yet. Add a few transcript lines first."
     },
     "startErrors": {
       "resume_not_found": "That résumé could not be found. Pick another one.",
@@ -1142,7 +1163,8 @@
       "noStrengths": "No strengths identified yet.",
       "noWeaknesses": "No weaknesses identified yet.",
       "noNextSteps": "No next steps identified yet.",
-      "again": "Generate again"
+      "again": "Generate again",
+      "retry": "Try again"
     },
     "history": {
       "label": "Analytics history view",
@@ -1188,11 +1210,11 @@
       "export": "Export all copilot data",
       "exported": "Copilot data export is ready and downloaded.",
       "purgeTitle": "Delete all copilot data",
-      "purgeWarning": "<strong>Warning:</strong> this permanently deletes every copilot session, transcript event, and summary for your account. This cannot be undone. You must stop any active session first.",
+      "purgeWarning": "<strong>Warning:</strong> this permanently deletes every copilot session, transcript event, and summary for your account, and the facts the copilot learned from your sessions in Goals → Memory (facts you added yourself stay). This cannot be undone. You must stop any active session first.",
       "purgeConfirm": "Type <code>{phrase}</code> to confirm",
       "purging": "Deleting all data…",
       "purge": "Delete all copilot data",
-      "purged": "Deleted all copilot data ({sessions, plural, one {# session} other {# sessions}}, {events, plural, one {# event} other {# events}}, {summaries, plural, one {# summary} other {# summaries}})."
+      "purged": "Deleted all copilot data ({sessions, plural, one {# session} other {# sessions}}, {events, plural, one {# event} other {# events}}, {summaries, plural, one {# summary} other {# summaries}}, {memories, plural, one {# learned fact} other {# learned facts}})."
     },
     "report": {
       "title": "Interview report",
@@ -1206,7 +1228,7 @@
       "signal": "Hiring signal",
       "evidence": "Evidence:",
       "recommendation": "Recommendation:",
-      "notCaptured": "Not captured.",
+      "notCaptured": "Not captured",
       "strengths": "Strengths",
       "weaknesses": "Weaknesses",
       "nextSteps": "Next steps",
@@ -1420,8 +1442,6 @@
     "confirmDesc": "Enter your email address and type {word} to confirm.",
     "email": "Your email address",
     "emailPlaceholder": "you@example.com",
-    "reason": "Why are you leaving? (optional)",
-    "reasonPlaceholder": "What could we have done better?",
     "typeWord": "Type <strong>{word}</strong> to confirm",
     "cancel": "Cancel",
     "deleting": "Deleting…",
@@ -1429,10 +1449,12 @@
     "failed": "Your account wasn't deleted. Try again.",
     "errors": {
       "email_mismatch": "That email doesn't match your account.",
-      "rate_limited": "Too many attempts. Try again in a minute."
+      "rate_limited": "Too many attempts. Try again in a minute.",
+      "billing_cancel_failed": "Your subscription couldn’t be cancelled, so your account wasn’t deleted. Try again in a few minutes."
     },
     "deletedTitle": "Account deleted",
-    "deletedBody": "Your account has been permanently deleted. All your data has been removed. Taking you to the home page…"
+    "deletedBody": "Your account has been permanently deleted. All your data has been removed. Taking you to the home page…",
+    "deletesPlan": "Any paid plan, cancelled at once (the rest of the period isn’t refunded)"
   },
   "Usage": {
     "loading": "Loading usage…",
@@ -1448,9 +1470,8 @@
     "copilotMonth": "Live copilot, this month",
     "perSession": "Per session",
     "copilotToday": "Live copilot, today",
-    "smartMonth": "Smart mode, this month",
     "reviewsMonth": "Résumé reviews, this month",
-    "proLimits": "Pro raises the limits to 400 minutes a month, 30-minute sessions, 45 minutes a day, 80 Smart mode minutes and 10 résumé reviews a month.",
+    "proLimits": "Pro raises the limits to 400 minutes a month, 30-minute sessions, 45 minutes a day and 10 résumé reviews a month.",
     "seePlans": "Plans and billing"
   },
   "Billing": {
@@ -1459,7 +1480,8 @@
       "already_subscribed": "You already have Pro. Use Manage billing to change it.",
       "no_billing_account": "There is no billing account for you yet. Upgrade first.",
       "rate_limited": "Too many attempts. Try again in a minute.",
-      "unauthorized": "Sign in again, then retry."
+      "unauthorized": "Sign in again, then retry.",
+      "plan_without_billing": "Your plan was given to you directly, so there are no payments to manage."
     },
     "unreachable": "Could not reach billing. Try again.",
     "returned": {
@@ -1483,7 +1505,7 @@
       "tester": "Tester",
       "team": "Team"
     },
-    "proLimits": "Pro raises the limits to 400 minutes a month, 30-minute sessions, 45 minutes a day, 80 Smart mode minutes and 10 résumé reviews a month",
+    "proLimits": "Pro raises the limits to 400 minutes a month, 30-minute sessions, 45 minutes a day and 10 résumé reviews a month",
     "loading": "Loading usage…",
     "usageLabel": "Usage this month",
     "usage": {
@@ -1491,7 +1513,6 @@
       "count": "{used} / {limit}",
       "copilotMonth": "Live copilot this month",
       "copilotToday": "Live copilot today",
-      "smartMonth": "Smart mode this month",
       "reviewsMonth": "Résumé reviews this month",
       "minutes": "{used} / {limit} min"
     },
@@ -1619,7 +1640,7 @@
   "Badges": {
     "title": "Achievements",
     "loading": "Loading badges…",
-    "empty": "No badges yet. Finish a practice interview or a live session to earn your first.",
+    "empty": "No badges yet. Finish a practice interview to earn your first.",
     "badgeLabel": "Badge: {badge}",
     "close": "Close",
     "awarded": "Awarded: {date}",
@@ -1632,12 +1653,12 @@
         "description": "Finished your first practice interview."
       },
       "five_sessions": {
-        "title": "Five sessions",
-        "description": "Finished five practice interviews or live sessions."
+        "title": "Five live sessions",
+        "description": "Finished five live sessions."
       },
       "ten_sessions": {
-        "title": "Ten sessions",
-        "description": "Finished ten practice interviews or live sessions."
+        "title": "Ten live sessions",
+        "description": "Finished ten live sessions."
       },
       "first_offer": {
         "title": "First offer",
@@ -1645,15 +1666,15 @@
       },
       "streak_week": {
         "title": "Week streak",
-        "description": "Practised seven days in a row."
+        "description": "Practised or ran a live session seven days in a row."
       },
       "streak_month": {
         "title": "Month streak",
-        "description": "Practised every week for a month."
+        "description": "Practised or ran a live session 30 days in a row."
       },
       "resume_optimized": {
         "title": "Résumé tuned",
-        "description": "Tailored a résumé to a job."
+        "description": "Checked or tailored a résumé for a job."
       },
       "job_applied": {
         "title": "Applied",
@@ -1671,7 +1692,8 @@
         "title": "Shared",
         "description": "Shared your progress."
       }
-    }
+    },
+    "loadFailed": "Your achievements didn't load."
   },
   "Share": {
     "email": "Email",
@@ -1702,7 +1724,8 @@
       "signed_up": "Signed up",
       "converted": "Upgraded",
       "expired": "Expired"
-    }
+    },
+    "shareNotRecorded": "The share opened, but it wasn't recorded here."
   },
   "Landing": {
     "homeLabel": "Apex Round home",
@@ -1765,7 +1788,8 @@
       "name": "Free",
       "minutes": "10 minutes of live help a month",
       "sessions": "Sessions up to 10 minutes",
-      "tools": "Résumé builder and job tracker"
+      "tools": "Résumé builder and job tracker",
+      "price": "$0"
     },
     "pro": {
       "name": "Pro",
@@ -1773,7 +1797,8 @@
       "minutes": "400 minutes of live help a month",
       "sessions": "Sessions up to 30 minutes, 45 minutes a day",
       "cancel": "Cancel anytime from Settings",
-      "cta": "Go Pro"
+      "cta": "Go Pro",
+      "price": "$29"
     },
     "footer": "Check your interview’s rules on outside help before you use it",
     "menu": "Menu",
@@ -1835,9 +1860,8 @@
         "price": "$29 or €29 a month",
         "feature1": "400 minutes of live copilot a month",
         "feature2": "Sessions up to 30 minutes, 45 minutes a day",
-        "feature3": "80 minutes of Smart mode a month",
-        "feature4": "10 in-depth résumé reviews a month",
-        "feature5": "Everything in Free"
+        "feature3": "10 in-depth résumé reviews a month",
+        "feature4": "Everything in Free"
       }
     },
     "profile": {
@@ -1890,7 +1914,8 @@
         "desc": "Upload it once, then check it against any job description for missing keywords."
       }
     },
-    "stepOf": "Step {current} of {total}"
+    "stepOf": "Step {current} of {total}",
+    "saveFailed": "Your answers weren’t saved. Check your connection and try again."
   },
   "Resume": {
     "errors": {
@@ -1999,7 +2024,26 @@
     "delete": "Delete",
     "noTailored": "No tailored versions yet. Pick a résumé, paste a job and choose “Write a tailored version”.",
     "outOf": "out of 100",
-    "docScore": "{score}% match"
+    "docScore": "{score}% match",
+    "deleteDocumentLabel": "Delete {name}",
+    "confirmDeleteDocument": "Delete {name}? Tailored versions made from it stay in your history.",
+    "documentDeleted": "Deleted",
+    "documentDeletedBody": "Removed {name}.",
+    "uploadedUnreadable": "Its text couldn’t be read, so it can’t be checked yet. Upload it as a PDF or .docx file.",
+    "tips": {
+      "add_keywords": "Add these keywords: {keywords}",
+      "add_more_keywords": "Add more of the job’s keywords, starting with {keywords}",
+      "add_contact": "Add your contact details: email and phone",
+      "expand": "Add more detail: it has fewer than 200 words"
+    },
+    "bulletIssues": {
+      "weak_word": "weak wording (“{word}”)",
+      "no_metrics": "no numbers or results",
+      "weak_verb": "doesn’t start with an action verb",
+      "too_short": "too short to show the detail",
+      "too_long": "too long: make it more concise",
+      "passive": "may be in the passive voice"
+    }
   },
   "PageTitles": {
     "resume": "Résumé",
@@ -2381,8 +2425,9 @@
     "stats": {
       "members": "Members",
       "active": "Active",
-      "interviews": "Interviews",
-      "thisMonth": "This month"
+      "practice": "Practice interviews",
+      "live": "Live sessions",
+      "newThisMonth": "{count, plural, =0 {None this month} other {+# this month}}"
     },
     "sections": "Team sections",
     "tabs": {
@@ -2438,7 +2483,8 @@
         "domain_taken": "Another identity provider already uses one of those domains.",
         "invalid_domains": "Enter at least one email domain, like acme.com.",
         "public_domain": "Public email domains like gmail.com can’t be used. Enter your company’s own domain.",
-        "domain_unverified": "First prove you own each domain: add the DNS records shown here, wait a few minutes for them to spread, then save again."
+        "domain_unverified": "First prove you own each domain: add the DNS records shown here, wait a few minutes for them to spread, then save again.",
+        "rate_limited": "You’ve saved this several times in the last hour. Try again later."
       },
       "failed": "That didn’t work. Try again.",
       "on": "Single sign-on is on.",
@@ -2534,11 +2580,10 @@
     "loading": "Loading…",
     "stats": {
       "users": "Users",
-      "active": "Active in the last 30 days",
-      "revenue": "Revenue",
       "subscriptions": "Active subscriptions",
       "tickets": "Open support tickets",
-      "fraud": "Open fraud flags"
+      "fraud": "Open fraud flags",
+      "newUsers": "{days, plural, one {Sign-ups in the last day} other {Sign-ups in the last # days}}"
     },
     "empty": {
       "users": "No users match.",
@@ -2552,7 +2597,7 @@
       "subscription": "Subscription",
       "status": "Status",
       "price": "Price",
-      "renews": "Renews",
+      "renews": "Period ends",
       "type": "Type",
       "severity": "Severity",
       "what": "What happened",
@@ -2577,14 +2622,20 @@
       "medium": "Medium",
       "high": "High",
       "urgent": "Urgent",
-      "critical": "Critical"
+      "critical": "Critical",
+      "canceling": "Ends at period end",
+      "suspended": "Suspended",
+      "unpaid": "Unpaid",
+      "incomplete": "Incomplete",
+      "incomplete_expired": "Expired",
+      "paused": "Paused"
     },
     "free": "Free",
     "confirmAdmin": "Make {email} an admin?",
     "makeAdmin": "Make admin",
     "confirmSuspend": "Suspend {email}? They won't be able to sign in.",
     "suspend": "Suspend",
-    "confirmCancel": "Cancel {email}'s subscription?",
+    "confirmCancel": "Cancel {email}'s subscription? It stays active until the end of the period, then doesn’t renew.",
     "cancel": "Cancel",
     "resume": "Resume",
     "resolve": "Resolve",
@@ -2600,7 +2651,15 @@
     "user": "User",
     "reply": "Reply",
     "sending": "Sending…",
-    "sendReply": "Send reply"
+    "sendReply": "Send reply",
+    "unsuspend": "Unsuspend",
+    "confirmUnsuspend": "Unsuspend {email}? They’ll be able to sign in again.",
+    "errors": {
+      "billing_unavailable": "Stripe isn’t set up on this server, so subscriptions can’t be changed here.",
+      "cannot_suspend_self": "You can’t suspend your own account.",
+      "not_found": "That’s no longer there. Reload the page to see the latest.",
+      "stripe_failed": "Stripe didn’t accept the change. Try again, or check the subscription in Stripe."
+    }
   },
   "Meta": {
     "description": "A live interview copilot: it hears the question and puts a short, structured answer on your screen.",

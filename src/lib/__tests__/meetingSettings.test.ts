@@ -59,3 +59,15 @@ describe('shareSteps', () => {
     expect(shareSteps({ platform: 'ms_teams', desktopApp: true, mac: true })).toEqual(['macCantHear', 'joinInChrome']);
   });
 });
+
+describe('meetingUrl', () => {
+  it('turns pasted meeting links into URLs and refuses text that is not a link', () => {
+    const { meetingUrl } = jest.requireActual('@/lib/meetingSettings') as typeof import('@/lib/meetingSettings');
+    expect(meetingUrl('meet.google.com/abc-defg-hij')?.href).toBe('https://meet.google.com/abc-defg-hij');
+    expect(meetingUrl('https://us02web.zoom.us/j/123')?.hostname).toBe('us02web.zoom.us');
+    expect(meetingUrl('not a link')).toBeNull();
+    expect(meetingUrl('localhost')).toBeNull();
+    expect(meetingUrl('javascript:alert(1)')).toBeNull();
+    expect(meetingUrl('')).toBeNull();
+  });
+});

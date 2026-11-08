@@ -85,7 +85,6 @@ describe('llmRouter', () => {
 
     it('should select fast model for simple_qa tasks', () => {
       const model = selectModel({ taskType: 'simple_qa' });
-      const config = MODEL_CONFIGS[model];
       // Should be one of the faster models
       const fastModels = ['gpt-4o-mini', 'claude-haiku-3-5', 'gemini-2.0-flash'];
       expect(fastModels).toContain(model);
