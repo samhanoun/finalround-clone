@@ -2390,7 +2390,9 @@
       "remove": "Ce membre n’a pas été retiré. Réessayez.",
       "role": "Le rôle n’a pas été modifié. Réessayez.",
       "create": "L’équipe n’a pas été créée. Cette adresse est peut-être déjà prise ; essayez-en une autre.",
-      "rename": "Le nom n’a pas été enregistré. Réessayez."
+      "rename": "Le nom n’a pas été enregistré. Réessayez.",
+      "ownerManagesAdmins": "Seul le propriétaire de l’équipe peut modifier ou retirer un administrateur.",
+      "adminInvitation": "{email} a une invitation en tant qu’administrateur, que seul le propriétaire de l’équipe peut modifier."
     },
     "loadingTeam": "Chargement de votre équipe…",
     "loading": "Chargement…",

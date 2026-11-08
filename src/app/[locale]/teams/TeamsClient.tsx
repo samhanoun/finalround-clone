@@ -8,6 +8,7 @@ import { CheckIcon, CopyIcon } from '@/components/icons';
 import { Skeleton } from '@/components/Skeleton';
 import { Segmented } from '@/app/[locale]/settings/SettingsUI';
 import type { Organization, OrganizationMember, OrganizationInvitation, OrganizationRole, TeamStats } from '@/lib/organizations';
+import { canManageRole } from '@/lib/teamRoles';
 import styles from './TeamsClient.module.css';
 
 interface TeamsClientProps {
@@ -176,7 +177,12 @@ export default function TeamsClient({ initialOrganization, role, userId = null }
     setError(null);
     try {
       const res = await fetch(url, init);
-      if (!res.ok) throw new Error();
+      if (!res.ok) {
+        // The page hides what an admin can't do; this is for a page that's out of date (someone was made an admin since).
+        const data = await res.json().catch(() => null);
+        setError(data?.error === 'owner_only' ? t('errors.ownerManagesAdmins') : failure);
+        return null;
+      }
       return res;
     } catch {
       setError(failure);
@@ -194,7 +200,16 @@ export default function TeamsClient({ initialOrganization, role, userId = null }
     }).catch(() => null);
     const data = res ? await res.json().catch(() => ({})) : {};
     if (!res?.ok) {
-      setError(data?.error === 'already_member' ? t('errors.alreadyMember', { email }) : t('errors.invite'));
+      const reason = data?.error;
+      setError(
+        reason === 'already_member'
+          ? t('errors.alreadyMember', { email })
+          : reason === 'admin_invitation'
+            ? t('errors.adminInvitation', { email })
+            : reason === 'owner_only'
+              ? t('errors.ownerManagesAdmins')
+              : t('errors.invite'),
+      );
       return false;
     }
     setInviteSent({ email, emailSent: Boolean(data.emailSent), link: absoluteLink(data.invitation.invitePath) });
@@ -338,7 +353,7 @@ export default function TeamsClient({ initialOrganization, role, userId = null }
         ) : membersFailed && !members.length ? null : (
           <MembersList
             members={members}
-            canManage={canManage}
+            myRole={myRole}
             userId={userId}
             onRemove={handleRemoveMember}
             onUpdateRole={handleUpdateRole}
@@ -353,9 +368,9 @@ export default function TeamsClient({ initialOrganization, role, userId = null }
             {invitations.length ? <span className={styles.count}>{invitations.length}</span> : null}
           </h3>
           <div className={styles.group}>
-            <InviteForm onInvite={handleInvite} />
+            <InviteForm myRole={myRole} onInvite={handleInvite} />
             {inviteSent ? <InviteSentNote sent={inviteSent} onDismiss={() => setInviteSent(null)} /> : null}
-            <InvitationsList invitations={invitations} onCancel={handleCancelInvitation} />
+            <InvitationsList invitations={invitations} myRole={myRole} onCancel={handleCancelInvitation} />
           </div>
         </section>
       ) : null}
@@ -422,15 +437,18 @@ function MemberAvatar({ member }: { member: OrganizationMember }) {
   );
 }
 
+/** The roles the members list offers, in this order; each viewer sees the ones they may give (teamRoles.ts). */
+const MEMBER_ROLES = ['admin', 'member', 'viewer'] as const;
+
 function MembersList({
   members,
-  canManage,
+  myRole,
   userId,
   onRemove,
   onUpdateRole,
 }: {
   members: OrganizationMember[];
-  canManage: boolean;
+  myRole: OrganizationRole | null;
   userId: string | null;
   onRemove: (id: string) => void;
   onUpdateRole: (id: string, role: string) => void;
@@ -440,11 +458,12 @@ function MembersList({
   if (members.length === 0) {
     return <p className="emptyState">{t('noMembers')}</p>;
   }
+  const offered = MEMBER_ROLES.filter((role) => canManageRole(myRole, role));
   return (
     <ul className={`${styles.group} ${styles.list}`}>
       {members.map((member) => {
-        // Owners can't be changed or removed, and nobody changes their own role.
-        const manageable = canManage && member.role !== 'owner' && member.user_id !== userId;
+        // Owners can't be changed or removed, admins only by the owner, and nobody changes their own role.
+        const manageable = member.user_id !== userId && canManageRole(myRole, member.role);
         return (
           <li key={member.id} className={styles.memberRow}>
             <div className={styles.person}>
@@ -470,9 +489,11 @@ function MembersList({
                   aria-label={t('roleFor', { member: member.user_email || member.user_full_name || t('member') })}
                   onChange={(e) => onUpdateRole(member.id, e.target.value)}
                 >
-                  <option value="admin">{t('roles.admin')}</option>
-                  <option value="member">{t('roles.member')}</option>
-                  <option value="viewer">{t('roles.viewer')}</option>
+                  {offered.map((role) => (
+                    <option key={role} value={role}>
+                      {label(t, 'roles', role)}
+                    </option>
+                  ))}
                 </select>
               ) : (
                 <span className={styles.roleText}>{label(t, 'roles', member.role)}</span>
@@ -582,7 +603,13 @@ function InvitesForMe({ invites }: { invites: InviteForMe[] }) {
   );
 }
 
-function InviteForm({ onInvite }: { onInvite: (email: string, role: string) => Promise<boolean> }) {
+function InviteForm({
+  myRole,
+  onInvite,
+}: {
+  myRole: OrganizationRole | null;
+  onInvite: (email: string, role: string) => Promise<boolean>;
+}) {
   const t = useTranslations('Teams');
   const [email, setEmail] = useState('');
   const [inviteRole, setInviteRole] = useState('member');
@@ -622,7 +649,8 @@ function InviteForm({ onInvite }: { onInvite: (email: string, role: string) => P
         </label>
         <select id={ids.role} className={`select ${styles.inviteRole}`} value={inviteRole} onChange={(e) => setInviteRole(e.target.value)}>
           <option value="member">{t('roles.member')}</option>
-          <option value="admin">{t('roleAdminHelp')}</option>
+          {/* Only the owner invites an admin. */}
+          {canManageRole(myRole, 'admin') ? <option value="admin">{t('roleAdminHelp')}</option> : null}
           <option value="viewer">{t('roleViewerHelp')}</option>
         </select>
         <button type="submit" className="button buttonPrimary" disabled={!email.trim() || sending}>
@@ -633,7 +661,15 @@ function InviteForm({ onInvite }: { onInvite: (email: string, role: string) => P
   );
 }
 
-function InvitationsList({ invitations, onCancel }: { invitations: TeamInvitation[]; onCancel: (id: string) => void }) {
+function InvitationsList({
+  invitations,
+  myRole,
+  onCancel,
+}: {
+  invitations: TeamInvitation[];
+  myRole: OrganizationRole | null;
+  onCancel: (id: string) => void;
+}) {
   const t = useTranslations('Teams');
   const format = useFormatter();
   if (invitations.length === 0) {
@@ -652,14 +688,17 @@ function InvitationsList({ invitations, onCancel }: { invitations: TeamInvitatio
           </span>
           <div className={styles.rowActions}>
             {inv.invitePath ? <CopyButton text={absoluteLink(inv.invitePath)} /> : null}
-            <button
-              type="button"
-              className="button buttonGhost buttonSmall"
-              onClick={() => onCancel(inv.id)}
-              aria-label={t('cancelInvitation', { email: inv.email })}
-            >
-              {t('cancel')}
-            </button>
+            {/* An invitation as admin is the owner's to cancel. */}
+            {canManageRole(myRole, inv.role) ? (
+              <button
+                type="button"
+                className="button buttonGhost buttonSmall"
+                onClick={() => onCancel(inv.id)}
+                aria-label={t('cancelInvitation', { email: inv.email })}
+              >
+                {t('cancel')}
+              </button>
+            ) : null}
           </div>
         </li>
       ))}

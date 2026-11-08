@@ -223,10 +223,16 @@ export async function getOrganizationMembers(
  * here (`neq('role', 'owner')`), even if one became owner in the meantime.
  * Both return how many rows changed: 0 means nothing did.
  */
+/**
+ * Member writes (service role, after the route's checks) only touch the row while it still has
+ * the role the checks saw: 0 when it changed in the meantime (made an owner or an admin), so the
+ * caller answers 409 rather than acting on a role it wasn't allowed to manage.
+ */
 export async function updateMemberRole(
   admin: SupabaseClient,
   organizationId: string,
   memberId: string,
+  currentRole: Exclude<OrganizationRole, 'owner'>,
   newRole: Exclude<OrganizationRole, 'owner'>
 ): Promise<number> {
   const { data, error } = await admin
@@ -234,20 +240,25 @@ export async function updateMemberRole(
     .update({ role: newRole })
     .eq('id', memberId)
     .eq('organization_id', organizationId)
-    .neq('role', 'owner')
+    .eq('role', currentRole)
     .select('id');
 
   if (error) throw error;
   return data?.length ?? 0;
 }
 
-export async function removeMember(admin: SupabaseClient, organizationId: string, memberId: string): Promise<number> {
+export async function removeMember(
+  admin: SupabaseClient,
+  organizationId: string,
+  memberId: string,
+  currentRole: Exclude<OrganizationRole, 'owner'>
+): Promise<number> {
   const { data, error } = await admin
     .from('organization_members')
     .delete()
     .eq('id', memberId)
     .eq('organization_id', organizationId)
-    .neq('role', 'owner')
+    .eq('role', currentRole)
     .select('id');
 
   if (error) throw error;
@@ -294,18 +305,21 @@ export async function getPendingInvitations(
   return data || [];
 }
 
+/** How many invitations were cancelled: 0 when none matched, or the database didn't let this user change it. */
 export async function cancelInvitation(
   supabase: ReturnType<typeof createServerClient>,
   organizationId: string,
   invitationId: string
-): Promise<void> {
-  const { error } = await supabase
+): Promise<number> {
+  const { data, error } = await supabase
     .from('organization_invitations')
     .update({ status: 'cancelled' })
     .eq('id', invitationId)
-    .eq('organization_id', organizationId);
+    .eq('organization_id', organizationId)
+    .select('id');
 
   if (error) throw error;
+  return data?.length ?? 0;
 }
 
 export async function acceptInvitation(
@@ -432,13 +446,13 @@ export async function getTeamStats(
 }
 
 // Check if user is org member with required role
-export async function checkOrganizationAccess(
+/** The signed-in user's role in the team, or null when they aren't an active member of it. */
+export async function getMemberRole(
   supabase: ReturnType<typeof createServerClient>,
-  organizationId: string,
-  requiredRoles?: OrganizationRole[]
-): Promise<boolean> {
+  organizationId: string
+): Promise<OrganizationRole | null> {
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return false;
+  if (!user) return null;
 
   const { data: membership } = await supabase
     .from('organization_members')
@@ -447,10 +461,17 @@ export async function checkOrganizationAccess(
     .eq('user_id', user.id)
     .single();
 
-  if (!membership || membership.status !== 'active') return false;
-  if (requiredRoles && !requiredRoles.includes(membership.role)) return false;
+  return membership && membership.status === 'active' ? (membership.role as OrganizationRole) : null;
+}
 
-  return true;
+export async function checkOrganizationAccess(
+  supabase: ReturnType<typeof createServerClient>,
+  organizationId: string,
+  requiredRoles?: OrganizationRole[]
+): Promise<boolean> {
+  const role = await getMemberRole(supabase, organizationId);
+  if (!role) return false;
+  return !requiredRoles || requiredRoles.includes(role);
 }
 
 // Get current user's organization context

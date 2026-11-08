@@ -6,10 +6,12 @@ import {
   getPendingInvitations,
   cancelInvitation,
   checkOrganizationAccess,
+  getMemberRole,
 } from '@/lib/organizations';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { rateLimit } from '@/lib/rateLimit';
 import { deliverInvitation, invitePath, normalizeEmail, type InvitationRow } from '@/lib/teamInvites';
+import { canManageRole } from '@/lib/teamRoles';
 
 const INVITE_COLUMNS = 'id, organization_id, email, role, invited_by, token, status, expires_at, created_at';
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
@@ -18,6 +20,7 @@ const InviteSchema = z.object({
   email: z.string().trim().email().max(320),
   role: z.enum(['admin', 'member', 'viewer']),
 });
+const InvitationId = z.string().uuid();
 
 function withLink<T extends { token: string }>(invitation: T) {
   return { ...invitation, invitePath: invitePath(invitation.token) };
@@ -39,7 +42,13 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
   }
 }
 
-// POST /api/teams/[id]/invitations - invite (or invite again) an email address
+/**
+ * POST /api/teams/[id]/invitations - invite (or invite again) an email address; only the owner invites an admin.
+ *
+ * Owners and admins invite. An invitation as admin, new or renewed, is the owner's (teamRoles.ts;
+ * migration 0034 holds the database to the same rule). 403 owner_only: an admin asked for the admin
+ * role. 403 admin_invitation: the address already has an invitation as admin.
+ */
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
@@ -48,7 +57,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       data: { user },
     } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
-    if (!(await checkOrganizationAccess(supabase, id, ['owner', 'admin']))) {
+    const myRole = await getMemberRole(supabase, id);
+    if (myRole !== 'owner' && myRole !== 'admin') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
@@ -59,6 +69,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     if (!parse.success) return NextResponse.json({ error: 'invalid_body' }, { status: 400 });
     const email = normalizeEmail(parse.data.email);
     const role = parse.data.role;
+    if (!canManageRole(myRole, role)) return NextResponse.json({ error: 'owner_only' }, { status: 403 });
 
     const admin = createAdminClient();
     const [{ data: org }, { data: profile }] = await Promise.all([
@@ -83,6 +94,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       .eq('organization_id', id)
       .eq('email', email)
       .maybeSingle<InvitationRow>();
+    if (existing && !canManageRole(myRole, existing.role)) {
+      return NextResponse.json({ error: 'admin_invitation' }, { status: 403 });
+    }
 
     const fresh = {
       role,
@@ -105,17 +119,36 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   }
 }
 
-// DELETE /api/teams/[id]/invitations?invitation_id=… - cancel an invitation
+/**
+ * DELETE /api/teams/[id]/invitations?invitation_id=… - cancel an invitation; one as admin is the owner's to cancel.
+ *
+ * 403 owner_only: an admin tried to cancel an invitation as admin. 404: no such invitation in this team.
+ * 409: nothing was cancelled (it changed in the meantime).
+ */
 export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
     const supabase = await getServerOrganizationClient();
-    if (!(await checkOrganizationAccess(supabase, id, ['owner', 'admin']))) {
+    const myRole = await getMemberRole(supabase, id);
+    if (myRole !== 'owner' && myRole !== 'admin') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
     const invitationId = new URL(request.url).searchParams.get('invitation_id');
-    if (!invitationId) return NextResponse.json({ error: 'Invitation ID required' }, { status: 400 });
-    await cancelInvitation(supabase, id, invitationId);
+    if (!invitationId || !InvitationId.safeParse(invitationId).success) {
+      return NextResponse.json({ error: 'Invitation ID required' }, { status: 400 });
+    }
+    const { data: invitation, error: lookupError } = await supabase
+      .from('organization_invitations')
+      .select('id, role')
+      .eq('id', invitationId)
+      .eq('organization_id', id)
+      .maybeSingle<{ id: string; role: string }>();
+    if (lookupError) throw lookupError;
+    if (!invitation) return NextResponse.json({ error: 'not_found' }, { status: 404 });
+    if (!canManageRole(myRole, invitation.role)) return NextResponse.json({ error: 'owner_only' }, { status: 403 });
+    if (!(await cancelInvitation(supabase, id, invitationId))) {
+      return NextResponse.json({ error: 'conflict' }, { status: 409 });
+    }
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Error cancelling invitation:', error);

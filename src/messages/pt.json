@@ -2390,7 +2390,9 @@
       "remove": "Esse membro não foi removido. Tente de novo.",
       "role": "A função não foi alterada. Tente de novo.",
       "create": "A equipe não foi criada. Esse endereço pode já estar em uso; tente outro.",
-      "rename": "O nome não foi salvo. Tente de novo."
+      "rename": "O nome não foi salvo. Tente de novo.",
+      "ownerManagesAdmins": "Só o proprietário da equipe pode alterar ou remover um administrador.",
+      "adminInvitation": "{email} tem um convite como administrador, que só o proprietário da equipe pode alterar."
     },
     "loadingTeam": "Carregando sua equipe…",
     "loading": "Carregando…",

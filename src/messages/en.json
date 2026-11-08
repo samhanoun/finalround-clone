@@ -2390,7 +2390,9 @@
       "remove": "That member wasn't removed. Try again.",
       "role": "The role wasn't changed. Try again.",
       "create": "The team wasn't created. That address may be taken; try another.",
-      "rename": "The name wasn't saved. Try again."
+      "rename": "The name wasn't saved. Try again.",
+      "ownerManagesAdmins": "Only the team owner can change or remove an admin.",
+      "adminInvitation": "{email} has an invitation as admin, which only the team owner can change."
     },
     "loadingTeam": "Loading your team…",
     "loading": "Loading…",

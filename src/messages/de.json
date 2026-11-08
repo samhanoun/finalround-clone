@@ -2390,7 +2390,9 @@
       "remove": "Dieses Mitglied wurde nicht entfernt. Versuche es erneut.",
       "role": "Die Rolle wurde nicht geändert. Versuche es erneut.",
       "create": "Das Team wurde nicht erstellt. Diese Adresse ist vielleicht schon vergeben; versuche eine andere.",
-      "rename": "Der Name wurde nicht gespeichert. Versuche es erneut."
+      "rename": "Der Name wurde nicht gespeichert. Versuche es erneut.",
+      "ownerManagesAdmins": "Nur der Inhaber des Teams kann Admins ändern oder entfernen.",
+      "adminInvitation": "{email} hat eine Einladung als Admin, die nur der Inhaber des Teams ändern kann."
     },
     "loadingTeam": "Dein Team wird geladen …",
     "loading": "Wird geladen …",

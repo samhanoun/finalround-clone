@@ -2390,7 +2390,9 @@
       "remove": "No se quitó a ese miembro. Inténtalo de nuevo.",
       "role": "El rol no se cambió. Inténtalo de nuevo.",
       "create": "El equipo no se creó. Puede que esa dirección ya esté en uso; prueba otra.",
-      "rename": "El nombre no se guardó. Inténtalo de nuevo."
+      "rename": "El nombre no se guardó. Inténtalo de nuevo.",
+      "ownerManagesAdmins": "Solo el propietario del equipo puede cambiar o quitar a un administrador.",
+      "adminInvitation": "{email} tiene una invitación como administrador, que solo el propietario del equipo puede cambiar."
     },
     "loadingTeam": "Cargando tu equipo…",
     "loading": "Cargando…",

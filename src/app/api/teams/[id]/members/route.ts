@@ -3,11 +3,14 @@ import { z } from 'zod';
 import {
   getServerOrganizationClient,
   getOrganizationMembers,
+  getMemberRole,
   updateMemberRole,
   removeMember,
   checkOrganizationAccess,
+  type OrganizationRole,
 } from '@/lib/organizations';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { canManageRole } from '@/lib/teamRoles';
 
 // GET /api/teams/[id]/members - List team members, with their names, emails and photos
 export async function GET(
@@ -40,11 +43,12 @@ const ManageSchema = z.discriminatedUnion('action', [
 /**
  * PATCH /api/teams/[id]/members {member_id, action: 'remove' | 'update_role', role?}
  *
- * Owners and admins manage members. The database lets only owners write
- * member rows, so after the checks below the change is made with the service
- * role. The rules:
+ * Owners and admins manage members; only the owner manages admins. The
+ * database lets only owners write member rows, so after the checks below the
+ * change is made with the service role. The rules (teamRoles.ts):
  * - nobody changes or removes an owner;
  * - nobody makes someone an owner here (admins never; ownership isn't handed over through this form);
+ * - only the owner changes, removes or appoints an admin: admins manage members and viewers (owner_only);
  * - you can't change your own role.
  * 404: no such member in this team. 409: the member changed in the meantime, so nothing was written.
  */
@@ -60,7 +64,8 @@ export async function PATCH(
     } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
 
-    if (!(await checkOrganizationAccess(supabase, id, ['owner', 'admin']))) {
+    const myRole = await getMemberRole(supabase, id);
+    if (myRole !== 'owner' && myRole !== 'admin') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
@@ -78,19 +83,25 @@ export async function PATCH(
       .select('id, user_id, role')
       .eq('id', body.member_id)
       .eq('organization_id', id)
-      .maybeSingle<{ id: string; user_id: string; role: string }>();
+      .maybeSingle<{ id: string; user_id: string; role: OrganizationRole }>();
     if (targetError) throw targetError;
     if (!target) return NextResponse.json({ error: 'not_found' }, { status: 404 });
     if (target.role === 'owner') return NextResponse.json({ error: 'owner_protected' }, { status: 403 });
+    if (body.action === 'update_role' && target.user_id === user.id) {
+      return NextResponse.json({ error: 'own_role' }, { status: 403 });
+    }
+    // An admin (another one, or yourself as one) is the owner's to change or remove, and only the owner appoints one.
+    if (!canManageRole(myRole, target.role) || (body.action === 'update_role' && !canManageRole(myRole, body.role))) {
+      return NextResponse.json({ error: 'owner_only' }, { status: 403 });
+    }
 
     if (body.action === 'remove') {
-      const removed = await removeMember(admin, id, target.id);
+      const removed = await removeMember(admin, id, target.id, target.role);
       if (!removed) return NextResponse.json({ error: 'conflict' }, { status: 409 });
       return NextResponse.json({ success: true });
     }
 
-    if (target.user_id === user.id) return NextResponse.json({ error: 'own_role' }, { status: 403 });
-    const updated = await updateMemberRole(admin, id, target.id, body.role);
+    const updated = await updateMemberRole(admin, id, target.id, target.role, body.role);
     if (!updated) return NextResponse.json({ error: 'conflict' }, { status: 409 });
     return NextResponse.json({ success: true });
   } catch (error) {

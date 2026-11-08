@@ -44,7 +44,13 @@ const STATS = {
 };
 let analyticsStatus = 200;
 let membersStatus = 200;
-const INVITES = [{ id: 'i1', email: 'sam@acme.dev', role: 'member', status: 'pending', expires_at: '2026-11-12T00:00:00Z', invitePath: '/teams/join/abc' }];
+/** An error code the members PATCH or the invitation POST answers with (403), instead of succeeding. */
+let patchError: string | null = null;
+let inviteError: string | null = null;
+const INVITES = [
+  { id: 'i1', email: 'sam@acme.dev', role: 'member', status: 'pending', expires_at: '2026-11-12T00:00:00Z', invitePath: '/teams/join/abc' },
+  { id: 'i2', email: 'kai@acme.dev', role: 'admin', status: 'pending', expires_at: '2026-11-12T00:00:00Z', invitePath: '/teams/join/def' },
+];
 const SSO = {
   enabled: true,
   domains: ['acme.dev'],
@@ -59,16 +65,20 @@ beforeEach(() => {
   requests = [];
   analyticsStatus = 200;
   membersStatus = 200;
+  patchError = null;
+  inviteError = null;
   global.fetch = jest.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     const method = init?.method ?? 'GET';
     requests.push({ url, method, body: init?.body ? JSON.parse(String(init.body)) : undefined });
     const ok = (body: unknown, status = 200) => ({ ok: status < 400, status, json: async () => body }) as Response;
     if (url === '/api/teams/invitations') return ok({ invitations: [] });
-    if (url.endsWith('/members') && method === 'PATCH') return ok({ success: true });
+    if (url.endsWith('/members') && method === 'PATCH') return patchError ? ok({ error: patchError }, 403) : ok({ success: true });
     if (url.endsWith('/members')) return membersStatus === 200 ? ok({ members: MEMBERS }) : ok({ error: 'Failed to fetch members' }, membersStatus);
     if (url.endsWith('/analytics')) return analyticsStatus === 200 ? ok({ stats: STATS }) : ok({ error: 'Forbidden' }, analyticsStatus);
-    if (url.endsWith('/invitations') && method === 'POST') return ok({ invitation: { invitePath: '/teams/join/new' }, emailSent: false }, 201);
+    if (url.endsWith('/invitations') && method === 'POST') {
+      return inviteError ? ok({ error: inviteError }, 403) : ok({ invitation: { invitePath: '/teams/join/new' }, emailSent: false }, 201);
+    }
     if (url.endsWith('/invitations')) return ok({ invitations: INVITES });
     if (url.endsWith('/sso') && method === 'PUT') {
       return ok({ error: 'domain_unverified', records: [{ domain: 'acme.dev', type: 'TXT', name: '_apex-round-sso.acme.dev', value: 'apex-round-sso=abc123' }] }, 422);
@@ -170,6 +180,57 @@ describe('TeamsClient', () => {
     await waitFor(() =>
       expect(requests).toContainEqual({ url: '/api/teams/org-1/members', method: 'PATCH', body: { member_id: 'm2', action: 'update_role', role: 'viewer' } }),
     );
+  });
+
+  it('leaves admins to the owner: an admin manages members and viewers only', async () => {
+    renderAs('admin', 'u-kim');
+    const members = await screen.findByRole('region', { name: /Members/ });
+    const lee = (await within(members).findByText('Lee Park')).closest('li') as HTMLElement;
+    expect(within(lee).queryByRole('combobox')).not.toBeInTheDocument();
+    expect(within(lee).queryByRole('button', { name: 'Remove Lee Park' })).not.toBeInTheDocument();
+    expect(within(lee).getByText('Admin')).toBeInTheDocument();
+
+    const marcusRole = within(members).getByRole('combobox', { name: 'Role for marcus@acme.dev' });
+    expect(within(marcusRole).getAllByRole('option').map((option) => option.textContent)).toEqual(['Member', 'Viewer']);
+    expect(within(members).getByRole('button', { name: 'Remove Marcus Webb' })).toBeInTheDocument();
+
+    const form = screen.getByRole('form', { name: 'Invite someone' });
+    const inviteRoles = within(within(form).getByLabelText('Role')).getAllByRole('option') as HTMLOptionElement[];
+    expect(inviteRoles.map((option) => option.value)).toEqual(['member', 'viewer']);
+
+    expect(await screen.findByText('kai@acme.dev')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Cancel the invitation to kai@acme.dev' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Cancel the invitation to sam@acme.dev' })).toBeInTheDocument();
+  });
+
+  it('lets the owner manage admins and their invitations', async () => {
+    renderAs('owner', 'u-ana');
+    const members = await screen.findByRole('region', { name: /Members/ });
+    const leeRole = await within(members).findByRole('combobox', { name: 'Role for lee@acme.dev' });
+    expect(within(leeRole).getAllByRole('option').map((option) => option.textContent)).toEqual(['Admin', 'Member', 'Viewer']);
+    expect(within(members).getByRole('button', { name: 'Remove Lee Park' })).toBeInTheDocument();
+
+    const form = screen.getByRole('form', { name: 'Invite someone' });
+    const inviteRoles = within(within(form).getByLabelText('Role')).getAllByRole('option') as HTMLOptionElement[];
+    expect(inviteRoles.map((option) => option.value)).toEqual(['member', 'admin', 'viewer']);
+    expect(await screen.findByRole('button', { name: 'Cancel the invitation to kai@acme.dev' })).toBeInTheDocument();
+  });
+
+  it('says only the owner can change an admin when the page was out of date', async () => {
+    patchError = 'owner_only';
+    renderAs('admin', 'u-kim');
+    const members = await screen.findByRole('region', { name: /Members/ });
+    fireEvent.change(await within(members).findByRole('combobox', { name: 'Role for marcus@acme.dev' }), { target: { value: 'viewer' } });
+    expect(await screen.findByText('Only the team owner can change or remove an admin.')).toHaveAttribute('role', 'alert');
+  });
+
+  it('says when the address already has an invitation as admin', async () => {
+    inviteError = 'admin_invitation';
+    renderAs('admin', 'u-kim');
+    const form = await screen.findByRole('form', { name: 'Invite someone' });
+    fireEvent.change(within(form).getByLabelText('Email'), { target: { value: 'kai@acme.dev' } });
+    fireEvent.click(within(form).getByRole('button', { name: 'Send invitation' }));
+    expect(await screen.findByText('kai@acme.dev has an invitation as admin, which only the team owner can change.')).toHaveAttribute('role', 'alert');
   });
 
   it('keeps invitations, single sign-on and the danger zone from members who can’t manage them', async () => {

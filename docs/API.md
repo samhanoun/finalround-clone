@@ -205,10 +205,10 @@ Every route answers JSON. Signed-in routes read the Supabase session cookie; mos
 | `DELETE` | `/api/teams/[id]` | Delete organization |
 | `GET` | `/api/teams/[id]/analytics` | Get team analytics (any member, viewers included: they see the same team page) |
 | `GET` | `/api/teams/[id]/invitations` | pending invitations, each with its link (owners and admins) |
-| `POST` | `/api/teams/[id]/invitations` | invite (or invite again) an email address |
-| `DELETE` | `/api/teams/[id]/invitations` | cancel an invitation |
+| `POST` | `/api/teams/[id]/invitations` | invite (or invite again) an email address; only the owner invites an admin. |
+| `DELETE` | `/api/teams/[id]/invitations` | cancel an invitation; one as admin is the owner's to cancel. |
 | `GET` | `/api/teams/[id]/members` | List team members, with their names, emails and photos |
-| `PATCH` | `/api/teams/[id]/members` | {member_id, action: 'remove' \| 'update_role', role?} Owners and admins manage members. |
+| `PATCH` | `/api/teams/[id]/members` | {member_id, action: 'remove' \| 'update_role', role?} Owners and admins manage members; only the owner manages admins. |
 | `GET` | `/api/teams/[id]/sso` |  |
 | `PUT` | `/api/teams/[id]/sso` | {domains, metadataUrl \| metadataXml} - turn on, or update |
 | `DELETE` | `/api/teams/[id]/sso` | turn off and remove the identity provider |

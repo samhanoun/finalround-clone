@@ -17,6 +17,12 @@ import { loadBank, pickBankQuestions, saveToBank } from '@/lib/questionBank';
 import { LOCALES } from '@/i18n/locales';
 import { kitFor } from '@/lib/localizedEmail';
 
+/** The "Practice interview" title new interviews get, in any language. */
+async function isDefaultPracticeTitle(title: string): Promise<boolean> {
+  const defaults = await Promise.all(LOCALES.map(async (locale) => (await kitFor(locale)).t('NewPractice')('defaultTitle')));
+  return defaults.includes(title);
+}
+
 /**
  * Starts a practice interview: the model writes the questions for the role
  * (and the résumé and job, when given), and they are saved in order. With
@@ -24,12 +30,6 @@ import { kitFor } from '@/lib/localizedEmail';
  * model writes only the rest. New questions join the user's private bank for
  * that company.
  */
-/** The "Practice interview" title new interviews get, in any language. */
-async function isDefaultPracticeTitle(title: string): Promise<boolean> {
-  const defaults = await Promise.all(LOCALES.map(async (locale) => (await kitFor(locale)).t('NewPractice')('defaultTitle')));
-  return defaults.includes(title);
-}
-
 export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
   const supabase = await createClient();

@@ -9,12 +9,14 @@ jest.mock('@/lib/organizations', () => ({
   ...jest.requireActual('@/lib/organizations'),
   getServerOrganizationClient: jest.fn(),
   checkOrganizationAccess: jest.fn(),
+  getMemberRole: jest.fn(),
 }));
 jest.mock('@/lib/supabase/admin', () => ({ createAdminClient: jest.fn() }));
 
-const { getServerOrganizationClient, checkOrganizationAccess } = jest.requireMock('@/lib/organizations') as {
+const { getServerOrganizationClient, checkOrganizationAccess, getMemberRole } = jest.requireMock('@/lib/organizations') as {
   getServerOrganizationClient: jest.Mock;
   checkOrganizationAccess: jest.Mock;
+  getMemberRole: jest.Mock;
 };
 const { createAdminClient } = jest.requireMock('@/lib/supabase/admin') as { createAdminClient: jest.Mock };
 
@@ -73,6 +75,7 @@ const IDS = {
   admin: '22222222-2222-4222-8222-222222222222',
   member: '33333333-3333-4333-8333-333333333333',
   elsewhere: '44444444-4444-4444-8444-444444444444',
+  otherAdmin: '55555555-5555-4555-8555-555555555555',
 };
 
 function teamRows(): Row[] {
@@ -81,15 +84,18 @@ function teamRows(): Row[] {
     { id: IDS.admin, organization_id: TEAM, user_id: ME, role: 'admin', status: 'active', created_at: '2026-09-02T00:00:00Z' },
     { id: IDS.member, organization_id: TEAM, user_id: 'user-member', role: 'member', status: 'active', created_at: '2026-09-03T00:00:00Z' },
     { id: IDS.elsewhere, organization_id: OTHER_TEAM, user_id: 'user-other', role: 'member', status: 'active', created_at: '2026-09-04T00:00:00Z' },
+    { id: IDS.otherAdmin, organization_id: TEAM, user_id: 'user-admin-2', role: 'admin', status: 'active', created_at: '2026-09-05T00:00:00Z' },
   ];
 }
 
 let admin: ReturnType<typeof fakeClient>;
 
-function signedInAs(userId: string | null) {
+/** Signs in as `userId`, whose role in the team is `role`. */
+function signedInAs(userId: string | null, role: string | null = 'admin') {
   getServerOrganizationClient.mockResolvedValue({
     auth: { getUser: async () => ({ data: { user: userId ? { id: userId } : null } }) },
   });
+  getMemberRole.mockResolvedValue(userId ? role : null);
 }
 
 async function patch(body: unknown) {
@@ -119,15 +125,15 @@ afterEach(() => jest.restoreAllMocks());
 describe('PATCH /api/teams/[id]/members', () => {
   it('lets an admin remove a member, writing with the service role', async () => {
     expect(await patch({ action: 'remove', member_id: IDS.member })).toEqual({ status: 200, body: { success: true } });
-    expect(checkOrganizationAccess).toHaveBeenCalledWith(expect.anything(), TEAM, ['owner', 'admin']);
+    expect(getMemberRole).toHaveBeenCalledWith(expect.anything(), TEAM);
     expect(memberRow(IDS.member)).toBeUndefined();
-    // Scoped to this team, and never an owner row.
+    // Scoped to this team, and only while the row still has the role that was checked.
     expect(writes()).toEqual([
       expect.objectContaining({
         op: 'delete',
         filters: expect.arrayContaining([
           { kind: 'eq', column: 'organization_id', value: TEAM },
-          { kind: 'neq', column: 'role', value: 'owner' },
+          { kind: 'eq', column: 'role', value: 'member' },
         ]),
       }),
     ]);
@@ -147,10 +153,53 @@ describe('PATCH /api/teams/[id]/members', () => {
 
   it('does not let an admin make anyone an owner (nor anyone else, through this form)', async () => {
     expect(await patch({ action: 'update_role', member_id: IDS.member, role: 'owner' })).toEqual({ status: 403, body: { error: 'cannot_make_owner' } });
-    signedInAs('user-owner');
+    signedInAs('user-owner', 'owner');
     expect(await patch({ action: 'update_role', member_id: IDS.member, role: 'owner' })).toEqual({ status: 403, body: { error: 'cannot_make_owner' } });
     expect(memberRow(IDS.member)?.role).toBe('member');
     expect(writes()).toEqual([]);
+  });
+
+  it('leaves admins to the owner: an admin can’t remove or demote another admin, nor themselves', async () => {
+    expect(await patch({ action: 'remove', member_id: IDS.otherAdmin })).toEqual({ status: 403, body: { error: 'owner_only' } });
+    expect(await patch({ action: 'update_role', member_id: IDS.otherAdmin, role: 'viewer' })).toEqual({ status: 403, body: { error: 'owner_only' } });
+    expect(await patch({ action: 'remove', member_id: IDS.admin })).toEqual({ status: 403, body: { error: 'owner_only' } });
+    expect(memberRow(IDS.otherAdmin)?.role).toBe('admin');
+    expect(memberRow(IDS.admin)?.role).toBe('admin');
+    expect(writes()).toEqual([]);
+  });
+
+  it('does not let an admin make anyone an admin', async () => {
+    expect(await patch({ action: 'update_role', member_id: IDS.member, role: 'admin' })).toEqual({ status: 403, body: { error: 'owner_only' } });
+    expect(memberRow(IDS.member)?.role).toBe('member');
+    expect(writes()).toEqual([]);
+  });
+
+  it('lets the owner appoint, demote and remove admins', async () => {
+    signedInAs('user-owner', 'owner');
+    expect(await patch({ action: 'update_role', member_id: IDS.member, role: 'admin' })).toEqual({ status: 200, body: { success: true } });
+    expect(memberRow(IDS.member)?.role).toBe('admin');
+    expect(await patch({ action: 'update_role', member_id: IDS.otherAdmin, role: 'member' })).toEqual({ status: 200, body: { success: true } });
+    expect(memberRow(IDS.otherAdmin)?.role).toBe('member');
+    expect(await patch({ action: 'remove', member_id: IDS.admin })).toEqual({ status: 200, body: { success: true } });
+    expect(memberRow(IDS.admin)).toBeUndefined();
+  });
+
+  it('answers 409 when the member was made an admin in the meantime, and leaves them alone', async () => {
+    // Checked as a member, then promoted by the owner before the admin's write lands.
+    const tables = admin.tables;
+    const original = admin.client.from.bind(admin.client);
+    let reads = 0;
+    createAdminClient.mockReturnValue({
+      from: (table: string) => {
+        if (table === 'organization_members' && reads++ === 1) {
+          const row = tables.organization_members.find((r) => r.id === IDS.member);
+          if (row) row.role = 'admin';
+        }
+        return original(table);
+      },
+    });
+    expect(await patch({ action: 'remove', member_id: IDS.member })).toEqual({ status: 409, body: { error: 'conflict' } });
+    expect(memberRow(IDS.member)?.role).toBe('admin');
   });
 
   it('does not let you change your own role', async () => {
@@ -185,9 +234,10 @@ describe('PATCH /api/teams/[id]/members', () => {
   });
 
   it('refuses people who are not owners or admins, signed-out visitors and malformed requests', async () => {
-    checkOrganizationAccess.mockResolvedValue(false);
-    expect((await patch({ action: 'remove', member_id: IDS.member })).status).toBe(403);
-    checkOrganizationAccess.mockResolvedValue(true);
+    for (const role of ['member', 'viewer', null]) {
+      signedInAs('user-member', role);
+      expect((await patch({ action: 'remove', member_id: IDS.member })).status).toBe(403);
+    }
     signedInAs(null);
     expect((await patch({ action: 'remove', member_id: IDS.member })).status).toBe(401);
     signedInAs(ME);
@@ -200,7 +250,7 @@ describe('PATCH /api/teams/[id]/members', () => {
 
 describe('GET /api/teams/[id]/members', () => {
   it('names every teammate: profiles are read with the service role, only for this team’s members', async () => {
-    const user = fakeClient({ organization_members: teamRows().filter((row) => row.organization_id === TEAM) });
+    const user = fakeClient({ organization_members: teamRows().filter((row) => row.organization_id === TEAM && row.id !== IDS.otherAdmin) });
     getServerOrganizationClient.mockResolvedValue({ ...user.client, auth: { getUser: async () => ({ data: { user: { id: ME } } }) } });
     admin = fakeClient({
       profiles: [
