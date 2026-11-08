@@ -4,6 +4,8 @@ node_modules
 desktop
 chrome-extension
 e2e
+# The Playwright configs import e2e/, so they stay out too (next build type-checks every .ts it's given).
+playwright*.config.ts
 playwright-report
 test-results
 coverage
