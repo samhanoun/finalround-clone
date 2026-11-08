@@ -42,6 +42,12 @@ RUN npm run build
 # --- runtime ---
 FROM node:${NODE_VERSION}-bookworm-slim AS runtime
 WORKDIR /app
+# The container only runs node. The base image's npm, npx, corepack and yarn
+# aren't needed, and npm's own bundled dependencies carry known
+# vulnerabilities (Trivy's image scan), so they're removed.
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack \
+      /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack \
+      /opt/yarn-v* /usr/local/bin/yarn /usr/local/bin/yarnpkg
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \
     PORT=3000 \
