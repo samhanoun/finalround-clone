@@ -63,4 +63,12 @@ describe('tips', () => {
   it('asks for contact details when there are none', () => {
     expect(calculateATSScore('Engineer with React experience', JOB).tips).toContainEqual({ code: 'add_contact' });
   });
+
+  it('finds an email address, and checks a long run of text without one quickly', () => {
+    expect(calculateATSScore('Reach me at jane.doe@mail.example.com. React experience', JOB).tips).not.toContainEqual({ code: 'add_contact' });
+    // The server runs this on uploaded résumés: 200,000 characters with no address once took minutes.
+    const started = Date.now();
+    expect(calculateATSScore(`x@${'a'.repeat(200_000)} React experience`, JOB).tips).toContainEqual({ code: 'add_contact' });
+    expect(Date.now() - started).toBeLessThan(2000);
+  });
 });

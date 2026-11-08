@@ -85,7 +85,8 @@ for (const [area, list] of groups) {
   out.push(`## ${area}`, '', '| Method | Path | What it does |', '| --- | --- | --- |');
   for (const row of list) {
     for (const method of row.methods) {
-      const text = describe(row.source, method).replace(/\|/g, '\\|');
+      // Backslashes first, so a backslash before a pipe can't undo the pipe's escape and split the cell.
+      const text = describe(row.source, method).replace(/\\/g, '\\\\').replace(/\|/g, '\\|');
       out.push(`| \`${method}\` | \`${row.route}\` | ${text} |`);
     }
   }

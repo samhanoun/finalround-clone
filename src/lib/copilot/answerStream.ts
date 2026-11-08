@@ -21,7 +21,7 @@ export type FinishedAnswer = {
 
 /** The retrieved passages the answer actually cited, in tag order. */
 export function citedSources(text: string, sources: AnswerSource[]): AnswerSource[] {
-  return sources.filter((source) => new RegExp(`\\[${source.tag}\\]`).test(text));
+  return sources.filter((source) => text.includes(`[${source.tag}]`));
 }
 
 function sseEvent(event: string, data: unknown): string {

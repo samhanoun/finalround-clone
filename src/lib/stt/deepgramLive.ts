@@ -496,8 +496,19 @@ export class LiveTranscriber {
     }
   }
 
+  /**
+   * The channel a message names, when it's one this connection sends; -1 for anything else. The index
+   * comes off the wire and picks which per-channel slot is written, so only an index we know gets through.
+   */
+  private channelOf(index: unknown): number {
+    for (let channel = 0; channel < this.channels; channel += 1) {
+      if (index === channel) return channel;
+    }
+    return -1;
+  }
+
   private handleResults(message: DeepgramResults, receivedAt: number): void {
-    const channel = message.channel_index?.[0] ?? 0;
+    const channel = this.channelOf(message.channel_index?.[0] ?? 0);
     const role = CHANNEL_ROLES[channel];
     if (!role || this.connectionBaseSample === null) return;
 

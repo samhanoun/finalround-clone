@@ -143,7 +143,10 @@ export function calculateATSScore(
   const lengthScore = wordCount > 200 ? 15 : (wordCount / 200) * 15;
 
   // Format bonus (presence of common resume sections)
-  const hasContactInfo = /[\w.-]+@[\w.-]+\.\w+/.test(resumeText);
+  // Bounded parts (an address's local part is at most 64 characters, a domain label 63), so a long
+  // run of text with no address is checked in linear time: the server runs this on uploaded résumés,
+  // and the unbounded pattern took time growing with the square of such a run.
+  const hasContactInfo = /[\w.-]{1,64}@[\w-]{1,63}(?:\.[\w-]{1,63})+/.test(resumeText);
   const hasExperience = /experience|worked|employed|position|role/i.test(resumeText);
   const hasEducation = /education|degree|bachelor|master|university|college/i.test(resumeText);
   const formatScore = (hasContactInfo ? 5 : 0) + (hasExperience ? 5 : 0) + (hasEducation ? 5 : 0);
