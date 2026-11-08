@@ -237,7 +237,7 @@ export async function syncBadges(userId: string, admin: SupabaseClient = createA
       try {
         return { type, evidence: await CHECKS[type](context, shared) };
       } catch (checkError) {
-        console.error(`[badges] could not check ${type}`, checkError instanceof Error ? checkError.message : checkError);
+        console.error('[badges] could not check %s', type, checkError instanceof Error ? checkError.message : checkError);
         return { type, evidence: null };
       }
     }),

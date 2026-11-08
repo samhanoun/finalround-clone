@@ -171,7 +171,7 @@ export class JsonStore<T> {
 
   save(value: T): Promise<void> {
     const write = this.queue.then(() => writeJsonAtomic(this.file, value));
-    this.queue = write.catch((error: Error) => console.warn(`[desktop] could not save ${path.basename(this.file)}:`, error.message));
+    this.queue = write.catch((error: Error) => console.warn('[desktop] could not save %s:', path.basename(this.file), error.message));
     return write;
   }
 }

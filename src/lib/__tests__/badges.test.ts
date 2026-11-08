@@ -294,7 +294,7 @@ describe('syncBadges failures', () => {
       { failing: ['resume_generations'] },
     );
     expect((await syncBadges(USER, admin.client)).sort()).toEqual(['five_sessions', 'job_applied']);
-    expect(console.error).toHaveBeenCalledWith('[badges] could not check resume_optimized', expect.stringContaining('resume_generations'));
+    expect(console.error).toHaveBeenCalledWith('[badges] could not check %s', 'resume_optimized', expect.stringContaining('resume_generations'));
   });
 
   it('throws when the held badges can’t be read, so nothing is awarded twice', async () => {

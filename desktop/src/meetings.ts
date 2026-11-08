@@ -113,6 +113,7 @@ export function meetingAppFor(user: MicrophoneUser, ownExecutable?: string): str
     if (BROWSERS.has(user.name)) return null;
     return MEETING_APPS.find((app) => app.executables.includes(user.name))?.name ?? null;
   }
+  // nosemgrep: ajinabraham.njsscan.dos.regex_dos.regex_dos -- MEETING_APPS' own short literal patterns, each linear
   return MEETING_APPS.find((app) => app.packages.some((pattern) => pattern.test(user.id)))?.name ?? null;
 }
 

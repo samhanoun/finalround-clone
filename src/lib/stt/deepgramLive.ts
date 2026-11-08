@@ -207,6 +207,7 @@ export class LiveTranscriber {
     this.closeTimeoutMs = options.closeTimeoutMs ?? 2_000;
     this.createSocket = options.createSocket ?? ((url) => new WebSocket(url) as unknown as SocketLike);
     this.now = options.now ?? (() => Date.now());
+    // nosemgrep: ajinabraham.njsscan.crypto.crypto_node.node_insecure_random_generator -- reconnect jitter, not a secret
     this.random = options.random ?? (() => Math.random());
     this.gateSilence = options.gateSilence ?? false;
     this.voiceThreshold = options.voiceThreshold ?? 0.008;

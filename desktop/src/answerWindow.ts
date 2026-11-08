@@ -193,7 +193,7 @@ export class AnswerWindow {
         if (globalShortcut.register(accelerator, action)) this.registered.push(accelerator);
         else console.warn(`[desktop] ${accelerator} is used by another app; the answer window can't use it`);
       } catch (error) {
-        console.warn(`[desktop] could not register ${accelerator}:`, error instanceof Error ? error.message : error);
+        console.warn('[desktop] could not register %s:', accelerator, error instanceof Error ? error.message : error);
       }
     };
     for (const direction of ['left', 'right', 'up', 'down'] as const) {

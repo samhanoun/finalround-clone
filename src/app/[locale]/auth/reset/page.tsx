@@ -27,6 +27,7 @@ export default function ResetPasswordPage() {
     event.preventDefault();
     setError(null);
     if (password.length < 8) return setError(t('tooShort'));
+    // nosemgrep: ajinabraham.njsscan.crypto.timing_attack_node.node_timing_attack -- the two fields the person just typed, compared in their own browser
     if (password !== confirm) return setError(t('mismatch'));
     setSaving(true);
     const { error } = await createClient().auth.updateUser({ password });

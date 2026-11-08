@@ -86,20 +86,39 @@ export function extractJobKeywords(jobDescription: string): string[] {
 }
 
 /**
- * Count keyword occurrences in resume text
+ * Count keyword occurrences in resume text, ignoring case and not inside a longer word (unlike \b,
+ * this also works for keywords such as "c++" or "c#"). A plain search: the keyword comes from the
+ * job description, so no pattern is built from it.
  */
 function countKeywordOccurrences(text: string, keyword: string): number {
-  // Not inside a longer word; unlike \b this also works for keywords such as "c++" or "c#".
-  const regex = new RegExp(`(?<![A-Za-z0-9])${escapeRegExp(keyword)}(?![A-Za-z0-9])`, 'gi');
-  const matches = text.match(regex);
-  return matches ? matches.length : 0;
+  const needle = keyword.toLowerCase();
+  if (!needle) return 0;
+  const haystack = text.toLowerCase();
+  let count = 0;
+  let at = haystack.indexOf(needle);
+  while (at !== -1) {
+    const end = at + needle.length;
+    if (!isAsciiLetterOrDigit(haystack[at - 1]) && !isAsciiLetterOrDigit(haystack[end])) {
+      count += 1;
+      at = haystack.indexOf(needle, end);
+    } else {
+      at = haystack.indexOf(needle, at + 1);
+    }
+  }
+  return count;
 }
 
-/**
- * Escape special regex characters
- */
-function escapeRegExp(string: string): string {
-  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+/** An ASCII letter or digit: what a keyword may not touch on either side. */
+function isAsciiLetterOrDigit(char: string | undefined): boolean {
+  return char !== undefined && ((char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z') || (char >= '0' && char <= '9'));
+}
+
+/** Whether any character is outside ASCII (some ATS parsers mangle them). */
+function hasNonAscii(text: string): boolean {
+  for (let i = 0; i < text.length; i += 1) {
+    if (text.charCodeAt(i) > 0x7f) return true;
+  }
+  return false;
 }
 
 /**
@@ -146,9 +165,12 @@ export function calculateATSScore(
   // Bounded parts (an address's local part is at most 64 characters, a domain label 63), so a long
   // run of text with no address is checked in linear time: the server runs this on uploaded résumés,
   // and the unbounded pattern took time growing with the square of such a run.
+  // nosemgrep: ajinabraham.njsscan.dos.regex_dos.regex_dos -- bounded and linear, as above; a test checks 200,000 characters
   const hasContactInfo = /[\w.-]{1,64}@[\w-]{1,63}(?:\.[\w-]{1,63})+/.test(resumeText);
-  const hasExperience = /experience|worked|employed|position|role/i.test(resumeText);
-  const hasEducation = /education|degree|bachelor|master|university|college/i.test(resumeText);
+  const lowerText = resumeText.toLowerCase();
+  const mentionsAny = (words: string[]) => words.some((word) => lowerText.includes(word));
+  const hasExperience = mentionsAny(['experience', 'worked', 'employed', 'position', 'role']);
+  const hasEducation = mentionsAny(['education', 'degree', 'bachelor', 'master', 'university', 'college']);
   const formatScore = (hasContactInfo ? 5 : 0) + (hasExperience ? 5 : 0) + (hasEducation ? 5 : 0);
 
   const totalScore = Math.round(keywordScore + lengthScore + formatScore);
@@ -177,7 +199,7 @@ export function calculateATSScore(
   if (resumeText.length > 8000) {
     formatIssues.push('Resume may be too long for some ATS systems');
   }
-  if (/[^\x00-\x7F]/.test(resumeText)) {
+  if (hasNonAscii(resumeText)) {
     formatIssues.push('Contains special characters that may cause parsing issues');
   }
   if (!hasContactInfo) {

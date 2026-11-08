@@ -104,6 +104,22 @@ export function languageRules(lang: string | undefined): LanguageRules {
   return RULES[ALIASES[key] ?? key] ?? RULES.javascript;
 }
 
+/** Sticky (anchored at lastIndex), so they match at a position in the code without slicing it. */
+const NUMBER = /0x[0-9a-fA-F_]+|\d[\d_]*(\.\d+)?([eE][+-]?\d+)?/y;
+const WORD = /[A-Za-z_$][\w$]*/y;
+
+const isDigit = (c: string | undefined) => c !== undefined && c >= '0' && c <= '9';
+const isLower = (c: string | undefined) => c !== undefined && c >= 'a' && c <= 'z';
+const isUpper = (c: string | undefined) => c !== undefined && c >= 'A' && c <= 'Z';
+const isLetter = (c: string | undefined) => isLower(c) || isUpper(c);
+
+/** The first position at or after `from` that isn't whitespace. */
+function skipSpaces(code: string, from: number): number {
+  let at = from;
+  while (at < code.length && code[at].trim() === '') at += 1;
+  return at;
+}
+
 export function tokenizeCode(code: string, lang?: string): Token[] {
   const rules = languageRules(lang);
   const tokens: Token[] = [];
@@ -114,8 +130,7 @@ export function tokenizeCode(code: string, lang?: string): Token[] {
   };
   let i = 0;
   while (i < code.length) {
-    const rest = code.slice(i);
-    const lineComment = rules.lineComment.find((marker) => rest.startsWith(marker));
+    const lineComment = rules.lineComment.find((marker) => code.startsWith(marker, i));
     if (lineComment) {
       const end = code.indexOf('\n', i);
       const stop = end === -1 ? code.length : end;
@@ -123,7 +138,7 @@ export function tokenizeCode(code: string, lang?: string): Token[] {
       i = stop;
       continue;
     }
-    if (rules.blockComment && rest.startsWith(rules.blockComment[0])) {
+    if (rules.blockComment && code.startsWith(rules.blockComment[0], i)) {
       const end = code.indexOf(rules.blockComment[1], i + rules.blockComment[0].length);
       const stop = end === -1 ? code.length : end + rules.blockComment[1].length;
       push('comment', code.slice(i, stop));
@@ -132,7 +147,7 @@ export function tokenizeCode(code: string, lang?: string): Token[] {
     }
     const ch = code[i];
     if (ch === '"' || ch === "'" || ch === '`') {
-      const triple = (ch === '"' || ch === "'") && rest.startsWith(ch.repeat(3)) ? ch.repeat(3) : ch;
+      const triple = (ch === '"' || ch === "'") && code.startsWith(ch.repeat(3), i) ? ch.repeat(3) : ch;
       let j = i + triple.length;
       while (j < code.length && !code.startsWith(triple, j)) {
         if (code[j] === '\\') j += 1;
@@ -144,20 +159,22 @@ export function tokenizeCode(code: string, lang?: string): Token[] {
       i = stop;
       continue;
     }
-    if (/[0-9]/.test(ch) && !/[A-Za-z_]/.test(code[i - 1] ?? '')) {
-      const match = /^(0x[0-9a-fA-F_]+|\d[\d_]*(\.\d+)?([eE][+-]?\d+)?)/.exec(rest);
+    if (isDigit(ch) && !isLetter(code[i - 1]) && code[i - 1] !== '_') {
+      NUMBER.lastIndex = i;
+      const match = NUMBER.exec(code);
       if (match) {
         push('number', match[0]);
         i += match[0].length;
         continue;
       }
     }
-    if (/[A-Za-z_$]/.test(ch)) {
-      const word = /^[A-Za-z_$][\w$]*/.exec(rest)?.[0] ?? ch;
+    if (isLetter(ch) || ch === '_' || ch === '$') {
+      WORD.lastIndex = i;
+      const word = WORD.exec(code)?.[0] ?? ch;
       const lookup = rules.caseInsensitive ? word.toLowerCase() : word;
       if (rules.keywords.has(lookup)) push('keyword', word);
-      else if (/^\s*\(/.test(code.slice(i + word.length))) push('function', word);
-      else if (/^[A-Z][a-z0-9]/.test(word)) push('type', word);
+      else if (code[skipSpaces(code, i + word.length)] === '(') push('function', word);
+      else if (isUpper(word[0]) && (isLower(word[1]) || isDigit(word[1]))) push('type', word);
       else push('plain', word);
       i += word.length;
       continue;

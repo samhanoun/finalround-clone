@@ -18,7 +18,7 @@ export function jsonError(status: number, message: string, extra?: unknown) {
   const internal = isInternalError(extra);
   if (extra && internal) {
     const detail = extra instanceof Error ? extra.message : extra;
-    console.error(`[api] ${status} ${message}`, detail);
+    console.error('[api] %s %s', status, message, detail);
   }
   return NextResponse.json({ error: message, ...(extra && !internal ? { extra } : {}) }, { status });
 }

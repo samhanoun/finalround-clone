@@ -20,36 +20,65 @@ function walk(dir) {
   });
 }
 
-const handlerLine = (method) => new RegExp(String.raw`^export\s+(?:async\s+function\s+${method}\b|const\s+${method}\b)`);
-const methodPrefix = (method) => new RegExp(String.raw`^${method}\s+\S+\s*[-—:]?\s*`);
-const methodComment = (method) => new RegExp(String.raw`^\s*(?:\/\/|\*)\s*${method}\s+(?:or\s+\w+\s+)?\S*\s*[-—:]\s*(.+)$`);
+// Fixed patterns that capture the method, rather than a RegExp built for each one.
+const HANDLER = /^export\s+(?:async\s+function\s+|const\s+)(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\b/;
+const EXPORTED = /export\s+(?:async\s+function\s+|const\s+)(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\b/g;
+const RE_EXPORTED = /export\s+\{([^}]*)\}\s+from/g;
+const METHOD_WORD = /\b(?:GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\b/g;
+const PREFIX = /^(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s+\S+\s*[-—:]?\s*/;
+const METHOD_COMMENT = /^\s*(?:\/\/|\*)\s*(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s+(?:or\s+\w+\s+)?\S*\s*[-—:]\s*(.+)$/;
+const COMMENT_MARKERS = ['/**', '*/', '*', '//'];
+
+/** The HTTP methods a route file exports, in METHODS order: its own handlers and names it re-exports. */
+function exportedMethods(source) {
+  const found = new Set();
+  for (const match of source.matchAll(EXPORTED)) found.add(match[1]);
+  for (const match of source.matchAll(RE_EXPORTED)) for (const name of match[1].match(METHOD_WORD) ?? []) found.add(name);
+  return METHODS.filter((method) => found.has(method));
+}
+
+/** A comment line's text, without its leading marker or a closing star-slash. */
+function commentText(line) {
+  let text = line.trimStart();
+  const marker = COMMENT_MARKERS.find((m) => text.startsWith(m));
+  if (marker) text = text.slice(marker.length);
+  text = text.trimEnd();
+  if (text.endsWith('*/')) text = text.slice(0, -2);
+  return text.trim();
+}
 
 /** The comment block directly above line `at` (a JSDoc block or consecutive // lines), as text. */
 function commentAbove(lines, at) {
   let i = at - 1;
   const block = [];
-  if (i >= 0 && /\*\/\s*$/.test(lines[i])) {
-    while (i >= 0 && !/\/\*\*/.test(lines[i])) block.unshift(lines[i--]);
+  if (i >= 0 && lines[i].trimEnd().endsWith('*/')) {
+    while (i >= 0 && !lines[i].includes('/**')) block.unshift(lines[i--]);
     if (i >= 0) block.unshift(lines[i]);
   } else {
-    while (i >= 0 && /^\s*\/\//.test(lines[i])) block.unshift(lines[i--]);
+    while (i >= 0 && lines[i].trimStart().startsWith('//')) block.unshift(lines[i--]);
   }
   return block
-    .map((line) => line.replace(/^\s*(?:\/\*\*|\*\/|\*|\/\/)\s?/, '').replace(/\*\/\s*$/, '').trim())
+    .map(commentText)
     .filter((line) => line && !line.startsWith('@'))
     .join(' ');
 }
 
+/** The comment without the "METHOD /api/path -" it starts with, when it names this method. */
+function withoutPrefix(text, method) {
+  const prefix = PREFIX.exec(text);
+  return prefix && prefix[1] === method ? text.slice(prefix[0].length) : text;
+}
+
 function describe(source, method) {
   const lines = source.split('\n');
-  const at = lines.findIndex((line) => handlerLine(method).test(line));
+  const at = lines.findIndex((line) => HANDLER.exec(line)?.[1] === method);
   if (at > 0) {
-    const text = commentAbove(lines, at).replace(methodPrefix(method), '').trim();
+    const text = withoutPrefix(commentAbove(lines, at), method).trim();
     if (text) return (text.split(/(?<=\.)\s/)[0] ?? '').trim();
   }
   for (const line of lines) {
-    const m = methodComment(method).exec(line);
-    if (m) return m[1].trim();
+    const m = METHOD_COMMENT.exec(line);
+    if (m && m[1] === method) return m[2].trim();
   }
   return '';
 }
@@ -58,10 +87,7 @@ const rows = walk(API)
   .map((file) => {
     const rel = path.relative(path.join(ROOT, 'src', 'app'), path.dirname(file)).split(path.sep).join('/');
     const source = fs.readFileSync(file, 'utf8');
-    const methods = METHODS.filter((m) =>
-      new RegExp(String.raw`export\s+(?:async\s+function\s+${m}\b|const\s+${m}\b|\{[^}]*\b${m}\b[^}]*\}\s+from)`).test(source),
-    );
-    return { route: `/${rel}`, methods, source };
+    return { route: `/${rel}`, methods: exportedMethods(source), source };
   })
   .filter((row) => row.methods.length)
   .sort((a, b) => a.route.localeCompare(b.route));

@@ -96,7 +96,8 @@ export function WithSourceMarks({ text }: { text: string }) {
   return (
     <>
       {parts.map((part, index) =>
-        /^\[S\d+\]$/.test(part) ? (
+        // split() with a capture group puts each [S1] mark at an odd index.
+        index % 2 === 1 ? (
           <sup key={index} className={styles.sourceMark}>
             {part.slice(1, -1)}
           </sup>
