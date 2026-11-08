@@ -1,0 +1,74 @@
+/* Notices about the session: a countdown before it ends itself, or a meeting
+   the desktop app noticed. A raised strip, never a red box. */
+.notice {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px 16px;
+  padding: 12px 12px 12px 16px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-card);
+  background: var(--raised);
+}
+
+.quiet {
+  border-color: var(--hairline);
+  background: var(--surface);
+}
+
+.icon {
+  flex-shrink: 0;
+  color: var(--caution);
+}
+
+.liveDot {
+  width: 8px;
+  height: 8px;
+  margin: 0 4px;
+  border-radius: 50%;
+  background: var(--positive);
+}
+
+.text {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-1);
+}
+
+.twoLines {
+  display: grid;
+}
+
+.lead {
+  font-weight: 500;
+}
+
+.sub {
+  color: var(--text-2);
+}
+
+.time {
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+@media (max-width: 767px) {
+  .notice {
+    grid-template-columns: auto minmax(0, 1fr);
+    padding: 12px 16px;
+  }
+
+  .actions {
+    grid-column: 2;
+    justify-content: flex-start;
+  }
+}

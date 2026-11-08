@@ -1,0 +1,51 @@
+# Settings for actions/dependency-review-action, which the Security workflow
+# (.github/workflows/security.yml) runs on every pull request. It only looks at
+# dependencies the pull request adds or changes. See docs/ci.md.
+
+# Block a change that brings in a version with a known vulnerability of high or
+# critical severity.
+fail-on-severity: high
+# Development dependencies too: Electron is a devDependency of desktop/ but it
+# ships inside the desktop app, and build tools run in CI next to its secrets.
+fail-on-scopes:
+  - runtime
+  - development
+
+# The license of every added or changed dependency must be on this list (SPDX
+# ids; "A OR B" passes when one side is allowed, "A AND B" needs both). Apex
+# Round is a commercial app shipped to browsers and as a desktop installer, so
+# strong copyleft (GPL, AGPL, SSPL) and non-commercial licenses are left off on
+# purpose: a dependency under one fails the check until someone has reviewed it
+# and listed it under allow-dependencies-licenses below.
+allow-licenses:
+  - 0BSD
+  - Apache-2.0
+  - BlueOak-1.0.0
+  - BSD-2-Clause
+  - BSD-3-Clause
+  - BSL-1.0
+  - CC-BY-3.0
+  - CC-BY-4.0
+  - CC0-1.0
+  - ISC
+  - MIT
+  - MIT-0
+  - Python-2.0
+  - Unlicense
+  - WTFPL
+  - Zlib
+  # Weak copyleft, fine to use unmodified (changes to the library itself must be
+  # shared): sharp's prebuilt libvips binaries (LGPL-3.0-or-later), web-push
+  # (MPL-2.0), dompurify (MPL-2.0 OR Apache-2.0).
+  - LGPL-2.1-only
+  - LGPL-2.1-or-later
+  - LGPL-3.0-only
+  - LGPL-3.0-or-later
+  - MPL-2.0
+
+# Reviewed packages whose license metadata isn't a valid SPDX expression, which
+# would otherwise fail the check whenever they change.
+allow-dependencies-licenses:
+  - pkg:npm/duck # "BSD"
+  - pkg:npm/url-template # "BSD"
+  - pkg:npm/rgbcolor # "MIT OR SEE LICENSE IN FEEL-FREE.md"

@@ -1,12 +1,14 @@
-import { NextResponse, type NextRequest } from 'next/server';
+import { after, NextResponse, type NextRequest } from 'next/server';
 import { z } from 'zod';
 import { LLMUnavailableError } from '@/lib/llmRouter';
-import { completeChat, practiceModel } from '@/lib/practice/practice';
+import { completeChat } from '@/lib/practice/practice';
+import { userModels } from '@/lib/answerModels';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { jsonError } from '@/lib/api';
 import { rateLimit } from '@/lib/rateLimit';
-import { normalizeMockInterviewReport } from '@/lib/mockInterviewReport';
+import { normalizePracticeReport } from '@/lib/mockInterviewReport';
+import { notify } from '@/lib/notify';
 
 const GenerateReportSchema = z.object({
   mode: z.enum(['general', 'behavioral', 'technical', 'situational']).default('general'),
@@ -69,24 +71,28 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     .from('interview_questions')
     .select('*')
     .eq('session_id', id)
-    .order('order_index', { ascending: true });
+    .order('order_index', { ascending: true })
+    // A follow-up shares its question's order_index and comes after it.
+    .order('created_at', { ascending: true });
 
   if (!questions || questions.length === 0) {
     return jsonError(400, 'no_questions', { message: 'No questions to generate report from' });
   }
 
-  // Build prompt with Q&A
+  // Build prompt with Q&A. A follow-up the candidate skipped isn't part of the interview.
   const qaList = questions
+    .filter((q) => !(q.rubric?.follow_up_of && !q.response_text))
     .map((q, i) => {
       const difficulty = q.difficulty || 'medium';
       const type = q.question_type || 'general';
-      return `Q${i + 1} [${type}, ${difficulty}]: ${q.question_text}\nA: ${q.response_text || '(no response)'}`;
+      const label = q.rubric?.follow_up_of ? `Q${i + 1} (follow-up to the question before)` : `Q${i + 1}`;
+      return `${label} [${type}, ${difficulty}]: ${q.question_text}\nA: ${q.response_text || '(no response)'}`;
     })
     .join('\n\n');
 
   const userPrompt = `Interview Mode: ${mode}\n\nInterview Q&A:\n${qaList}\n\nGenerate the report in JSON format.`;
 
-  const model = practiceModel();
+  const model = (await userModels(supabase, userData.user.id)).answer;
 
   const admin = createAdminClient();
 
@@ -130,14 +136,12 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       parsedReport = null;
     }
 
-    // Never save a stand-in: without a real score there is no report.
-    const score = (parsedReport as { overall_score?: unknown } | null)?.overall_score;
-    if (typeof score !== 'number' || Number.isNaN(score)) {
+    // The practice rubric (four areas), keeping only what the model wrote. Never
+    // save a stand-in: without a real score there is no report.
+    const normalizedReport = normalizePracticeReport(parsedReport, mode);
+    if (!normalizedReport) {
       throw new Error('The model reply had no usable report');
     }
-
-    // Normalize the report, keeping only what the model wrote in its lists.
-    const normalizedReport = normalizeMockInterviewReport(parsedReport, mode, { pad: false });
 
     // Save report to database
     const { data: savedReport, error: saveErr } = await admin
@@ -160,6 +164,22 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
 
     if (saveErr) {
       console.error('[report] Failed to save report:', saveErr);
+    } else {
+      // The next step, where the user will see it later (bell, email, device).
+      const nextStep = normalizedReport.next_steps[0]?.replace(/^P\d+:\s*/, '');
+      const userId = userData.user.id;
+      after(() =>
+        notify(userId, {
+          type: 'ai_suggestion',
+          title: `Practice report: ${normalizedReport.overall_score}/100`,
+          message: nextStep ? `Next step: ${nextStep}` : normalizedReport.summary,
+          url: `/interview/${id}`,
+          data: { sessionId: id },
+          i18n: nextStep
+            ? { key: 'practiceReportStep', params: { score: normalizedReport.overall_score, step: nextStep } }
+            : { key: 'practiceReport', params: { score: normalizedReport.overall_score } },
+        }),
+      );
     }
 
     await supabase

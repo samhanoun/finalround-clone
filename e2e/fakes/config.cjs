@@ -25,6 +25,9 @@ const USER = {
   password: 'e2e-password-not-secret',
 };
 
+/** The password of throwaway accounts a spec signs up (and deletes) itself, so USER is never changed. */
+const THROWAWAY_PASSWORD = 'e2e-throwaway-password-not-secret';
+
 const RESUME = {
   id: '0e2e0000-0000-4000-8000-0000000000aa',
   filename: 'e2e-resume.pdf',
@@ -69,4 +72,4 @@ function fakeAppEnv() {
   };
 }
 
-module.exports = { PORTS, KEYS, USER, RESUME, QUESTION, INTERIM, ANSWER_PIECES, WAV_PATH, fakeAppEnv };
+module.exports = { PORTS, KEYS, USER, THROWAWAY_PASSWORD, RESUME, QUESTION, INTERIM, ANSWER_PIECES, WAV_PATH, fakeAppEnv };

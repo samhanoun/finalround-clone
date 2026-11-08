@@ -123,7 +123,7 @@ Hide these behind flags or remove them from navigation; don't delete code yet. A
 | Job hunter, cover letters | `src/app/[locale]/jobs`, `src/components/JobsClient.tsx`, `src/app/api/cover-letters/**` |
 | Resume "generate / deep review" (no worker) | `src/app/api/resume/generate` and its UI button |
 | Mock interviews | Keep the pages, mark "coming soon"; rebuild after MVP on the same streaming answer route |
-| Chrome extension | Freeze `chrome-extension/**`; the web MVP doesn't need it |
+| Chrome extension | Removed: `chrome-extension/` was a disconnected prototype; the web app and the desktop app cover it |
 | Extra locales | Keep the `next-intl` wiring, ship `en` only |
 | Dead STT providers | Delete or replace `src/lib/sttProviders/**` in step 2 |
 

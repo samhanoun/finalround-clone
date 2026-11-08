@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server';
+import { userModels } from '@/lib/answerModels';
 import { jsonError } from '@/lib/api';
 import { rateLimit } from '@/lib/rateLimit';
 import { createClient } from '@/lib/supabase/server';
@@ -8,14 +9,26 @@ import {
   PracticeSetupSchema,
   completeChat,
   parseQuestions,
-  practiceModel,
   questionsRequest,
+  type GeneratedQuestion,
   type StoredPracticeSetup,
 } from '@/lib/practice/practice';
+import { loadBank, pickBankQuestions, saveToBank } from '@/lib/questionBank';
+import { LOCALES } from '@/i18n/locales';
+import { kitFor } from '@/lib/localizedEmail';
+
+/** The "Practice interview" title new interviews get, in any language. */
+async function isDefaultPracticeTitle(title: string): Promise<boolean> {
+  const defaults = await Promise.all(LOCALES.map(async (locale) => (await kitFor(locale)).t('NewPractice')('defaultTitle')));
+  return defaults.includes(title);
+}
 
 /**
  * Starts a practice interview: the model writes the questions for the role
- * (and the résumé and job, when given), and they are saved in order.
+ * (and the résumé and job, when given), and they are saved in order. With
+ * `fromBank`, questions from the company's question bank come first and the
+ * model writes only the rest. New questions join the user's private bank for
+ * that company.
  */
 export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
@@ -33,10 +46,10 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
 
   const { data: session } = await supabase
     .from('interview_sessions')
-    .select('id, user_id, meta')
+    .select('id, user_id, meta, title')
     .eq('id', id)
     .eq('user_id', userId)
-    .maybeSingle<{ id: string; user_id: string; meta: Record<string, unknown> | null }>();
+    .maybeSingle<{ id: string; user_id: string; meta: Record<string, unknown> | null; title: string | null }>();
   if (!session) return jsonError(404, 'not_found');
 
   const { count } = await supabase
@@ -65,23 +78,45 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     role: setup.role,
   });
 
-  let reply: string;
-  try {
-    reply = await completeChat({
-      model: practiceModel(),
-      ...questionsRequest(setup, pack),
-      maxTokens: 1_000,
-      temperature: 0.7,
-      timeoutMs: 45_000,
-    });
-  } catch (error) {
-    if (error instanceof LLMUnavailableError) return jsonError(503, 'llm_unavailable');
-    console.error('[practice] question generation failed', error instanceof Error ? error.message : error);
-    return jsonError(502, 'questions_unavailable');
+  const company = setup.company?.trim() ?? '';
+  let fromBank: GeneratedQuestion[] = [];
+  if (setup.fromBank && company) {
+    try {
+      fromBank = pickBankQuestions(await loadBank(supabase, company), setup.count).map((question) => ({
+        ...question,
+        difficulty: setup.difficulty,
+      }));
+    } catch (error) {
+      // Without the bank the model writes them all.
+      console.error('[practice] question bank unavailable', error instanceof Error ? error.message : error);
+    }
   }
 
-  const questions = parseQuestions(reply, setup);
-  if (questions.length === 0) return jsonError(502, 'questions_unavailable');
+  const missing = setup.count - fromBank.length;
+  let written: GeneratedQuestion[] = [];
+  if (missing > 0) {
+    let reply: string;
+    try {
+      reply = await completeChat({
+        model: (await userModels(supabase, userId)).answer,
+        ...questionsRequest(
+          { ...setup, count: missing },
+          pack,
+          fromBank.map((question) => question.text),
+        ),
+        maxTokens: 1_000,
+        temperature: 0.7,
+        timeoutMs: 45_000,
+      });
+    } catch (error) {
+      if (error instanceof LLMUnavailableError) return jsonError(503, 'llm_unavailable');
+      console.error('[practice] question generation failed', error instanceof Error ? error.message : error);
+      return jsonError(502, 'questions_unavailable');
+    }
+    written = parseQuestions(reply, { ...setup, count: missing });
+    if (written.length === 0 && fromBank.length === 0) return jsonError(502, 'questions_unavailable');
+  }
+  const questions = [...fromBank, ...written];
 
   const { data: saved, error: insertError } = await supabase
     .from('interview_questions')
@@ -99,16 +134,32 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     .order('order_index', { ascending: true });
   if (insertError) return jsonError(500, 'db_error', insertError);
 
+  if (company && written.length > 0) {
+    try {
+      await saveToBank(supabase, userId, { company, role: setup.role, source: 'practice' }, written);
+    } catch (error) {
+      console.error('[practice] could not save to the question bank', error instanceof Error ? error.message : error);
+    }
+  }
+
   const stored: StoredPracticeSetup = {
     role: setup.role,
     company: setup.company || undefined,
     type: setup.type,
     difficulty: setup.difficulty,
     count: setup.count,
+    fromBank: fromBank.length > 0 || undefined,
+    followUps: setup.followUps,
     hasResume: Boolean(resume),
     hasJob: Boolean(setup.jobDescription?.trim()),
   };
-  const title = setup.company ? `${setup.role} at ${setup.company}` : setup.role;
+  // Shown in lists and on Home, so in the language the interview was set up in. A title
+  // the user already gave it (renamed before starting) is kept; only the default is replaced.
+  const generated = setup.company
+    ? (await kitFor(setup.locale ?? 'en')).t('PracticePages')('titleAt', { role: setup.role, company: setup.company })
+    : setup.role;
+  const current = typeof session.title === 'string' ? session.title.trim() : '';
+  const title = current && !(await isDefaultPracticeTitle(current)) ? current : generated;
   const { error: updateError } = await supabase
     .from('interview_sessions')
     .update({

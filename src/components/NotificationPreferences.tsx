@@ -1,8 +1,18 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect, useId, useState } from 'react';
+import { useTranslations } from 'next-intl';
+import { usePushNotifications } from '@/components/ServiceWorkerProvider';
+import { Skeleton } from '@/components/Skeleton';
+import {
+  GroupFooter,
+  SaveNote,
+  SettingRow,
+  settingsStyles as styles,
+  type SaveState,
+} from '@/app/[locale]/settings/SettingsUI';
 
-type NotificationPreferences = {
+type Preferences = {
   email_interview_reminders: boolean;
   email_application_updates: boolean;
   email_ai_suggestions: boolean;
@@ -12,179 +22,168 @@ type NotificationPreferences = {
   in_app_ai_suggestions: boolean;
 };
 
-export function NotificationPreferences() {
-  const [preferences, setPreferences] = useState<NotificationPreferences>({
-    email_interview_reminders: true,
-    email_application_updates: true,
-    email_ai_suggestions: true,
-    email_weekly_digest: false,
-    in_app_interview_reminders: true,
-    in_app_application_updates: true,
-    in_app_ai_suggestions: true,
-  });
+const DEFAULTS: Preferences = {
+  email_interview_reminders: true,
+  email_application_updates: true,
+  email_ai_suggestions: true,
+  email_weekly_digest: false,
+  in_app_interview_reminders: true,
+  in_app_application_updates: true,
+  in_app_ai_suggestions: true,
+};
+
+const KINDS = ['interview_reminders', 'application_updates', 'ai_suggestions'] as const;
+
+const same = (a: Preferences, b: Preferences) => (Object.keys(a) as Array<keyof Preferences>).every((key) => a[key] === b[key]);
+
+/**
+ * Settings → Notifications: what Apex Round tells you about (rows) and where
+ * (in the app, by email), plus notifications on this device. Delivery happens
+ * in src/lib/notify.ts.
+ */
+export function NotificationPreferences({ email, emailConfigured }: { email: string | null; emailConfigured: boolean }) {
+  const t = useTranslations('NotificationPreferences');
+  const [preferences, setPreferences] = useState<Preferences>(DEFAULTS);
+  const [baseline, setBaseline] = useState<Preferences>(DEFAULTS);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
+  const [state, setState] = useState<SaveState>('idle');
+  const [pushError, setPushError] = useState(false);
+  const push = usePushNotifications();
+  const base = useId();
+  const col = { inApp: `${base}-in-app`, email: `${base}-email` };
 
   useEffect(() => {
-    async function fetchPreferences() {
+    let cancelled = false;
+    void (async () => {
       try {
         const res = await fetch('/api/notifications/preferences');
-        const json = await res.json();
-        if (res.ok && json.preferences) {
-          setPreferences(json.preferences);
+        const json = await res.json().catch(() => ({}));
+        if (!cancelled && res.ok && json.preferences) {
+          const loaded = { ...DEFAULTS, ...json.preferences } as Preferences;
+          setPreferences(loaded);
+          setBaseline(loaded);
         }
-      } catch (e) {
-        console.error('Failed to fetch preferences:', e);
+      } catch {
+        // The defaults stay; saving still works.
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
-    }
-    fetchPreferences();
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  function handleChange(key: keyof NotificationPreferences) {
-    setPreferences(prev => ({ ...prev, [key]: !prev[key] }));
+  const dirty = !same(preferences, baseline);
+
+  function toggle(key: keyof Preferences) {
+    setPreferences((prev) => ({ ...prev, [key]: !prev[key] }));
+    if (state !== 'saving') setState('idle');
   }
 
-  async function save() {
-    setError(null);
-    setSuccess(false);
-    setSaving(true);
-
+  async function save(event: React.FormEvent) {
+    event.preventDefault();
+    if (!dirty) return;
+    setState('saving');
     try {
+      const sent = preferences;
       const res = await fetch('/api/notifications/preferences', {
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(preferences),
+        body: JSON.stringify(sent),
       });
-
-      if (!res.ok) {
-        const json = await res.json().catch(() => ({}));
-        throw new Error(json.error || 'Failed to save preferences');
-      }
-
-      setSuccess(true);
-      setTimeout(() => setSuccess(false), 3000);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to save');
-    } finally {
-      setSaving(false);
+      if (!res.ok) throw new Error();
+      setBaseline(sent);
+      setState('saved');
+    } catch {
+      setState('error');
     }
   }
 
-  if (loading) {
-    return (
-      <div className="card">
-        <div className="cardInner stack">
-          <p>Loading preferences...</p>
-        </div>
-      </div>
-    );
+  async function togglePush() {
+    setPushError(false);
+    try {
+      if (push.state === 'on') await push.disable();
+      else await push.enable();
+    } catch {
+      setPushError(true);
+    }
   }
 
+  const checkbox = (key: keyof Preferences, labelledBy: string) => (
+    <input type="checkbox" checked={preferences[key]} onChange={() => toggle(key)} aria-labelledby={labelledBy} disabled={loading} />
+  );
+
   return (
-    <div className="card" id="notifications">
-      <div className="cardInner stack">
-        <h2 className="cardTitle">Notification preferences</h2>
-        <p className="cardDesc">
-          Choose how you want to be notified about interview reminders, application updates, and AI suggestions.
-        </p>
-
-        <div className="stack" style={{ gap: 16 }}>
-          <fieldset style={{ border: 'none', padding: 0, margin: 0 }}>
-            <legend style={{ fontWeight: 600, marginBottom: 12 }}>In-app notifications</legend>
-            <div className="stack" style={{ gap: 8 }}>
-              <label className="checkbox-label">
-                <input
-                  type="checkbox"
-                  checked={preferences.in_app_interview_reminders}
-                  onChange={() => handleChange('in_app_interview_reminders')}
-                />
-                <span>Interview reminders</span>
-              </label>
-              <label className="checkbox-label">
-                <input
-                  type="checkbox"
-                  checked={preferences.in_app_application_updates}
-                  onChange={() => handleChange('in_app_application_updates')}
-                />
-                <span>Application updates</span>
-              </label>
-              <label className="checkbox-label">
-                <input
-                  type="checkbox"
-                  checked={preferences.in_app_ai_suggestions}
-                  onChange={() => handleChange('in_app_ai_suggestions')}
-                />
-                <span>AI suggestions</span>
-              </label>
-            </div>
-          </fieldset>
-
-          <hr style={{ border: 'none', borderTop: '1px solid var(--border)', width: '100%' }} />
-
-          <fieldset style={{ border: 'none', padding: 0, margin: 0 }}>
-            <legend style={{ fontWeight: 600, marginBottom: 12 }}>Email notifications</legend>
-            <div className="stack" style={{ gap: 8 }}>
-              <label className="checkbox-label">
-                <input
-                  type="checkbox"
-                  checked={preferences.email_interview_reminders}
-                  onChange={() => handleChange('email_interview_reminders')}
-                />
-                <span>Interview reminders</span>
-              </label>
-              <label className="checkbox-label">
-                <input
-                  type="checkbox"
-                  checked={preferences.email_application_updates}
-                  onChange={() => handleChange('email_application_updates')}
-                />
-                <span>Application updates</span>
-              </label>
-              <label className="checkbox-label">
-                <input
-                  type="checkbox"
-                  checked={preferences.email_ai_suggestions}
-                  onChange={() => handleChange('email_ai_suggestions')}
-                />
-                <span>AI suggestions</span>
-              </label>
-              <label className="checkbox-label">
-                <input
-                  type="checkbox"
-                  checked={preferences.email_weekly_digest}
-                  onChange={() => handleChange('email_weekly_digest')}
-                />
-                <span>Weekly digest</span>
-              </label>
-            </div>
-          </fieldset>
+    <form className={styles.group} onSubmit={save} id="notification-preferences">
+      {loading ? (
+        <div className={styles.skeletonRows} role="status" aria-label={t('loading')}>
+          <Skeleton width="45%" height="14px" />
+          <Skeleton width="70%" height="12px" />
+          <Skeleton width="45%" height="14px" />
+          <Skeleton width="70%" height="12px" />
         </div>
+      ) : (
+        <table className={styles.matrix}>
+          <thead>
+            <tr>
+              <th scope="col">
+                <span className="srOnly">{t('kind')}</span>
+              </th>
+              <th scope="col" id={col.inApp} className={styles.channel}>
+                {t('inApp')}
+              </th>
+              <th scope="col" id={col.email} className={styles.channel}>
+                {t('byEmail')}
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {KINDS.map((kind) => (
+              <tr key={kind}>
+                <th scope="row">
+                  <span id={`${base}-${kind}`} className={styles.rowLabel}>
+                    {t(`kinds.${kind}.label`)}
+                  </span>
+                  <span className={styles.rowHelp}>{t(`kinds.${kind}.when`)}</span>
+                </th>
+                <td className={styles.channel}>{checkbox(`in_app_${kind}`, `${base}-${kind} ${col.inApp}`)}</td>
+                <td className={styles.channel}>{checkbox(`email_${kind}`, `${base}-${kind} ${col.email}`)}</td>
+              </tr>
+            ))}
+            <tr>
+              <th scope="row">
+                <span id={`${base}-digest`} className={styles.rowLabel}>
+                  {t('digest')}
+                </span>
+                <span className={styles.rowHelp}>{t('digestHelp')}</span>
+              </th>
+              <td className={styles.channel} />
+              <td className={styles.channel}>{checkbox('email_weekly_digest', `${base}-digest ${col.email}`)}</td>
+            </tr>
+          </tbody>
+        </table>
+      )}
 
-        <div className="row" style={{ justifyContent: 'flex-end', marginTop: 16 }}>
-          <button
-            className="button buttonPrimary"
-            onClick={save}
-            disabled={saving}
-          >
-            {saving ? 'Saving...' : 'Save preferences'}
+      <SettingRow
+        layout="inline"
+        label={t('device')}
+        help={pushError ? t('pushFailed') : t(`push.${push.state}`)}
+        helpLive
+      >
+        {push.state === 'on' || push.state === 'off' ? (
+          <button type="button" className="button" onClick={() => void togglePush()} disabled={push.busy}>
+            {push.busy ? t('working') : push.state === 'on' ? t('pushOff') : t('pushOn')}
           </button>
-        </div>
+        ) : null}
+      </SettingRow>
 
-        {error && (
-          <div className="error" role="alert">
-            {error}
-          </div>
-        )}
-        {success && (
-          <div className="success" role="status">
-            Preferences saved successfully.
-          </div>
-        )}
-      </div>
-    </div>
+      <GroupFooter note={emailConfigured ? (email ? t('sentTo', { email }) : t('sentToAccount')) : t('emailUnconfigured')}>
+        <SaveNote state={state} saved={t('saved')} error={t('notSaved')} />
+        <button type="submit" className="button buttonPrimary" disabled={!dirty || state === 'saving' || loading}>
+          {state === 'saving' ? t('saving') : t('save')}
+        </button>
+      </GroupFooter>
+    </form>
   );
 }

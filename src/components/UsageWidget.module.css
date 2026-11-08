@@ -1,0 +1,75 @@
+/* Usage as a compact list: label and figures on one line, a thin neutral
+   bar under them that only turns red near the limit. */
+.inner {
+  display: grid;
+  gap: 16px;
+}
+
+.head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.plan {
+  font-size: 13px;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+
+.status {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 6px 12px;
+}
+
+.label {
+  min-width: 0;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--text-2);
+}
+
+.value {
+  font-family: var(--font-code);
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.track {
+  grid-column: 1 / -1;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--raised);
+  overflow: hidden;
+}
+
+.fill {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--text-3);
+}
+
+.near {
+  background: var(--negative);
+}

@@ -1,0 +1,376 @@
+/* Job search and Week by week: a header row (title, description, export),
+   then the content in cards. */
+.section {
+  display: grid;
+  gap: 24px;
+}
+
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px 24px;
+}
+
+.title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.desc {
+  margin: 4px 0 0;
+  max-width: 40rem;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-3);
+}
+
+.status {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text-2);
+}
+
+.emptyText {
+  margin: 0;
+  max-width: 36rem;
+  line-height: 1.55;
+}
+
+/* Funnel: a list with thin bars */
+.funnel {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+}
+
+.funnelRow {
+  display: grid;
+  grid-template-columns: minmax(96px, 160px) 48px minmax(0, 1fr) minmax(120px, 200px);
+  align-items: center;
+  gap: 16px;
+  min-height: 52px;
+  border-top: 1px solid var(--hairline);
+}
+
+.funnelRow:first-child {
+  border-top: 0;
+}
+
+.funnelLabel {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-1);
+}
+
+.funnelCount {
+  font-size: 15px;
+  font-weight: 500;
+  text-align: right;
+  color: var(--text-1);
+  font-variant-numeric: tabular-nums;
+}
+
+.funnelTrack {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--raised);
+  overflow: hidden;
+}
+
+.funnelBar {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--text-3) 70%, var(--surface));
+}
+
+.funnelRow[data-stage='offer'] .funnelBar {
+  background: var(--accent);
+}
+
+.funnelRate {
+  font-size: 13px;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 767px) {
+  .funnelRow {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      'label count'
+      'track track'
+      'rate rate';
+    gap: 6px 12px;
+    padding: 12px 0;
+  }
+
+  .funnelLabel {
+    grid-area: label;
+  }
+
+  .funnelCount {
+    grid-area: count;
+  }
+
+  .funnelTrack {
+    grid-area: track;
+  }
+
+  .funnelRate {
+    grid-area: rate;
+  }
+
+  .funnelRate:empty {
+    display: none;
+  }
+}
+
+/* Week by week */
+.weekly {
+  display: grid;
+  gap: 16px;
+}
+
+.panels {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+@media (min-width: 1100px) {
+  .panels {
+    grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr);
+    gap: 24px;
+  }
+}
+
+.metrics {
+  display: flex;
+  gap: 2px;
+  margin-bottom: 20px;
+  padding: 2px;
+  width: max-content;
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--hairline);
+  background: var(--sunken);
+}
+
+.metrics::-webkit-scrollbar {
+  display: none;
+}
+
+.metric {
+  flex-shrink: 0;
+  min-height: 30px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-2);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background-color var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease);
+}
+
+.metric:hover {
+  color: var(--text-1);
+}
+
+.metric[aria-pressed='true'] {
+  background: var(--raised);
+  color: var(--text-1);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+@media (pointer: coarse) {
+  .metric {
+    min-height: 40px;
+  }
+}
+
+.chartBox {
+  height: 260px;
+  margin-left: -4px;
+}
+
+.chartEmpty {
+  margin: 0;
+  min-height: 160px;
+  display: flex;
+  align-items: center;
+  padding: 24px;
+  border-radius: var(--radius-row);
+  background: var(--sunken);
+  font-size: 14px;
+  color: var(--text-2);
+}
+
+.barLabel {
+  fill: var(--text-1);
+  font-family: var(--font-code);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.tip {
+  display: grid;
+  gap: 2px;
+  padding: 8px 10px;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--hairline-strong);
+  background: var(--raised);
+  box-shadow: var(--float);
+}
+
+.tipLabel {
+  font-family: var(--font-code);
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+.tipValue {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text-1);
+  font-variant-numeric: tabular-nums;
+}
+
+.panelTitle {
+  margin: 0 0 8px;
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.weekList {
+  margin: 0;
+  display: grid;
+}
+
+.weekRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 0 12px;
+  padding: 10px 0;
+  border-top: 1px solid var(--hairline);
+}
+
+.weekRow dt {
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.weekValue {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 500;
+  text-align: right;
+  color: var(--text-1);
+  font-variant-numeric: tabular-nums;
+}
+
+.weekBefore {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Table view: a table on wide screens, a list on phones */
+.tableView summary {
+  font-size: 14px;
+  color: var(--text-2);
+}
+
+.tableView summary:hover {
+  color: var(--text-1);
+}
+
+.wideTable {
+  width: 100%;
+  margin-top: 12px;
+  border-collapse: collapse;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.wideTable th,
+.wideTable td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--hairline);
+  text-align: right;
+}
+
+.wideTable th:first-child {
+  padding-left: 0;
+  text-align: left;
+}
+
+.wideTable thead th {
+  font-weight: 500;
+  color: var(--text-3);
+}
+
+.wideTable tbody th {
+  font-weight: 400;
+  color: var(--text-2);
+}
+
+.narrowList {
+  display: none;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.narrowList li {
+  display: grid;
+  gap: 2px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--hairline);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.narrowDate {
+  color: var(--text-1);
+}
+
+.narrowValues {
+  color: var(--text-3);
+}
+
+@media (max-width: 767px) {
+  .chartBox {
+    height: 200px;
+  }
+
+  .metrics {
+    width: auto;
+  }
+}
+
+@media (max-width: 559px) {
+  .wideTable {
+    display: none;
+  }
+
+  .narrowList {
+    display: grid;
+  }
+}

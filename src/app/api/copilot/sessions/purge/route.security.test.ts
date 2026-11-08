@@ -40,12 +40,36 @@ function buildPurgeSupabaseMock(
   const eventsDeleteEq = jest.fn().mockResolvedValue({ data: null, error: options.eventsDeleteError ?? null });
   const summariesDeleteEq = jest.fn().mockResolvedValue({ data: null, error: null });
   const sessionsDeleteEq = jest.fn().mockResolvedValue({ data: null, error: null });
+  // Memories: counted and deleted with .eq('user_id').eq('source', 'session').
+  const memoryFilters: Array<Array<[string, unknown]>> = [];
+  type MemoriesChain = { eq: (column: string, value: unknown) => MemoriesChain | Promise<{ count?: number; error: null }> };
+  const memoriesQuery = (result: { count?: number; error: null }) => {
+    const filters: Array<[string, unknown]> = [];
+    memoryFilters.push(filters);
+    const chain: MemoriesChain = {
+      eq: (column, value) => {
+        filters.push([column, value]);
+        return filters.length === 2 ? Promise.resolve(result) : chain;
+      },
+    };
+    return chain;
+  };
+  const memoriesDelete = jest.fn(() => memoriesQuery({ error: null }));
 
   return {
+    memoryFilters,
+    memoriesDelete,
     auth: {
       getUser: jest.fn().mockResolvedValue({ data: { user: { id: userId } }, error: null }),
     },
     from: jest.fn((table: string) => {
+      if (table === 'memories') {
+        return {
+          select: jest.fn(() => memoriesQuery({ count: 2, error: null })),
+          delete: memoriesDelete,
+        };
+      }
+
       if (table === 'copilot_events') {
         return {
           select: jest.fn(() => ({ eq: eventsCountEq })),
@@ -128,6 +152,32 @@ describe('copilot purge route security responses', () => {
       error: 'session_active',
       extra: { message: 'Stop active sessions before deleting all copilot data.' },
     });
+  });
+
+  it('also deletes the memories learned from sessions, and only those', async () => {
+    const supabase = buildPurgeSupabaseMock();
+    createClient.mockResolvedValue(supabase);
+
+    const { DELETE } = await import('./route');
+    const response = await DELETE({
+      headers: new Headers(),
+      json: jest.fn().mockResolvedValue({ confirmation: 'DELETE ALL COPILOT DATA' }),
+    } as unknown as NextRequest);
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({ ok: true, deleted: { sessions: 3, events: 11, summaries: 4, memories: 2 } });
+    expect(supabase.memoriesDelete).toHaveBeenCalledTimes(1);
+    // The count and the delete both keep to this user's learned memories; ones added by hand stay.
+    expect(supabase.memoryFilters).toEqual([
+      [
+        ['user_id', 'user-1'],
+        ['source', 'session'],
+      ],
+      [
+        ['user_id', 'user-1'],
+        ['source', 'session'],
+      ],
+    ]);
   });
 
   it('echoes x-request-id and returns client-safe internal_error payload', async () => {

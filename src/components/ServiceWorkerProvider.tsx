@@ -1,143 +1,119 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
-interface PushSubscriptionJSON {
-  endpoint: string;
-  keys: {
-    p256dh: string;
-    auth: string;
-  };
+/**
+ * The service worker (public/sw.js): the offline page, and push notifications
+ * for "Notify me on this device" in Settings → Notification preferences.
+ */
+
+/** Registers /sw.js once per page load. */
+export function ServiceWorkerRegistrar() {
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return;
+    navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch((error: unknown) => {
+      console.warn('[sw] registration failed', error instanceof Error ? error.message : error);
+    });
+  }, []);
+  return null;
 }
 
-interface ServiceWorkerStatus {
-  supported: boolean;
-  registered: boolean;
-  subscription: PushSubscriptionJSON | null;
-  error?: string;
+export type PushState = 'checking' | 'unsupported' | 'unconfigured' | 'blocked' | 'off' | 'on';
+
+function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const raw = window.atob(base64);
+  const output = new Uint8Array(new ArrayBuffer(raw.length));
+  for (let i = 0; i < raw.length; i += 1) output[i] = raw.charCodeAt(i);
+  return output;
 }
 
-export function useServiceWorker() {
-  const [status, setStatus] = useState<ServiceWorkerStatus>({
-    supported: false,
-    registered: false,
-    subscription: null,
-  });
+async function vapidKey(): Promise<string | null> {
+  const res = await fetch('/api/push/vapid-key').catch(() => null);
+  if (!res?.ok) return null;
+  const json = await res.json().catch(() => null);
+  return typeof json?.publicKey === 'string' ? json.publicKey : null;
+}
+
+/** Push on this browser: its state, and turning it on or off. */
+export function usePushNotifications() {
+  const [state, setState] = useState<PushState>('checking');
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    if (typeof window === 'undefined' || !('serviceWorker' in navigator)) {
-      setStatus(prev => ({ ...prev, supported: false }));
-      return;
-    }
-
-    setStatus(prev => ({ ...prev, supported: true }));
-
-    const registerServiceWorker = async () => {
-      try {
-        const registration = await navigator.serviceWorker.register('/sw.js', {
-          scope: '/',
-        });
-
-        console.log('Service Worker registered:', registration.scope);
-
-        // Check for existing subscription
-        const subscription = await registration.pushManager.getSubscription();
-        
-        setStatus(prev => ({
-          ...prev,
-          registered: true,
-          subscription: subscription ? subscription.toJSON() as unknown as PushSubscriptionJSON : null,
-        }));
-
-        // Listen for updates
-        registration.addEventListener('updatefound', () => {
-          const newWorker = registration.installing;
-          if (newWorker) {
-            newWorker.addEventListener('statechange', () => {
-              if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                // New version available
-                console.log('New Service Worker version available');
-              }
-            });
-          }
-        });
-      } catch (error) {
-        console.error('Service Worker registration failed:', error);
-        setStatus(prev => ({
-          ...prev,
-          registered: false,
-          error: error instanceof Error ? error.message : 'Registration failed',
-        }));
+    let cancelled = false;
+    void (async () => {
+      if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
+        if (!cancelled) setState('unsupported');
+        return;
       }
+      const key = await vapidKey();
+      if (cancelled) return;
+      if (!key) return setState('unconfigured');
+      if (Notification.permission === 'denied') return setState('blocked');
+      const registration = await navigator.serviceWorker.getRegistration('/');
+      const subscription = await registration?.pushManager.getSubscription();
+      if (!cancelled) setState(subscription ? 'on' : 'off');
+    })();
+    return () => {
+      cancelled = true;
     };
-
-    registerServiceWorker();
   }, []);
 
-  const subscribeToPush = async (vapidPublicKey: string): Promise<PushSubscription | null> => {
-    if (!status.registered) {
-      console.error('Service Worker not registered');
-      return null;
-    }
-
+  const enable = useCallback(async () => {
+    setBusy(true);
     try {
-      const registration = await navigator.serviceWorker.ready;
-      const subscription = await registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(vapidPublicKey) as unknown as BufferSource,
-      });
-
-      setStatus(prev => ({
-        ...prev,
-        subscription: subscription.toJSON() as unknown as PushSubscriptionJSON,
-      }));
-
-      return subscription;
-    } catch (error) {
-      console.error('Push subscription failed:', error);
-      return null;
-    }
-  };
-
-  const unsubscribeFromPush = async (): Promise<boolean> => {
-    try {
-      const registration = await navigator.serviceWorker.ready;
-      const subscription = await registration.pushManager.getSubscription();
-      
-      if (subscription) {
-        await subscription.unsubscribe();
-        setStatus(prev => ({ ...prev, subscription: null }));
-        return true;
+      const key = await vapidKey();
+      if (!key) return setState('unconfigured');
+      const permission = await Notification.requestPermission();
+      if (permission !== 'granted') return setState(permission === 'denied' ? 'blocked' : 'off');
+      const registration = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
+      await navigator.serviceWorker.ready;
+      const subscribe = () =>
+        registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(key) });
+      const save = (subscription: PushSubscription) =>
+        fetch('/api/push/subscriptions', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ subscription: subscription.toJSON() }),
+        });
+      const current = (await registration.pushManager.getSubscription()) ?? (await subscribe());
+      let res = await save(current);
+      if (res.status === 409) {
+        // The server already has this address under keys this browser doesn't hold: start a fresh subscription.
+        await current.unsubscribe();
+        res = await save(await subscribe());
       }
-      return false;
+      if (!res.ok) throw new Error('not saved');
+      setState('on');
     } catch (error) {
-      console.error('Push unsubscribe failed:', error);
-      return false;
+      console.warn('[push] could not turn on', error instanceof Error ? error.message : error);
+      setState('off');
+      throw error;
+    } finally {
+      setBusy(false);
     }
-  };
+  }, []);
 
-  return {
-    ...status,
-    subscribeToPush,
-    unsubscribeFromPush,
-  };
+  const disable = useCallback(async () => {
+    setBusy(true);
+    try {
+      const registration = await navigator.serviceWorker.getRegistration('/');
+      const subscription = await registration?.pushManager.getSubscription();
+      if (subscription) {
+        await fetch('/api/push/subscriptions', {
+          method: 'DELETE',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ endpoint: subscription.endpoint }),
+        }).catch(() => null);
+        await subscription.unsubscribe();
+      }
+      setState('off');
+    } finally {
+      setBusy(false);
+    }
+  }, []);
+
+  return { state, busy, enable, disable };
 }
-
-// Utility function to convert VAPID key
-function urlBase64ToUint8Array(base64String: string): BufferSource {
-  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
-  const base64 = (base64String + padding)
-    .replace(/-/g, '+')
-    .replace(/_/g, '/');
-
-  const rawData = window.atob(base64);
-  const outputArray = new Uint8Array(rawData.length);
-
-  for (let i = 0; i < rawData.length; ++i) {
-    outputArray[i] = rawData.charCodeAt(i);
-  }
-
-  return outputArray as BufferSource;
-}
-
-export default useServiceWorker;

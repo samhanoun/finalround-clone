@@ -1,6 +1,7 @@
 import { LiveTranscriber, type LiveSttStatus, type TranscriptResult } from '@/lib/stt/deepgramLive';
 import { RELAY_CLOSE } from '@/lib/stt/relayProtocol';
 import type { CaptureFrame } from '@/lib/audio/capture';
+import { UtteranceAssembler, type Utterance } from '@/lib/stt/utterances';
 
 const FRAME_SAMPLES = 800; // 50 ms at 16 kHz
 const RELAY_URL = 'ws://localhost:3000/api/stt/stream?session=7f1c2a9e-3b4d-4c5e-8f60-1a2b3c4d5e6f';
@@ -361,5 +362,137 @@ describe('LiveTranscriber wall-clock times', () => {
 
     socket.receive(results(1, 1.2, 0.8, 'Why this company?', { is_final: true, speech_final: true }));
     expect(received[0].endedAt).toBe(12_000);
+  });
+});
+
+describe('LiveTranscriber client voice detection', () => {
+  /** A frame whose samples are all at `level` (0 = silence), with its id in the first sample. */
+  function loud(id: number, level = 2000): CaptureFrame {
+    const pcm = new Int16Array(FRAME_SAMPLES * 2).fill(level);
+    pcm[0] = id;
+    return { pcm, sampleRate: 16000, channels: 2, receivedAt: 0 };
+  }
+  const quiet = (id: number) => frame(id);
+
+  it('skips long silence, sends a pre-roll when speech starts, and keeps Deepgram’s times on the capture clock', async () => {
+    const { transcriber, received } = setup(undefined, { gateSilence: true });
+    transcriber.start();
+    FakeSocket.instances[0].open();
+    await flush();
+
+    // 3 s of silence (60 frames): nothing goes out.
+    for (let i = 0; i < 60; i += 1) transcriber.sendFrame(quiet(1000 + i));
+    expect(FakeSocket.instances[0].audioIds).toEqual([]);
+
+    // Speech: the last 350 ms of silence (7 frames, then the boundary one) goes first, then the speech.
+    transcriber.sendFrame(loud(1));
+    const sent = FakeSocket.instances[0].audioIds;
+    expect(sent.slice(-1)).toEqual([1]);
+    expect(sent.length).toBeGreaterThanOrEqual(7);
+    expect(sent.slice(0, -1).every((id) => id >= 1052)).toBe(true);
+
+    // Deepgram's 0 s is the first pre-roll frame, which is 3 s - pre-roll into the capture.
+    const firstSentSample = (sent[0] - 1000) * FRAME_SAMPLES;
+    FakeSocket.instances[0].receive(results(1, 0.1, 0.2, 'hello', { is_final: true }));
+    expect(received[0].startSec).toBeCloseTo(firstSentSample / 16000 + 0.1, 5);
+  });
+
+  it('keeps sending through the hangover after speech, then stops', async () => {
+    const { transcriber } = setup(undefined, { gateSilence: true });
+    transcriber.start();
+    FakeSocket.instances[0].open();
+    await flush();
+    transcriber.sendFrame(loud(1));
+    for (let i = 0; i < 40; i += 1) transcriber.sendFrame(quiet(100 + i)); // 2 s of silence
+    const ids = FakeSocket.instances[0].audioIds;
+    // 1.5 s of hangover (30 frames) still goes out; the rest doesn't.
+    expect(ids).toContain(129);
+    expect(ids).not.toContain(135);
+  });
+});
+
+describe('LiveTranscriber phone / in-person mode', () => {
+  /** A resolver stand-in: speaker 1 is the candidate, everyone else the interviewer. */
+  function fakeSpeakers() {
+    return {
+      reset: jest.fn(),
+      addSpeech: jest.fn(),
+      role: jest.fn((speaker: number) => (speaker === 1 ? 'candidate' : 'interviewer')),
+    };
+  }
+
+  function word(text: string, start: number, end: number, speaker: number) {
+    return { word: text.toLowerCase(), punctuated_word: text, start, end, speaker };
+  }
+
+  async function phoneSetup() {
+    const speakers = fakeSpeakers();
+    const { transcriber, received } = setup(undefined, { speakers });
+    transcriber.start();
+    await flush();
+    const socket = FakeSocket.instances[0];
+    socket.open();
+    // 2 s of audio in the ring buffer, for the voices' audio.
+    for (let i = 0; i < 40; i += 1) transcriber.sendFrame(frame(i + 1));
+    return { transcriber, received, socket, speakers };
+  }
+
+  it('sends only the microphone channel', async () => {
+    const { socket } = await phoneSetup();
+    const audio = socket.sent.filter((d): d is ArrayBuffer => typeof d !== 'string');
+    expect(audio[0].byteLength).toBe(FRAME_SAMPLES * 2); // mono PCM16
+    expect(socket.audioIds.slice(0, 3)).toEqual([1, 2, 3]);
+  });
+
+  it("splits words by voice, and a change of voice ends the previous speaker's turn", async () => {
+    const { received, socket, speakers } = await phoneSetup();
+    const utterances: Utterance[] = [];
+    const assembler = new UtteranceAssembler((u) => utterances.push(u));
+    received.length = 0;
+
+    const words = [word('Tell', 0, 0.3, 0), word('me', 0.3, 0.5, 0), word('more.', 0.5, 0.9, 0), word('Sure,', 1.0, 1.3, 1), word('I', 1.3, 1.4, 1)];
+    socket.receive(results(0, 0, 1.5, 'Tell me more. Sure, I', { is_final: true, channel: { alternatives: [{ transcript: 'Tell me more. Sure, I', confidence: 0.9, words }] } }));
+    received.forEach((r) => assembler.push(r));
+
+    expect(received.map((r) => [r.role, r.text, r.speechFinal])).toEqual([
+      ['interviewer', 'Tell me more.', false],
+      ['interviewer', '', true],
+      ['candidate', 'Sure, I', false],
+      ['interviewer', '', false],
+    ]);
+    expect(utterances).toEqual([expect.objectContaining({ role: 'interviewer', text: 'Tell me more.', startSec: 0 })]);
+    expect(utterances[0].endSec).toBeCloseTo(0.9, 5);
+    // Each voice's audio goes to the resolver once, from the final result.
+    expect(speakers.addSpeech.mock.calls.map(([speaker, pcm]) => [speaker, (pcm as Int16Array).length])).toEqual([
+      [0, 14_400],
+      [1, 6_400],
+    ]);
+  });
+
+  it("shows interim words under each person, judging new voices from the interim audio", async () => {
+    const { received, socket, speakers } = await phoneSetup();
+    received.length = 0;
+    const words = [word('So', 0.2, 0.4, 1), word('basically', 0.4, 0.9, 1)];
+    socket.receive(results(0, 0, 1, 'So basically', { channel: { alternatives: [{ transcript: 'So basically', confidence: 0.8, words }] } }));
+    expect(received.map((r) => [r.role, r.text, r.isFinal])).toEqual([
+      ['candidate', 'So basically', false],
+      ['interviewer', '', false],
+    ]);
+    expect(speakers.addSpeech).not.toHaveBeenCalled();
+    expect(speakers.role).toHaveBeenCalledWith(1, expect.objectContaining({ pending: expect.any(Int16Array) }));
+  });
+
+  it("ends both people's turns on UtteranceEnd and starts fresh speaker numbers on reconnect", async () => {
+    const { transcriber, socket, speakers } = await phoneSetup();
+    const ends: string[] = [];
+    transcriber.onUtteranceEnd((event) => ends.push(event.role));
+    socket.receive({ type: 'UtteranceEnd', channel: [0, 1], last_word_end: 1.2 });
+    expect(ends).toEqual(['candidate', 'interviewer']);
+
+    expect(speakers.reset).toHaveBeenCalledTimes(1); // first open
+    socket.drop();
+    await jest.advanceTimersByTimeAsync(300);
+    FakeSocket.instances[1].open();
+    expect(speakers.reset).toHaveBeenCalledTimes(2);
   });
 });

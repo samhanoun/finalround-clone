@@ -279,3 +279,24 @@ describe('POST /api/copilot/sessions/[id]/answer (streaming)', () => {
     expect((await call({ question: 'Why?', recentTranscript: Array(21).fill({ speaker: 'candidate', text: 'x' }) })).res.status).toBe(400);
   });
 });
+
+describe('POST /api/copilot/sessions/[id]/answer with the candidate’s material', () => {
+  it('puts the passages that fit the question in the prompt and reports the ones the answer cited', async () => {
+    const chunks = [
+      { id: 'resume#1', source: 'Résumé', kind: 'resume', text: 'Led the payments migration at Stripe, cutting latency 40%.' },
+      { id: 'material:k#1', source: 'Kafka notes', kind: 'material', text: 'Designed a Kafka event pipeline for 2 million events a day.' },
+      { id: 'memory:m', source: 'Memory', kind: 'memory', text: 'Mentored four engineers.' },
+    ];
+    const { insert } = mockSupabase({ session: activeSession({}, { context_pack: { version: 1, built_at: '', chunks } }) });
+    mockStreamChat.mockImplementation(stream('I designed the Kafka pipeline [S1].'));
+
+    const { text } = await call({ ...BODY, question: 'How did you design your event pipeline with Kafka?' });
+    const prompt = mockStreamChat.mock.calls[0][0].messages[0].content as string;
+    expect(prompt).toContain('[S1] (Kafka notes) Designed a Kafka event pipeline');
+    const done = sseEvents(text).find((event) => event.event === 'done');
+    expect(done?.data.sources).toEqual([{ tag: 'S1', source: 'Kafka notes', kind: 'material' }]);
+
+    await runAfter();
+    expect(insert.mock.calls[0][0].payload.sources).toEqual([{ tag: 'S1', source: 'Kafka notes', kind: 'material' }]);
+  });
+});

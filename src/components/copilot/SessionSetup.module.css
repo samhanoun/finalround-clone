@@ -1,89 +1,299 @@
-/* Setup is a real sequence: numbered steps joined by a line, no boxes inside the card. */
+/* Setup: the interview on the left, this session's choices and Start on the
+   right. One column on phones, in reading order. */
+.setup {
+  container: setup / inline-size;
+}
+
+.layout {
+  display: grid;
+  gap: 16px;
+  align-items: start;
+}
+
+.main,
+.side {
+  display: grid;
+  gap: 24px;
+  min-width: 0;
+  padding: 24px;
+}
+
+.main {
+  container: setupMain / inline-size;
+}
+
+@container setup (min-width: 860px) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr) 320px;
+    gap: 24px;
+  }
+}
+
+/* Desktop: Start session stays in view while a long form scrolls. */
+@media (min-width: 1024px) {
+  @container setup (min-width: 860px) {
+    .side {
+      position: sticky;
+      top: calc(var(--titlebar, 0px) + 24px);
+    }
+  }
+}
+
+.header {
+  display: grid;
+  gap: 4px;
+}
+
+.title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 500;
+  line-height: 1.3;
+}
+
+.intro {
+  margin: 0;
+  max-width: 64ch;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+
+.goal {
+  display: grid;
+  gap: 8px;
+}
+
+/* A picked goal: what comes along, then the fields behind a disclosure. */
+.goalPicked {
+  display: grid;
+  gap: 12px;
+}
+
+.summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px 24px;
+  margin: 0;
+  padding: 16px 0;
+  border-top: 1px solid var(--hairline);
+  border-bottom: 1px solid var(--hairline);
+}
+
+@container setupMain (min-width: 520px) {
+  .summary {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.summary > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.summary dt {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--text-3);
+}
+
+.summary dd {
+  margin: 0;
+  overflow: hidden;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--text-1);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.disclosure {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  justify-self: start;
+  min-height: 36px;
+  margin-left: -8px;
+  padding: 0 12px 0 8px;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--text-2);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background-color var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease);
+}
+
+.disclosure:hover {
+  background: var(--raised);
+  color: var(--text-1);
+}
+
+.chevron {
+  flex-shrink: 0;
+  color: var(--text-3);
+  transform: rotate(-90deg);
+  transition: transform var(--dur-fast) var(--ease);
+}
+
+.disclosure[aria-expanded='true'] .chevron {
+  transform: none;
+}
+
+.editBody {
+  display: grid;
+  gap: 16px;
+  padding-top: 4px;
+}
+
+/* By hand: a real sequence, numbered quietly and split by hairlines. */
 .steps {
   display: grid;
-  gap: 0;
-  margin: 4px 0 0;
+  margin: 0;
   padding: 0;
   list-style: none;
   counter-reset: setup-step;
 }
 
 .step {
-  position: relative;
   display: grid;
-  gap: 14px;
-  padding: 0 0 28px 52px;
+  gap: 16px;
+  padding: 24px 0;
+  border-top: 1px solid var(--hairline);
   counter-increment: setup-step;
 }
 
-.step::before {
-  content: counter(setup-step);
-  position: absolute;
-  left: 0;
-  top: -5px;
-  width: 34px;
-  height: 34px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  border: 1px solid var(--line-strong);
-  background: var(--well);
-  color: var(--ember);
-  font-family: var(--font-title);
-  font-size: 14px;
-}
-
-.step::after {
-  content: '';
-  position: absolute;
-  left: 17px;
-  top: 34px;
-  bottom: 4px;
-  width: 1px;
-  background: var(--line);
-}
-
 .step:last-child {
-  padding-bottom: 8px;
-}
-
-.step:last-child::after {
-  display: none;
+  padding-bottom: 0;
 }
 
 .stepTitle {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
   margin: 0;
-  font-size: 16px;
-  font-weight: 600;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.35;
 }
 
-.checkbox {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  font-size: 14.5px;
-  color: var(--paper-dim);
+.stepTitle::before {
+  content: counter(setup-step);
+  min-width: 12px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.fields {
+  display: grid;
+  gap: 16px;
+}
+
+@container setupMain (min-width: 520px) {
+  .fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* A checkbox, its label, and a help line under the label. */
+.check {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  column-gap: 12px;
+  row-gap: 2px;
+  align-items: start;
+}
+
+.check input {
+  width: 16px;
+  height: 16px;
+  margin: 2px 0 0;
+  accent-color: var(--accent);
   cursor: pointer;
 }
 
-.checkbox input {
-  margin-top: 4px;
-  width: 16px;
-  height: 16px;
+.checkLabel {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+  color: var(--text-1);
+  cursor: pointer;
 }
 
-@media (max-width: 560px) {
+.checkHelp {
+  grid-column: 2;
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-3);
+}
+
+/* A field with its help line under it (read as the field's description) */
+.field {
+  display: grid;
+  gap: 6px;
+}
+
+/* This session */
+.group {
+  display: grid;
+  gap: 16px;
+}
+
+.sideTitle {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+.choices {
+  display: grid;
+  gap: 12px;
+}
+
+@container setup (min-width: 520px) and (max-width: 859px) {
+  .choices {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+  }
+}
+
+.meeting {
+  display: grid;
+  gap: 16px;
+  padding-top: 20px;
+  border-top: 1px solid var(--hairline);
+}
+
+.start {
+  display: grid;
+  gap: 12px;
+}
+
+.startButton {
+  width: 100%;
+}
+
+@media (max-width: 767px) {
+  .main,
+  .side {
+    gap: 20px;
+    padding: 16px;
+  }
+
   .step {
-    padding-left: 0;
-    padding-top: 44px;
+    padding: 20px 0;
   }
 
-  .step::before {
-    top: 0;
-  }
-
-  .step::after {
-    display: none;
+  .step:last-child {
+    padding-bottom: 0;
   }
 }

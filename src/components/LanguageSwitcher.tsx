@@ -3,7 +3,14 @@
 import { useLocale, useTranslations } from 'next-intl';
 import { usePathname, useRouter } from '@/i18n/routing';
 import { ChangeEvent, useTransition } from 'react';
+import { LOCALES } from '@/i18n/locales';
+import { SettingRow } from '@/app/[locale]/settings/SettingsUI';
 
+/**
+ * Settings → Language & region → App language. The page switches at once;
+ * the choice is also saved to the account, so emails and notifications come
+ * in the same language.
+ */
 export function LanguageSwitcher() {
   const t = useTranslations('settings');
   const router = useRouter();
@@ -13,66 +20,26 @@ export function LanguageSwitcher() {
 
   const onSelectChange = (event: ChangeEvent<HTMLSelectElement>) => {
     const nextLocale = event.target.value;
+    // Best effort: the page still switches if saving fails or nobody is signed in.
+    void fetch('/api/settings/profile', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ language: nextLocale }),
+    }).catch(() => undefined);
     startTransition(() => {
-      router.replace(pathname, { locale: nextLocale });
+      router.replace(`${pathname}#language`, { locale: nextLocale });
     });
   };
 
-  const languages = [
-    { code: 'en', name: t('languages.en') },
-    { code: 'es', name: t('languages.es') },
-    { code: 'fr', name: t('languages.fr') },
-    { code: 'de', name: t('languages.de') },
-    { code: 'pt', name: t('languages.pt') },
-  ];
-
   return (
-    <div className="languageSwitcher">
-      <label htmlFor="language-select" className="srOnly">
-        {t('language')}
-      </label>
-      <select
-        id="language-select"
-        className="select"
-        defaultValue={locale}
-        onChange={onSelectChange}
-        disabled={isPending}
-      >
-        {languages.map((lang) => (
-          <option key={lang.code} value={lang.code}>
-            {lang.name}
+    <SettingRow label={t('language')} help={t('languageDescription')} htmlFor="language-select">
+      <select id="language-select" className="select" defaultValue={locale} onChange={onSelectChange} disabled={isPending} lang={locale}>
+        {LOCALES.map((code) => (
+          <option key={code} value={code} lang={code}>
+            {t(`languages.${code}`)}
           </option>
         ))}
       </select>
-      <style jsx>{`
-        .languageSwitcher {
-          display: flex;
-          flex-direction: column;
-          gap: 0.5rem;
-        }
-        .languageLabel {
-          font-weight: 600;
-          color: var(--foreground);
-        }
-        .languageSelect {
-          padding: 0.5rem;
-          border-radius: 0.375rem;
-          border: 1px solid var(--border);
-          background: var(--background);
-          color: var(--foreground);
-          font-size: 0.875rem;
-          cursor: pointer;
-        }
-        .languageSelect:focus {
-          outline: none;
-          border-color: var(--primary);
-          box-shadow: 0 0 0 2px var(--primary-alpha);
-        }
-        .languageSelect:disabled {
-          opacity: 0.5;
-          cursor: not-allowed;
-        }
-      `}</style>
-    </div>
+    </SettingRow>
   );
 }

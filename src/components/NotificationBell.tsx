@@ -2,8 +2,11 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/browser';
-import { Link } from '@/i18n/routing';
+import { Link, useRouter } from '@/i18n/routing';
+import { useFormatter, useTranslations } from 'next-intl';
+import { notificationText } from '@/lib/notificationText';
 import { BellIcon, CalendarIcon, JobsIcon, SparkIcon } from './icons';
+import styles from './NotificationBell.module.css';
 
 interface Notification {
   id: string;
@@ -16,9 +19,13 @@ interface Notification {
   created_at: string;
 }
 
-/** `placement="side"`: in the navigation rail, the list opens to the right. */
+/** `placement="side"`: in the desktop sidebar, the list opens to the right. On phones it spans the screen. */
 export function NotificationBell({ placement = 'below' }: { placement?: 'below' | 'side' } = {}) {
   const supabase = createClient();
+  const router = useRouter();
+  const t = useTranslations('NotificationBell');
+  const tn = useTranslations('Notifications');
+  const format = useFormatter();
   const [unreadCount, setUnreadCount] = useState(0);
   const [isOpen, setIsOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -73,16 +80,31 @@ export function NotificationBell({ placement = 'below' }: { placement?: 'below' 
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    const unreadIds = notifications.filter(n => !n.read).map(n => n.id);
-    if (unreadIds.length === 0) return;
-
-    await supabase
+    // Every unread one, not only the latest ten shown here: the count says "all read" afterwards.
+    const { error } = await supabase
       .from('notifications')
       .update({ read: true, read_at: new Date().toISOString() })
-      .in('id', unreadIds);
+      .eq('user_id', user.id)
+      .eq('read', false);
+    if (error) return;
 
-    setNotifications(prev => prev.map(n => ({ ...n, read: true, read_at: new Date().toISOString() })));
+    setNotifications(prev => prev.map(n => ({ ...n, read: true, read_at: n.read_at ?? new Date().toISOString() })));
     setUnreadCount(0);
+  }
+
+  /** An in-app path the notification points to (set by src/lib/notify.ts). */
+  function linkOf(notification: Notification): string | null {
+    const url = notification.data?.url;
+    return typeof url === 'string' && url.startsWith('/') && !url.startsWith('//') ? url : null;
+  }
+
+  function openNotification(notification: Notification) {
+    if (!notification.read) void markAsRead(notification.id);
+    const url = linkOf(notification);
+    if (url) {
+      setIsOpen(false);
+      router.push(url);
+    }
   }
 
   function toggleDropdown() {
@@ -113,16 +135,11 @@ export function NotificationBell({ placement = 'below' }: { placement?: 'below' 
   function formatTimeAgo(dateString: string) {
     const date = new Date(dateString);
     const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMins / 60);
-    const diffDays = Math.floor(diffHours / 24);
+    const diffMins = Math.floor((now.getTime() - date.getTime()) / 60000);
 
-    if (diffMins < 1) return 'just now';
-    if (diffMins < 60) return `${diffMins}m ago`;
-    if (diffHours < 24) return `${diffHours}h ago`;
-    if (diffDays < 7) return `${diffDays}d ago`;
-    return date.toLocaleDateString();
+    if (diffMins < 1) return t('justNow');
+    if (diffMins < 7 * 24 * 60) return format.relativeTime(date, now);
+    return format.dateTime(date, { day: 'numeric', month: 'short' });
   }
 
   function getTypeIcon(type: string) {
@@ -139,161 +156,65 @@ export function NotificationBell({ placement = 'below' }: { placement?: 'below' 
   }
 
   return (
-    <div className="notification-bell" ref={dropdownRef} style={{ position: 'relative' }}>
+    <div className={`notification-bell ${styles.bell}`} ref={dropdownRef}>
       <button
+        type="button"
         onClick={toggleDropdown}
-        className="button buttonGhost"
-        aria-label={`Notifications ${unreadCount > 0 ? `(${unreadCount} unread)` : ''}`}
-        style={{ padding: 0, width: 44, position: 'relative' }}
+        className="iconButton"
+        aria-label={unreadCount > 0 ? t('labelUnread', { count: unreadCount }) : t('label')}
+        aria-expanded={isOpen}
       >
-        <BellIcon size={20} />
-        {unreadCount > 0 && (
-          <span
-            style={{
-              position: 'absolute',
-              top: 4,
-              right: 4,
-              background: 'var(--ember)',
-              color: 'var(--midnight)',
-              borderRadius: '50%',
-              width: 18,
-              height: 18,
-              fontSize: '0.7rem',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontWeight: 'bold',
-            }}
-          >
-            {unreadCount > 9 ? '9+' : unreadCount}
-          </span>
-        )}
+        <BellIcon size={18} />
+        {unreadCount > 0 ? <span className={styles.unreadDot} aria-hidden="true" /> : null}
       </button>
 
       {isOpen && (
-        <div
-          className="notification-dropdown"
-          style={{
-            position: 'absolute',
-            ...(placement === 'side'
-              ? { left: '100%', bottom: 0, marginLeft: 12 }
-              : { top: '100%', right: 0, marginTop: 8 }),
-            width: 'min(360px, calc(100vw - 32px))',
-            maxHeight: 480,
-            overflow: 'auto',
-            background: 'var(--deck)',
-            border: '1px solid var(--line-strong)',
-            borderRadius: 14,
-            boxShadow: 'var(--float)',
-            zIndex: 100,
-          }}
-        >
-          <div
-            style={{
-              padding: '12px 16px',
-              borderBottom: '1px solid var(--border)',
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-            }}
-          >
-            <h3 style={{ margin: 0, fontSize: '1rem' }}>Notifications</h3>
+        <div className={`notification-dropdown ${styles.panel} ${placement === 'side' ? styles.side : styles.below}`}>
+          <div className={styles.header}>
+            <h2 className={styles.title}>{t('title')}</h2>
             {unreadCount > 0 && (
-              <button
-                onClick={markAllAsRead}
-                className="button buttonGhost"
-                style={{ minHeight: 32, padding: '0 10px', fontSize: 13 }}
-              >
-                Mark all read
+              <button type="button" onClick={markAllAsRead} className="button buttonGhost buttonSmall">
+                {t('markAllRead')}
               </button>
             )}
           </div>
 
           {loading ? (
-            <div style={{ padding: 24, textAlign: 'center', color: 'var(--fgMuted)' }}>
-              Loading...
-            </div>
+            <div className={styles.note}>{t('loading')}</div>
           ) : notifications.length === 0 ? (
-            <div style={{ padding: 24, textAlign: 'center', color: 'var(--fgMuted)' }}>
-              No notifications yet
-            </div>
+            <div className={styles.note}>{t('empty')}</div>
           ) : (
-            <div>
-              {notifications.map((notification) => (
-                <div
-                  key={notification.id}
-                  onClick={() => !notification.read && markAsRead(notification.id)}
-                  style={{
-                    padding: '12px 16px',
-                    borderBottom: '1px solid var(--border)',
-                    cursor: notification.read ? 'default' : 'pointer',
-                    background: notification.read ? 'transparent' : 'var(--bgElevated)',
-                    transition: 'background 0.15s',
-                  }}
-                >
-                  <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-                    <span style={{ display: 'inline-flex', color: 'var(--mist)' }}>{getTypeIcon(notification.type)}</span>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div
-                        style={{
-                          fontWeight: notification.read ? 'normal' : '600',
-                          marginBottom: 4,
-                        }}
-                      >
-                        {notification.title}
-                      </div>
-                      <div
-                        style={{
-                          fontSize: '0.85rem',
-                          color: 'var(--fgMuted)',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap',
-                        }}
-                      >
-                        {notification.message}
-                      </div>
-                      <div
-                        style={{
-                          fontSize: '0.75rem',
-                          color: 'var(--fgMuted)',
-                          marginTop: 4,
-                        }}
-                      >
-                        {formatTimeAgo(notification.created_at)}
-                      </div>
+            <div className={styles.list}>
+              {notifications.map((notification) => {
+                const text = notificationText(notification, tn, format);
+                const actionable = Boolean(linkOf(notification)) || !notification.read;
+                return (
+                  <div
+                    key={notification.id}
+                    role={linkOf(notification) ? 'link' : undefined}
+                    tabIndex={actionable ? 0 : undefined}
+                    onClick={() => openNotification(notification)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') openNotification(notification);
+                    }}
+                    className={`${styles.item} ${actionable ? styles.actionable : ''} ${notification.read ? '' : styles.unread}`}
+                  >
+                    <span className={styles.icon}>{getTypeIcon(notification.type)}</span>
+                    <div className={styles.body}>
+                      <div className={styles.itemTitle}>{text.title}</div>
+                      <div className={styles.message}>{text.message}</div>
+                      <div className={styles.time}>{formatTimeAgo(notification.created_at)}</div>
                     </div>
-                    {!notification.read && (
-                      <span
-                        style={{
-                          width: 8,
-                          height: 8,
-                          borderRadius: '50%',
-                          background: 'var(--blue)',
-                          flexShrink: 0,
-                          marginTop: 6,
-                        }}
-                      />
-                    )}
+                    {!notification.read ? <span className={styles.itemDot} aria-hidden="true" /> : null}
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
 
-          <div
-            style={{
-              padding: '12px 16px',
-              borderTop: '1px solid var(--border)',
-              textAlign: 'center',
-            }}
-          >
-            <Link
-              href="/settings"
-              scroll={false}
-              style={{ fontSize: 14, color: 'var(--ice)' }}
-            >
-              Notification settings
+          <div className={styles.footer}>
+            <Link href="/settings#notifications" className={styles.settingsLink} onClick={() => setIsOpen(false)}>
+              {t('settings')}
             </Link>
           </div>
         </div>

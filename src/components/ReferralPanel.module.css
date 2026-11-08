@@ -1,3 +1,20 @@
+/* Invite a friend: lower on Home and quieter. Every control stays, all secondary. */
+.inner {
+  display: grid;
+  gap: 16px;
+}
+
+.head {
+  display: grid;
+}
+
+.note {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+
 .linkRow {
   display: flex;
   gap: 8px;
@@ -7,8 +24,12 @@
   flex: 1;
   min-width: 0;
   font-family: var(--font-code);
-  font-size: 13.5px;
-  color: var(--paper-dim);
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.buttonIcon {
+  color: var(--text-2);
 }
 
 .meta {
@@ -16,18 +37,23 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  color: var(--mist);
-  font-size: 14px;
+  margin: -4px 0;
+}
+
+.codeLine {
+  font-size: 13px;
+  color: var(--text-2);
 }
 
 .code {
   margin-left: 6px;
-  padding: 2px 8px;
-  border-radius: 6px;
-  background: var(--ink);
-  color: var(--paper);
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--raised);
+  color: var(--text-1);
   font-family: var(--font-code);
-  letter-spacing: 0.08em;
+  font-size: 12px;
+  letter-spacing: 0.04em;
 }
 
 .share {
@@ -39,32 +65,35 @@
 
 .shareLabel {
   margin-right: 4px;
-  color: var(--mist);
-  font-size: 14px;
+  font-size: 13px;
+  color: var(--text-2);
 }
 
 .stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 24px;
   margin: 0;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--hairline);
 }
 
 .stats div {
-  padding-left: 14px;
-  border-left: 2px solid var(--line-strong);
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
 }
 
 .stats dt {
-  color: var(--mist);
-  font-size: 13.5px;
+  font-size: 13px;
+  color: var(--text-2);
 }
 
 .stats dd {
   margin: 0;
-  font-size: 1.75rem;
-  font-weight: 600;
-  letter-spacing: -0.03em;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text-1);
   font-variant-numeric: tabular-nums;
 }
 
@@ -72,22 +101,40 @@
   margin: 0;
   padding: 0;
   list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+  display: grid;
 }
 
 .history li {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
-  border-radius: 10px;
-  background: var(--well);
+  gap: 4px 12px;
+  min-height: 40px;
+  padding: 8px 0;
+  border-top: 1px solid var(--hairline);
+  font-size: 13px;
+}
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-1);
+}
+
+.status[data-status='converted'] :global(.dot),
+.status[data-status='signed_up'] :global(.dot) {
+  background: var(--positive);
+}
+
+.source {
+  color: var(--text-3);
 }
 
 .when {
   margin-left: auto;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
 }
 
 @media (max-width: 480px) {

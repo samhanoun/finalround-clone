@@ -392,6 +392,18 @@ export class QuestionGate {
     return question;
   }
 
+  /**
+   * A line typed as the interviewer (Type a line). The caller answers it
+   * straight away; the gate keeps it as the latest finished turn, so Answer
+   * now can answer it again until the interviewer speaks.
+   */
+  noteTyped(text: string): void {
+    const line = text.trim();
+    if (!line) return;
+    this.endTurn();
+    this.previousTurnText = line;
+  }
+
   reset(): void {
     this.cancelClassifier();
     this.turn = null;

@@ -1,11 +1,14 @@
 import type { NextRequest } from 'next/server';
 
+const afterCallbacks: Array<() => unknown> = [];
 jest.mock('next/server', () => ({
+  after: (callback: () => unknown) => afterCallbacks.push(callback),
   NextResponse: {
     json: (body: unknown, init?: { status?: number }) => ({ status: init?.status ?? 200, json: async () => body }),
   },
 }));
 jest.mock('@/lib/rateLimit', () => ({ rateLimit: jest.fn() }));
+jest.mock('@/lib/memoryExtraction', () => ({ rememberFromSession: jest.fn() }));
 jest.mock('@/lib/supabase/server', () => ({ createClient: jest.fn() }));
 jest.mock('@/lib/supabase/admin', () => ({ createAdminClient: jest.fn() }));
 jest.mock('@/lib/copilot', () => ({

@@ -1,0 +1,66 @@
+name: CodeQL
+
+# Static analysis (SAST) of the JavaScript/TypeScript code and of these GitHub
+# Actions workflows, with the security-extended query suite. Results go to
+# Security > Code scanning; on pull requests GitHub's "CodeQL" check fails on
+# new alerts at or above the threshold set in the repository's code scanning
+# settings. See docs/ci.md.
+#
+# This replaces codeql.yml and codeql1.yml, which GitHub disabled after 60 days
+# without repository activity (state disabled_inactivity): a workflow disabled
+# that way stays off, whatever its file contains, until someone re-enables it.
+
+on:
+  pull_request:
+    branches: [master]
+  push:
+    branches: [master]
+  schedule:
+    - cron: '17 3 * * 1' # Mondays 03:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  analyze:
+    name: CodeQL (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      actions: read # only needed if the repository becomes private
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [actions, javascript-typescript]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          languages: ${{ matrix.language }}
+          # Neither language needs a build: CodeQL reads the sources directly.
+          build-mode: none
+          queries: security-extended
+          # Tests, test mocks and the end-to-end fakes don't ship.
+          config: |
+            paths-ignore:
+              - e2e
+              - test
+              - '**/__tests__/**'
+              - '**/*.test.ts'
+              - '**/*.test.tsx'
+
+      - name: Analyze
+        uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          category: /language:${{ matrix.language }}

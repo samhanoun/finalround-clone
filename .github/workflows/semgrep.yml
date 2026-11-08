@@ -1,0 +1,88 @@
+name: Semgrep
+
+# Static analysis (SAST) with Semgrep OSS, run from its official container
+# image with the registry rulesets listed below. Every finding goes to
+# Security > Code scanning; the job fails on ERROR-severity findings.
+# .semgrepignore lists the paths it skips (dependencies, build output, tests,
+# test fixtures and the end-to-end fakes). See docs/ci.md.
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+  schedule:
+    - cron: '41 3 * * 1' # Mondays 03:41 UTC: new and updated rules
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  semgrep:
+    # Not "Semgrep OSS": that is the name of the code scanning check its results create.
+    name: Semgrep scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      actions: read # only needed if the repository becomes private
+      contents: read
+      security-events: write
+    env:
+      # Dependabot doesn't update an image used with docker run: bump it by hand
+      # (https://github.com/semgrep/semgrep/releases).
+      SEMGREP_IMAGE: semgrep/semgrep:1.183.0
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Semgrep scans the files git tracks, minus .semgrepignore. Findings don't
+      # fail this step; the last step decides.
+      - name: Scan
+        id: scan
+        run: |
+          docker run --rm --volume "$GITHUB_WORKSPACE:/src" --workdir /src "$SEMGREP_IMAGE" \
+            semgrep scan \
+              --metrics=off \
+              --disable-version-check \
+              --config=p/default \
+              --config=p/typescript \
+              --config=p/react \
+              --config=p/nextjs \
+              --config=p/nodejsscan \
+              --config=p/secrets \
+              --config=p/owasp-top-ten \
+              --config=p/github-actions \
+              --config=p/dockerfile \
+              --text \
+              --json-output=semgrep.json \
+              --sarif-output=semgrep.sarif
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+
+      # Findings marked nosemgrep in the code are already out of semgrep.json, but
+      # Semgrep writes them to the SARIF as suppressed and code scanning would open
+      # alerts for them anyway.
+      - name: Leave out findings marked nosemgrep
+        id: sarif
+        if: ${{ !cancelled() && steps.scan.outcome == 'success' }}
+        run: node .github/scripts/sarif-drop-suppressed.mjs semgrep.sarif semgrep.upload.sarif
+
+      - name: Upload to code scanning
+        # A pull request from a fork gets a read-only token, so it can't upload.
+        if: ${{ !cancelled() && steps.sarif.outcome == 'success' && (github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork) }}
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          sarif_file: semgrep.upload.sarif
+          category: semgrep
+
+      # Job summary per severity, one annotation per blocking finding, and the
+      # verdict: ERROR (or CRITICAL/HIGH, the same level in newer rules) fails.
+      - name: Fail on ERROR-severity findings
+        run: node .github/scripts/semgrep-gate.mjs semgrep.json

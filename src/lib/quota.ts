@@ -39,18 +39,13 @@ export async function getUserPlan(userId: string) {
   return data[0];
 }
 
-// Check if user has quota for a counter type
-export async function checkQuota(userId: string, counterType: CounterType): Promise<QuotaCheck> {
+/** The current quota, or null when it couldn't be read. */
+async function readQuota(userId: string, counterType: CounterType): Promise<QuotaCheck | null> {
   const { data, error } = await admin().rpc('check_quota', {
     p_user_id: userId,
     p_counter_type: counterType,
   });
-  
-  if (error || !data || data.length === 0) {
-    // Default: no quota
-    return { allowed: false, used: 0, limit: 0, remaining: 0 };
-  }
-  
+  if (error || !data || data.length === 0) return null;
   return {
     allowed: data[0].allowed,
     used: data[0].used,
@@ -59,14 +54,20 @@ export async function checkQuota(userId: string, counterType: CounterType): Prom
   };
 }
 
-// Record usage after operation completes
+// Check if user has quota for a counter type
+export async function checkQuota(userId: string, counterType: CounterType): Promise<QuotaCheck> {
+  // Default when it can't be read: no quota
+  return (await readQuota(userId, counterType)) ?? { allowed: false, used: 0, limit: 0, remaining: 0 };
+}
+
+// Record usage after operation completes. False when it couldn't be recorded.
 export async function recordUsage(
   userId: string, 
   counterType: CounterType, 
   amount: number,
   sessionId?: string,
   sessionStart?: Date
-) {
+): Promise<boolean> {
   const { error } = await admin().rpc('record_usage', {
     p_user_id: userId,
     p_counter_type: counterType,
@@ -77,6 +78,44 @@ export async function recordUsage(
   
   if (error) {
     console.error('Failed to record usage:', error);
+    return false;
+  }
+  return true;
+}
+
+export type Reservation =
+  | { ok: true; reservedAt: Date }
+  | { ok: false; error: 'quota_exceeded' | 'quota_unavailable'; used: number; limit: number };
+
+/**
+ * Takes one unit of a monthly quota before slow work starts, so parallel
+ * requests can't all pass the same check. The counter goes up first (one
+ * atomic update), then is compared with the limit; a reservation that went
+ * over is handed back. Anything unreadable refuses the work.
+ */
+export async function reserveQuota(userId: string, counterType: CounterType): Promise<Reservation> {
+  const before = await readQuota(userId, counterType);
+  if (!before) return { ok: false, error: 'quota_unavailable', used: 0, limit: 0 };
+  if (!before.allowed) return { ok: false, error: 'quota_exceeded', used: before.used, limit: before.limit };
+
+  const reservedAt = new Date();
+  if (!(await recordUsage(userId, counterType, 1))) return { ok: false, error: 'quota_unavailable', used: before.used, limit: before.limit };
+  const after = await readQuota(userId, counterType);
+  if (after && after.used <= after.limit) return { ok: true, reservedAt };
+
+  await releaseQuota(userId, counterType, reservedAt);
+  return after
+    ? { ok: false, error: 'quota_exceeded', used: after.used - 1, limit: after.limit }
+    : { ok: false, error: 'quota_unavailable', used: before.used, limit: before.limit };
+}
+
+const monthOf = (date: Date) => `${date.getUTCFullYear()}-${date.getUTCMonth()}`;
+
+/** Hands back a reservation whose work failed (not across a month boundary: that month's count has closed). */
+export async function releaseQuota(userId: string, counterType: CounterType, reservedAt: Date, now = new Date()) {
+  if (monthOf(reservedAt) !== monthOf(now)) return;
+  if (!(await recordUsage(userId, counterType, -1))) {
+    console.error('[quota] could not hand back a reservation', { userId, counterType });
   }
 }
 

@@ -1,10 +1,13 @@
 'use client';
 
-import { useState, useEffect, useId } from 'react';
+import { useState, useEffect, useId, useSyncExternalStore } from 'react';
+import { useFormatter, useTranslations } from 'next-intl';
 import { createClient } from '@/lib/supabase/browser';
+import { Link } from '@/i18n/routing';
 import { useToastHook } from '@/components/Toast';
 import { LoadingSpinner } from '@/components/Skeleton';
-import { SearchIcon } from '@/components/icons';
+import { CalendarIcon, ClockIcon, CloseIcon, MoreIcon, PencilIcon, SearchIcon, TargetIcon, TrashIcon } from '@/components/icons';
+import styles from './JobsClient.module.css';
 
 type ApplicationStage = 'saved' | 'applied' | 'oa' | 'interview' | 'offer' | 'rejected';
 
@@ -33,6 +36,8 @@ interface JobApplication {
   status: string;
   applied_at: string | null;
   next_followup_at: string | null;
+  interview_at: string | null;
+  job_url: string | null;
   notes: string | null;
   company: string;
   title: string;
@@ -43,18 +48,53 @@ interface JobWithApplication extends JobApplication {
   job?: Job;
 }
 
-const STAGE_LABELS: Record<ApplicationStage, string> = {
-  saved: 'Saved',
-  applied: 'Applied',
-  oa: 'Online Assessment',
-  interview: 'Interview',
-  offer: 'Offer',
-  rejected: 'Rejected',
-};
-
 const STAGE_ORDER: ApplicationStage[] = ['saved', 'applied', 'oa', 'interview', 'offer', 'rejected'];
 
+/**
+ * Any stage past "saved" means the application went out, so a job that has no
+ * applied date yet gets today's (Home's "applications sent this month", the
+ * weekly figures and the digest count by it). A date already set is kept.
+ */
+function stampsApplied(stage: ApplicationStage | undefined, appliedAt: string | null | undefined): boolean {
+  return stage !== undefined && stage !== 'saved' && !appliedAt;
+}
+
+/** ISO → the value a datetime-local input shows (local time). */
+function toLocalInput(iso: string | null): string {
+  if (!iso) return '';
+  const date = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+/** Phones get one list, filtered by stage, instead of six columns. */
+const PHONE = '(max-width: 767px)';
+function subscribeToPhone(onChange: () => void) {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return () => {};
+  const query = window.matchMedia(PHONE);
+  query.addEventListener('change', onChange);
+  return () => query.removeEventListener('change', onChange);
+}
+function usePhone(): boolean {
+  return useSyncExternalStore(
+    subscribeToPhone,
+    () => typeof window.matchMedia === 'function' && window.matchMedia(PHONE).matches,
+    () => false,
+  );
+}
+
 export function JobsClient() {
+  const t = useTranslations('Jobs');
+  const format = useFormatter();
+  const isPhone = usePhone();
+  const stageLabel = (stage: ApplicationStage) => t(`stages.${stage}`);
+  const shortDate = (iso: string, withTime = false) =>
+    format.dateTime(new Date(iso), {
+      weekday: 'short',
+      day: 'numeric',
+      month: 'short',
+      ...(withTime ? { hour: 'numeric', minute: '2-digit' } : {}),
+    });
   const supabase = createClient();
   const toast = useToastHook();
   const [applications, setApplications] = useState<JobWithApplication[]>([]);
@@ -62,11 +102,16 @@ export function JobsClient() {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStage, setFilterStage] = useState<ApplicationStage | 'all'>('all');
   const [showAddModal, setShowAddModal] = useState(false);
+  const [editing, setEditing] = useState<JobWithApplication | null>(null);
   const [draggedItem, setDraggedItem] = useState<JobWithApplication | null>(null);
+  const [dragOver, setDragOver] = useState<ApplicationStage | null>(null);
+  const [menuFor, setMenuFor] = useState<string | null>(null);
   const [announcement, setAnnouncement] = useState('');
+  // When the board was opened: what counts as upcoming or overdue on the cards.
+  const [now] = useState(() => Date.now());
 
   const searchId = useId();
-  const filterGroupId = useId();
+  const searchHelpId = useId();
 
   useEffect(() => {
     let mounted = true;
@@ -94,6 +139,28 @@ export function JobsClient() {
     };
   }, [supabase]);
 
+  // An open card menu closes on Escape (focus goes back to its button) or a click anywhere else.
+  useEffect(() => {
+    if (!menuFor) return;
+    const onPointer = (event: PointerEvent) => {
+      const target = event.target as Element | null;
+      if (target?.closest(`[data-menu="${menuFor}"]`)) return;
+      setMenuFor(null);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      const trigger = document.querySelector<HTMLElement>(`[data-menu-trigger="${menuFor}"]`);
+      setMenuFor(null);
+      trigger?.focus();
+    };
+    document.addEventListener('pointerdown', onPointer);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('pointerdown', onPointer);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [menuFor]);
+
   const announce = (message: string) => {
     setAnnouncement(message);
     setTimeout(() => setAnnouncement(''), 1000);
@@ -115,7 +182,8 @@ export function JobsClient() {
     const updates: Partial<JobApplication> = { stage: newStage };
     const app = applications.find(a => a.id === appId);
 
-    if (newStage === 'applied' && !app?.applied_at) {
+    // Dragged or moved out of Saved, to any column: it was sent.
+    if (stampsApplied(newStage, app?.applied_at)) {
       updates.applied_at = new Date().toISOString();
     }
 
@@ -125,18 +193,23 @@ export function JobsClient() {
       .eq('id', appId);
 
     if (!error) {
-      const oldStage = app?.stage;
       setApplications(prev =>
         prev.map(app =>
           app.id === appId ? { ...app, ...updates, updated_at: new Date().toISOString() } : app
         )
       );
-      toast.success('Stage Updated', `Moved ${app?.title} to ${STAGE_LABELS[newStage]}`);
+      const body = t('movedBody', { title: app?.title ?? '', stage: stageLabel(newStage) });
+      toast.success(t('moved'), body);
+      announce(body);
+    } else {
+      toast.error(t('notSaved'), t('tryAgain'));
     }
   };
 
   const deleteApplication = async (appId: string) => {
     const app = applications.find(a => a.id === appId);
+    // Deleting a job also drops its notes and dates, so it asks first.
+    if (app && !window.confirm(t('confirmDelete', { title: app.title, company: app.company }))) return;
     const { error } = await supabase
       .from('job_applications')
       .delete()
@@ -144,13 +217,13 @@ export function JobsClient() {
 
     if (!error) {
       setApplications(prev => prev.filter(app => app.id !== appId));
-      toast.success('Deleted', `Removed ${app?.title} application`);
+      toast.success(t('deleted'), t('deletedBody', { title: app?.title ?? '' }));
     } else {
-      toast.error('Error', 'Failed to delete application');
+      toast.error(t('notDeleted'), t('tryAgain'));
     }
   };
 
-  const addJob = async (jobData: { company: string; title: string; job_url?: string; notes?: string }) => {
+  const addJob = async (jobData: JobFormData) => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
@@ -160,25 +233,56 @@ export function JobsClient() {
         user_id: user.id,
         company: jobData.company,
         title: jobData.title,
-        stage: 'saved',
+        stage: jobData.stage ?? 'saved',
         status: 'active',
-        notes: jobData.notes,
+        notes: jobData.notes || null,
+        job_url: jobData.job_url || null,
+        interview_at: jobData.interview_at,
+        next_followup_at: jobData.next_followup_at,
+        applied_at: stampsApplied(jobData.stage, null) ? new Date().toISOString() : null,
       });
 
     if (!error) {
       setShowAddModal(false);
       refreshApplications();
-      toast.success('Job Added', `Added ${jobData.title} at ${jobData.company}`);
+      toast.success(t('added'), t('jobAt', { title: jobData.title, company: jobData.company }));
     } else {
-      toast.error('Error', 'Failed to add job application');
+      toast.error(t('notAdded'), t('tryAgain'));
     }
   };
 
+  const saveJob = async (appId: string, jobData: JobFormData) => {
+    const app = applications.find(a => a.id === appId);
+    const updates = {
+      company: jobData.company,
+      title: jobData.title,
+      notes: jobData.notes || null,
+      job_url: jobData.job_url || null,
+      interview_at: jobData.interview_at,
+      next_followup_at: jobData.next_followup_at,
+      stage: jobData.stage ?? app?.stage ?? 'saved',
+      ...(stampsApplied(jobData.stage, app?.applied_at) ? { applied_at: new Date().toISOString() } : {}),
+      updated_at: new Date().toISOString(),
+    };
+    const { error } = await supabase.from('job_applications').update(updates).eq('id', appId);
+    if (error) {
+      toast.error(t('notSaved'), t('tryAgain'));
+      return;
+    }
+    setApplications(prev => prev.map(a => (a.id === appId ? { ...a, ...updates } : a)));
+    setEditing(null);
+    toast.success(
+      t('saved'),
+      updates.interview_at || updates.next_followup_at ? t('reminders') : t('jobAt', { title: jobData.title, company: jobData.company }),
+    );
+  };
+
+  const query = searchQuery.trim().toLowerCase();
   const filteredApps = applications.filter(app => {
-    const matchesSearch = !searchQuery ||
-      app.company.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      app.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (app.notes && app.notes.toLowerCase().includes(searchQuery.toLowerCase()));
+    const matchesSearch = !query ||
+      app.company.toLowerCase().includes(query) ||
+      app.title.toLowerCase().includes(query) ||
+      (app.notes && app.notes.toLowerCase().includes(query));
 
     const matchesStage = filterStage === 'all' || app.stage === filterStage;
 
@@ -188,19 +292,12 @@ export function JobsClient() {
   const getAppsByStage = (stage: ApplicationStage) =>
     filteredApps.filter(app => app.stage === stage);
 
-  const handleDragStart = (app: JobWithApplication) => {
-    setDraggedItem(app);
-  };
-
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-  };
-
   const handleDrop = (stage: ApplicationStage) => {
     if (draggedItem && draggedItem.stage !== stage) {
       updateStage(draggedItem.id, stage);
     }
     setDraggedItem(null);
+    setDragOver(null);
   };
 
   const getStageCount = (stage: ApplicationStage) => applications.filter(a => a.stage === stage).length;
@@ -208,12 +305,81 @@ export function JobsClient() {
 
   if (loading) {
     return (
-      <LoadingSpinner text="Loading applications..." />
+      <LoadingSpinner text={t('loading')} />
     );
   }
 
+  const modals = (
+    <>
+      {showAddModal && (
+        <JobModal
+          onClose={() => setShowAddModal(false)}
+          onSubmit={addJob}
+        />
+      )}
+      {editing && (
+        <JobModal
+          initial={editing}
+          onClose={() => setEditing(null)}
+          onSubmit={(data) => saveJob(editing.id, data)}
+        />
+      )}
+    </>
+  );
+
+  // No jobs at all: one sentence and one action, instead of six empty columns.
+  if (totalApps === 0) {
+    return (
+      <div className={styles.jobs}>
+        <div className={styles.firstRun}>
+          <p className={styles.firstRunText}>{t('firstRun')}</p>
+          <button type="button" className="button buttonPrimary" onClick={() => setShowAddModal(true)}>
+            {t('add')}
+          </button>
+        </div>
+        {modals}
+      </div>
+    );
+  }
+
+  const card = (app: JobWithApplication, draggable: boolean) => (
+    <JobCard
+      key={app.id}
+      app={app}
+      draggable={draggable}
+      dragging={draggedItem?.id === app.id}
+      menuOpen={menuFor === app.id}
+      now={now}
+      shortDate={shortDate}
+      onDragStart={() => {
+        setMenuFor(null);
+        setDraggedItem(app);
+      }}
+      onDragEnd={() => {
+        setDraggedItem(null);
+        setDragOver(null);
+      }}
+      onMenu={() => setMenuFor(menuFor === app.id ? null : app.id)}
+      onEdit={() => {
+        setMenuFor(null);
+        setEditing(app);
+      }}
+      onMove={(stage) => {
+        setMenuFor(null);
+        if (stage !== app.stage) void updateStage(app.id, stage);
+      }}
+      onDelete={() => {
+        setMenuFor(null);
+        void deleteApplication(app.id);
+      }}
+    />
+  );
+
+  const noResults = filteredApps.length === 0;
+  const phoneStages = filterStage === 'all' ? STAGE_ORDER.filter(stage => getAppsByStage(stage).length > 0) : [filterStage];
+
   return (
-    <div className="jobsContainer">
+    <div className={styles.jobs}>
       {/* Screen reader announcements */}
       <div
         role="status"
@@ -224,457 +390,234 @@ export function JobsClient() {
         {announcement}
       </div>
 
-      {/* Header Stats */}
-      <div className="jobsStats" role="region" aria-label="Application statistics">
-        <div className="statItem">
-          <span className="statValue" aria-label={`${totalApps} total applications`}>{totalApps}</span>
-          <span className="statLabel">Applications</span>
-        </div>
-        <div className="statItem">
-          <span className="statValue" aria-label={`${getStageCount('interview') + getStageCount('offer')} interviewing`}>
-            {getStageCount('interview') + getStageCount('offer')}
-          </span>
-          <span className="statLabel">Interviewing</span>
-        </div>
-        <div className="statItem">
-          <span className="statValue" aria-label={`${getStageCount('offer')} offers`}>
-            {getStageCount('offer')}
-          </span>
-          <span className="statLabel">Offers</span>
-        </div>
-      </div>
-
-      {/* Search and Filter Bar */}
-      <div className="jobsToolbar" role="search" aria-label="Job applications search and filters">
-        <div className="searchBox">
-          <SearchIcon size={18} className="searchIcon" />
+      <div className={styles.toolbar}>
+        <div className={styles.searchBox} role="search" aria-label={t('searchLabel')}>
+          <SearchIcon size={16} className={styles.searchIcon} />
           <input
-            type="text"
-            placeholder="Search by company, title or notes"
+            type="search"
+            placeholder={t('searchPlaceholder')}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="searchInput"
+            className={styles.searchInput}
             id={searchId}
-            aria-describedby="search-description"
+            aria-label={t('search')}
+            aria-describedby={searchHelpId}
           />
-          <span id="search-description" className="srOnly">
-            Filter job applications by company name, job title, or notes
+          <span id={searchHelpId} className="srOnly">
+            {t('searchHelp')}
           </span>
         </div>
 
-        <div
-          className="filterButtons"
-          role="group"
-          aria-label="Filter by application stage"
-          id={filterGroupId}
-        >
-          <button
-            className={`filterBtn ${filterStage === 'all' ? 'active' : ''}`}
-            onClick={() => setFilterStage('all')}
-            aria-pressed={filterStage === 'all'}
-          >
-            All ({totalApps})
-          </button>
-          {STAGE_ORDER.slice(0, 5).map(stage => (
-            <button
-              key={stage}
-              className={`filterBtn ${filterStage === stage ? 'active' : ''}`}
-              onClick={() => setFilterStage(stage)}
-              aria-pressed={filterStage === stage}
-            >
-              {STAGE_LABELS[stage]} ({getStageCount(stage)})
-            </button>
-          ))}
+        <div className={styles.summary} role="group" aria-label={t('statsLabel')}>
+          <span>{t.rich('summaryJobs', { count: totalApps, n: (chunks) => <span className={styles.summaryNum}>{chunks}</span> })}</span>
+          <span>
+            {t.rich('summaryInterviewing', {
+              count: getStageCount('interview') + getStageCount('offer'),
+              n: (chunks) => <span className={styles.summaryNum}>{chunks}</span>,
+            })}
+          </span>
+          <span>{t.rich('summaryOffers', { count: getStageCount('offer'), n: (chunks) => <span className={styles.summaryNum}>{chunks}</span> })}</span>
         </div>
 
-        <button className="button buttonPrimary" onClick={() => setShowAddModal(true)}>
-          Add a job
+        <button type="button" className={`button buttonPrimary ${styles.addButton}`} onClick={() => setShowAddModal(true)}>
+          {t('add')}
         </button>
       </div>
 
-      {/* Kanban Board */}
-      <div
-        className="kanbanBoard"
-        role="region"
-        aria-label="Job applications board - Drag and drop job applications between columns to change their status"
-      >
-        {STAGE_ORDER.map(stage => (
-          <div
+      <div className={styles.tabs} role="group" aria-label={t('filterLabel')}>
+        {(['all', ...STAGE_ORDER] as const).map(stage => (
+          <button
             key={stage}
-            className={`kanbanColumn ${filterStage !== 'all' && filterStage !== stage ? 'dimmed' : ''}`}
-            onDragOver={handleDragOver}
-            onDrop={() => handleDrop(stage)}
-            role="listbox"
-            aria-label={`${STAGE_LABELS[stage]} stage - ${getAppsByStage(stage).length} applications`}
-            aria-readonly="true"
-            tabIndex={0}
+            type="button"
+            className={styles.tab}
+            onClick={() => setFilterStage(stage)}
+            aria-pressed={filterStage === stage}
           >
-            <div className="columnHeader">
-              <span className="columnTitle">{STAGE_LABELS[stage]}</span>
-              <span className="columnCount" aria-label={`${getAppsByStage(stage).length} items`}>
-                {getAppsByStage(stage).length}
-              </span>
-            </div>
-            <div className="columnContent">
-              {getAppsByStage(stage).map(app => (
-                <div
-                  key={app.id}
-                  className="jobCard"
-                  draggable
-                  onDragStart={() => handleDragStart(app)}
-                  role="option"
-                  aria-selected="false"
-                  aria-label={`${app.title} at ${app.company}. ${app.notes ? `Notes: ${app.notes}. ` : ''}Drag to move to different stage.`}
-                >
-                  <div className="jobCardHeader">
-                    <span className="jobCompany">{app.company}</span>
-                    <button
-                      className="deleteBtn"
-                      onClick={() => deleteApplication(app.id)}
-                      title="Delete"
-                      aria-label={`Delete ${app.title} application at ${app.company}`}
-                    >
-                      ×
-                    </button>
-                  </div>
-                  <div className="jobTitle">{app.title}</div>
-                  {app.notes && <div className="jobNotes">{app.notes}</div>}
-                  <div className="jobMeta">
-                    <span className="jobDate">
-                      {app.applied_at
-                        ? `Applied: ${new Date(app.applied_at).toLocaleDateString()}`
-                        : `Added: ${new Date(app.created_at).toLocaleDateString()}`}
-                    </span>
-                  </div>
-                </div>
-              ))}
-              {getAppsByStage(stage).length === 0 && (
-                <div className="emptyColumn" aria-live="polite">
-                  {filterStage === 'all' ? `No ${STAGE_LABELS[stage].toLowerCase()} jobs` : 'No matching jobs'}
-                </div>
-              )}
-            </div>
-          </div>
+            {stage === 'all' ? t('all') : stageLabel(stage)}
+            <span className={styles.tabCount}>{stage === 'all' ? totalApps : getStageCount(stage)}</span>
+          </button>
         ))}
       </div>
 
-      {/* Add Job Modal */}
-      {showAddModal && (
-        <AddJobModal
-          onClose={() => setShowAddModal(false)}
-          onSubmit={addJob}
-        />
+      {noResults ? (
+        <p className={styles.noResults} role="status">
+          {query ? t('noMatches') : t('stageEmpty', { stage: filterStage === 'all' ? t('all') : stageLabel(filterStage) })}
+        </p>
+      ) : null}
+
+      {isPhone ? (
+        noResults ? null : (
+          <div className={styles.phoneList}>
+            {phoneStages.map(stage => {
+              const apps = getAppsByStage(stage);
+              return (
+                <div key={stage} className={styles.group} role="group" aria-label={t('columnLabel', { stage: stageLabel(stage), count: apps.length })}>
+                  {filterStage === 'all' ? (
+                    <h2 className={styles.groupTitle} aria-hidden="true">
+                      {stageLabel(stage)}
+                      <span className={styles.columnCount}>{apps.length}</span>
+                    </h2>
+                  ) : null}
+                  <ul className={styles.cards}>{apps.map(app => card(app, false))}</ul>
+                </div>
+              );
+            })}
+          </div>
+        )
+      ) : (
+        <div className={styles.board} role="region" aria-label={t('boardLabel')}>
+          {STAGE_ORDER.map(stage => {
+            const apps = getAppsByStage(stage);
+            return (
+              <div
+                key={stage}
+                className={styles.column}
+                data-dimmed={filterStage !== 'all' && filterStage !== stage}
+                role="group"
+                aria-label={t('columnLabel', { stage: stageLabel(stage), count: apps.length })}
+              >
+                <div className={styles.columnHead} aria-hidden="true">
+                  <span className={styles.columnTitle}>{stageLabel(stage)}</span>
+                  <span className={styles.columnCount}>{apps.length}</span>
+                </div>
+                <ul
+                  className={styles.columnBody}
+                  data-empty={apps.length === 0}
+                  data-over={dragOver === stage && draggedItem?.stage !== stage}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    if (dragOver !== stage) setDragOver(stage);
+                  }}
+                  onDragLeave={(e) => {
+                    if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragOver(null);
+                  }}
+                  onDrop={() => handleDrop(stage)}
+                >
+                  {apps.map(app => card(app, true))}
+                </ul>
+              </div>
+            );
+          })}
+        </div>
       )}
 
-      <style jsx>{`
-        .jobsContainer {
-          display: flex;
-          flex-direction: column;
-          gap: 20px;
-        }
-
-        .jobsStats {
-          display: flex;
-          gap: 24px;
-          padding: 16px 20px;
-          background: rgba(255, 255, 255, 0.03);
-          border-radius: 12px;
-          border: 1px solid var(--border);
-        }
-
-        .statItem {
-          display: flex;
-          flex-direction: column;
-        }
-
-        .statValue {
-          font-size: 1.5rem;
-          font-weight: 700;
-          color: var(--text);
-        }
-
-        .statLabel {
-          font-size: 0.8rem;
-          color: var(--text-light);
-        }
-
-        .jobsToolbar {
-          display: flex;
-          align-items: center;
-          gap: 16px;
-          flex-wrap: wrap;
-        }
-
-        .searchBox {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          min-height: 44px;
-          padding: 0 14px;
-          background: var(--well);
-          border: 1px solid var(--line);
-          border-radius: 10px;
-          flex: 1;
-          min-width: 250px;
-          color: var(--mist);
-        }
-
-        .searchBox:focus-within {
-          border-color: var(--ember);
-          box-shadow: 0 0 0 3px var(--ember-soft);
-        }
-
-        .searchInput {
-          background: transparent;
-          border: none;
-          color: var(--paper);
-          flex: 1;
-          outline: none;
-          font: inherit;
-          font-size: 15px;
-        }
-
-        .searchInput::placeholder {
-          color: var(--text-light);
-        }
-
-        .filterButtons {
-          display: flex;
-          gap: 8px;
-          flex-wrap: wrap;
-        }
-
-        .filterBtn {
-          min-height: 34px;
-          padding: 0 12px;
-          background: transparent;
-          border: 1px solid var(--line);
-          border-radius: 999px;
-          color: var(--mist);
-          font: inherit;
-          font-size: 13.5px;
-          cursor: pointer;
-          transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
-        }
-
-        .filterBtn:hover {
-          background: var(--deck-2);
-          color: var(--paper);
-        }
-
-        .filterBtn.active {
-          background: var(--ember-soft);
-          border-color: rgba(255, 181, 71, 0.5);
-          color: var(--ember-text);
-        }
-
-        .kanbanBoard {
-          display: grid;
-          grid-template-columns: repeat(6, 1fr);
-          gap: 12px;
-          overflow-x: auto;
-          padding-bottom: 12px;
-        }
-
-        .kanbanColumn {
-          background: rgba(255, 255, 255, 0.02);
-          border: 1px solid var(--border);
-          border-radius: 10px;
-          min-width: 160px;
-          display: flex;
-          flex-direction: column;
-        }
-
-        .kanbanColumn.dimmed {
-          opacity: 0.4;
-        }
-
-        .columnHeader {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          padding: 12px;
-          border-bottom: 1px solid var(--border);
-        }
-
-        .columnTitle {
-          font-weight: 600;
-          font-size: 0.85rem;
-        }
-
-        .columnCount {
-          background: rgba(255, 255, 255, 0.1);
-          padding: 2px 8px;
-          border-radius: 10px;
-          font-size: 0.75rem;
-        }
-
-        .columnContent {
-          padding: 8px;
-          display: flex;
-          flex-direction: column;
-          gap: 8px;
-          min-height: 200px;
-          max-height: 400px;
-          overflow-y: auto;
-        }
-
-        .jobCard {
-          background: rgba(255, 255, 255, 0.04);
-          border: 1px solid var(--border);
-          border-radius: 8px;
-          padding: 10px;
-          cursor: grab;
-          transition: transform 0.15s, box-shadow 0.15s;
-        }
-
-        .jobCard:hover {
-          transform: translateY(-2px);
-          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-        }
-
-        .jobCard:focus-visible {
-          outline: 3px solid var(--focus-ring);
-          outline-offset: 2px;
-        }
-
-        .jobCard:active {
-          cursor: grabbing;
-        }
-
-        .jobCardHeader {
-          display: flex;
-          justify-content: space-between;
-          align-items: flex-start;
-        }
-
-        .jobCompany {
-          font-weight: 600;
-          font-size: 0.9rem;
-          color: var(--text);
-        }
-
-        .deleteBtn {
-          background: none;
-          border: none;
-          color: var(--text-light);
-          cursor: pointer;
-          padding: 0;
-          font-size: 1.1rem;
-          line-height: 1;
-          opacity: 0.5;
-          transition: opacity 0.2s;
-        }
-
-        .deleteBtn:hover {
-          opacity: 1;
-          color: #ef4444;
-        }
-
-        .deleteBtn:focus-visible {
-          outline: 2px solid var(--focus-ring);
-          outline-offset: 2px;
-          opacity: 1;
-        }
-
-        .jobTitle {
-          font-size: 0.8rem;
-          color: var(--text-light);
-          margin-top: 4px;
-        }
-
-        .jobNotes {
-          font-size: 0.75rem;
-          color: var(--text-light);
-          margin-top: 6px;
-          padding-top: 6px;
-          border-top: 1px solid var(--border);
-          display: -webkit-box;
-          -webkit-line-clamp: 2;
-          -webkit-box-orient: vertical;
-          overflow: hidden;
-        }
-
-        .jobMeta {
-          margin-top: 8px;
-        }
-
-        .jobDate {
-          font-size: 0.7rem;
-          color: var(--text-light);
-          opacity: 0.7;
-        }
-
-        .emptyColumn {
-          text-align: center;
-          padding: 20px 10px;
-          color: var(--text-light);
-          font-size: 0.8rem;
-          opacity: 0.6;
-        }
-
-        @media (max-width: 1200px) {
-          .kanbanBoard {
-            grid-template-columns: repeat(3, 1fr);
-          }
-        }
-
-        @media (max-width: 768px) {
-          .kanbanBoard {
-            grid-template-columns: 1fr;
-            gap: 16px;
-          }
-
-          .jobsToolbar {
-            flex-direction: column;
-            align-items: stretch;
-          }
-
-          .jobsStats {
-            flex-direction: column;
-            gap: 16px;
-            text-align: center;
-          }
-
-          .searchBox {
-            min-width: 100%;
-          }
-
-          .filterButtons {
-            overflow-x: auto;
-            flex-wrap: nowrap;
-            padding-bottom: 8px;
-          }
-
-          .filterBtn {
-            white-space: nowrap;
-          }
-
-          .modalContent {
-            margin: 16px;
-            max-width: calc(100% - 32px);
-          }
-        }
-
-        @media (max-width: 480px) {
-          .jobsStats {
-            padding: 12px;
-          }
-
-          .statValue {
-            font-size: 1.25rem;
-          }
-
-          .columnHeader {
-            padding: 10px;
-          }
-
-          .jobCard {
-            padding: 8px;
-          }
-        }
-      `}</style>
+      {modals}
     </div>
+  );
+}
+
+function JobCard({
+  app,
+  draggable,
+  dragging,
+  menuOpen,
+  now,
+  shortDate,
+  onDragStart,
+  onDragEnd,
+  onMenu,
+  onEdit,
+  onMove,
+  onDelete,
+}: {
+  app: JobWithApplication;
+  draggable: boolean;
+  dragging: boolean;
+  menuOpen: boolean;
+  now: number;
+  shortDate: (iso: string, withTime?: boolean) => string;
+  onDragStart: () => void;
+  onDragEnd: () => void;
+  onMenu: () => void;
+  onEdit: () => void;
+  onMove: (stage: ApplicationStage) => void;
+  onDelete: () => void;
+}) {
+  const t = useTranslations('Jobs');
+  const format = useFormatter();
+  const menuId = useId();
+  const moveId = useId();
+  const names = { title: app.title, company: app.company };
+  const interviewAhead = app.interview_at && new Date(app.interview_at).getTime() > now;
+  const followUp = app.next_followup_at && app.stage !== 'offer' && app.stage !== 'rejected' ? app.next_followup_at : null;
+  const overdue = followUp ? new Date(followUp).getTime() <= now : false;
+
+  return (
+    <li className={styles.item} data-menu={app.id} data-open={menuOpen}>
+      <div
+        className={styles.card}
+        data-dragging={dragging}
+        draggable={draggable}
+        onDragStart={draggable ? onDragStart : undefined}
+        onDragEnd={draggable ? onDragEnd : undefined}
+      >
+        <div className={styles.cardHead}>
+          <span className={styles.company}>{app.company}</span>
+          <button
+            type="button"
+            className={styles.menuButton}
+            onClick={onMenu}
+            aria-expanded={menuOpen}
+            aria-controls={menuOpen ? menuId : undefined}
+            aria-label={t('actionsLabel', names)}
+            data-menu-trigger={app.id}
+          >
+            <MoreIcon size={16} />
+          </button>
+        </div>
+        <div className={styles.jobTitle}>{app.title}</div>
+        {app.notes && <div className={styles.notes}>{app.notes}</div>}
+        {interviewAhead ? (
+          <div className={`${styles.due} ${styles.dueInterview}`}>
+            <CalendarIcon size={14} />
+            <span>{t('interviewOn', { when: shortDate(app.interview_at as string, true) })}</span>
+          </div>
+        ) : null}
+        {followUp ? (
+          <div className={`${styles.due} ${overdue ? styles.dueOverdue : ''}`}>
+            <ClockIcon size={14} />
+            <span>{overdue ? t('followUpOverdue', { when: shortDate(followUp) }) : t('followUpOn', { when: shortDate(followUp) })}</span>
+          </div>
+        ) : null}
+        <div className={styles.date}>
+          {app.applied_at
+            ? t('appliedOn', { date: format.dateTime(new Date(app.applied_at), { dateStyle: 'medium' }) })
+            : t('addedOn', { date: format.dateTime(new Date(app.created_at), { dateStyle: 'medium' }) })}
+        </div>
+      </div>
+
+      {menuOpen ? (
+        <div id={menuId} className={styles.menu} role="group" aria-label={t('actionsLabel', names)}>
+          <button type="button" className={styles.menuItem} onClick={onEdit} aria-label={t('editLabel', names)}>
+            <PencilIcon size={16} />
+            {t('edit')}
+          </button>
+          <Link className={styles.menuItemLink} href={`/goals?fromJob=${app.id}`} title={t('goalHelp')}>
+            <TargetIcon size={16} />
+            {t('makeGoal')}
+          </Link>
+          <div className={styles.menuMove}>
+            <label className={styles.menuLabel} htmlFor={moveId}>
+              {t('moveTo')}
+            </label>
+            <select
+              id={moveId}
+              className={`select ${styles.menuSelect}`}
+              value={app.stage}
+              onChange={(e) => onMove(e.target.value as ApplicationStage)}
+            >
+              {STAGE_ORDER.map(option => (
+                <option key={option} value={option}>{t(`stages.${option}`)}</option>
+              ))}
+            </select>
+          </div>
+          <button type="button" className={`${styles.menuItem} ${styles.danger}`} onClick={onDelete} aria-label={t('deleteLabel', names)}>
+            <TrashIcon size={16} />
+            {t('delete')}
+          </button>
+        </div>
+      ) : null}
+    </li>
   );
 }
 
@@ -683,20 +626,44 @@ interface JobFormData {
   title: string;
   job_url?: string;
   notes?: string;
+  stage?: ApplicationStage;
+  interview_at: string | null;
+  next_followup_at: string | null;
 }
 
-function AddJobModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (data: JobFormData) => void }) {
-  const [company, setCompany] = useState('');
-  const [title, setTitle] = useState('');
-  const [jobUrl, setJobUrl] = useState('');
-  const [notes, setNotes] = useState('');
+function JobModal({
+  initial,
+  onClose,
+  onSubmit,
+}: {
+  initial?: JobWithApplication;
+  onClose: () => void;
+  onSubmit: (data: JobFormData) => void;
+}) {
+  const t = useTranslations('Jobs');
+  const [company, setCompany] = useState(initial?.company ?? '');
+  const [title, setTitle] = useState(initial?.title ?? '');
+  const [jobUrl, setJobUrl] = useState(initial?.job_url ?? '');
+  const [notes, setNotes] = useState(initial?.notes ?? '');
+  const [stage, setStage] = useState<ApplicationStage>(initial?.stage ?? 'saved');
+  const [interviewAt, setInterviewAt] = useState(toLocalInput(initial?.interview_at ?? null));
+  const [followUp, setFollowUp] = useState(toLocalInput(initial?.next_followup_at ?? null).slice(0, 10));
   const modalTitleId = useId();
+  const ids = { company: useId(), title: useId(), url: useId(), stage: useId(), interview: useId(), followUp: useId(), notes: useId(), help: useId() };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (company && title) {
-      onSubmit({ company, title, job_url: jobUrl, notes });
-    }
+    if (!company.trim() || !title.trim()) return;
+    onSubmit({
+      company: company.trim(),
+      title: title.trim(),
+      job_url: jobUrl.trim(),
+      notes: notes.trim(),
+      stage,
+      interview_at: interviewAt ? new Date(interviewAt).toISOString() : null,
+      // A follow-up date reminds you at 09:00 that day.
+      next_followup_at: followUp ? new Date(`${followUp}T09:00`).toISOString() : null,
+    });
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -707,161 +674,71 @@ function AddJobModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (da
 
   return (
     <div
-      className="modalOverlay"
+      className={styles.overlay}
       onClick={onClose}
       role="dialog"
       aria-modal="true"
       aria-labelledby={modalTitleId}
       onKeyDown={handleKeyDown}
     >
-      <div className="modalContent" onClick={e => e.stopPropagation()}>
-        <div className="modalHeader">
-          <h3 id={modalTitleId}>Add a job</h3>
+      <div className={styles.dialog} onClick={e => e.stopPropagation()}>
+        <div className={styles.dialogHead}>
+          <h2 id={modalTitleId} className={styles.dialogTitle}>{initial ? t('editTitle') : t('add')}</h2>
           <button
-            className="closeBtn"
+            type="button"
+            className="iconButton"
             onClick={onClose}
-            aria-label="Close dialog"
-          >×</button>
+            aria-label={t('close')}
+          >
+            <CloseIcon size={18} />
+          </button>
         </div>
-        <form onSubmit={handleSubmit}>
-          <div className="formGroup">
-            <label htmlFor="company-input">Company *</label>
-            <input
-              type="text"
-              id="company-input"
-              value={company}
-              onChange={e => setCompany(e.target.value)}
-              placeholder="e.g. Google"
-              required
-            />
+        <form className={styles.form} onSubmit={handleSubmit}>
+          <div className={styles.formRow}>
+            <div className={styles.field}>
+              <label className="label" htmlFor={ids.company}>{t('company')}</label>
+              <input className="input" type="text" id={ids.company} value={company} onChange={e => setCompany(e.target.value)} placeholder={t('companyPlaceholder')} required autoFocus />
+            </div>
+            <div className={styles.field}>
+              <label className="label" htmlFor={ids.title}>{t('title')}</label>
+              <input className="input" type="text" id={ids.title} value={title} onChange={e => setTitle(e.target.value)} placeholder={t('titlePlaceholder')} required />
+            </div>
           </div>
-          <div className="formGroup">
-            <label htmlFor="title-input">Job Title *</label>
-            <input
-              type="text"
-              id="title-input"
-              value={title}
-              onChange={e => setTitle(e.target.value)}
-              placeholder="e.g. Senior Software Engineer"
-              required
-            />
+          <div className={styles.formRow}>
+            <div className={styles.field}>
+              <label className="label" htmlFor={ids.url}>{t('link')}</label>
+              <input className="input" type="url" id={ids.url} value={jobUrl} onChange={e => setJobUrl(e.target.value)} placeholder={t('linkPlaceholder')} />
+            </div>
+            <div className={styles.field}>
+              <label className="label" htmlFor={ids.stage}>{t('stage')}</label>
+              <select className="select" id={ids.stage} value={stage} onChange={e => setStage(e.target.value as ApplicationStage)}>
+                {STAGE_ORDER.map(option => (
+                  <option key={option} value={option}>{t(`stages.${option}`)}</option>
+                ))}
+              </select>
+            </div>
           </div>
-          <div className="formGroup">
-            <label htmlFor="url-input">Job URL</label>
-            <input
-              type="url"
-              id="url-input"
-              value={jobUrl}
-              onChange={e => setJobUrl(e.target.value)}
-              placeholder="https://..."
-            />
+          <div className={styles.formRow}>
+            <div className={styles.field}>
+              <label className="label" htmlFor={ids.interview}>{t('interviewAt')}</label>
+              <input className="input" type="datetime-local" id={ids.interview} value={interviewAt} onChange={e => setInterviewAt(e.target.value)} aria-describedby={ids.help} />
+            </div>
+            <div className={styles.field}>
+              <label className="label" htmlFor={ids.followUp}>{t('followUp')}</label>
+              <input className="input" type="date" id={ids.followUp} value={followUp} onChange={e => setFollowUp(e.target.value)} aria-describedby={ids.help} />
+            </div>
           </div>
-          <div className="formGroup">
-            <label htmlFor="notes-input">Notes</label>
-            <textarea
-              id="notes-input"
-              value={notes}
-              onChange={e => setNotes(e.target.value)}
-              placeholder="Add any notes..."
-              rows={3}
-            />
+          <p className="help" id={ids.help}>{t('remindersHelp')}</p>
+          <div className={styles.field}>
+            <label className="label" htmlFor={ids.notes}>{t('notes')}</label>
+            <textarea className="textarea" id={ids.notes} value={notes} onChange={e => setNotes(e.target.value)} placeholder={t('notesPlaceholder')} rows={3} />
           </div>
-          <div className="modalActions">
-            <button type="button" className="button" onClick={onClose}>Cancel</button>
-            <button type="submit" className="button buttonPrimary">Add job</button>
+          <div className={styles.dialogActions}>
+            <button type="button" className="button" onClick={onClose}>{t('cancel')}</button>
+            <button type="submit" className="button buttonPrimary">{initial ? t('save') : t('addJob')}</button>
           </div>
         </form>
       </div>
-
-      <style jsx>{`
-        .modalOverlay {
-          position: fixed;
-          inset: 0;
-          background: rgba(0, 0, 0, 0.7);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          z-index: 100;
-        }
-
-        .modalContent {
-          background: var(--bg);
-          border: 1px solid var(--border);
-          border-radius: 12px;
-          width: 100%;
-          max-width: 420px;
-          padding: 20px;
-        }
-
-        .modalHeader {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 20px;
-        }
-
-        .modalHeader h3 {
-          margin: 0;
-          font-size: 1.1rem;
-        }
-
-        .closeBtn {
-          background: none;
-          border: none;
-          color: var(--text-light);
-          font-size: 1.5rem;
-          cursor: pointer;
-          padding: 0;
-          line-height: 1;
-        }
-
-        .closeBtn:focus-visible {
-          outline: 2px solid var(--focus-ring);
-          outline-offset: 2px;
-        }
-
-        .formGroup {
-          margin-bottom: 16px;
-        }
-
-        .formGroup label {
-          display: block;
-          font-size: 0.85rem;
-          margin-bottom: 6px;
-          color: var(--text-light);
-        }
-
-        .formGroup input,
-        .formGroup textarea {
-          width: 100%;
-          padding: 10px 12px;
-          background: rgba(255, 255, 255, 0.03);
-          border: 1px solid var(--border);
-          border-radius: 8px;
-          color: var(--text);
-          font-size: 0.9rem;
-        }
-
-        .formGroup input:focus,
-        .formGroup textarea:focus {
-          outline: none;
-          border-color: var(--primary);
-        }
-
-        .formGroup input:focus-visible,
-        .formGroup textarea:focus-visible {
-          outline: 2px solid var(--focus-ring);
-          outline-offset: 2px;
-        }
-
-        .modalActions {
-          display: flex;
-          gap: 12px;
-          justify-content: flex-end;
-          margin-top: 20px;
-        }
-
-      `}</style>
     </div>
   );
 }

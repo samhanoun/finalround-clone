@@ -1,0 +1,37 @@
+/* 404: the mark, one line of explanation and one way back. */
+
+.page {
+  min-height: calc(100vh - var(--titlebar, 0px));
+  display: grid;
+  place-items: center;
+  padding: 48px 16px;
+  background: var(--bg);
+  outline: none;
+}
+
+.box {
+  width: min(400px, 100%);
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  text-align: center;
+}
+
+.code {
+  margin: 16px 0 0;
+  font-family: var(--font-code);
+  font-size: 13px;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.body {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--text-2);
+}
+
+.action {
+  margin-top: 12px;
+}

@@ -1,11 +1,22 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect, useId, useState } from 'react';
 import Image from 'next/image';
+import { useLocale, useTranslations } from 'next-intl';
+import { CheckIcon, CloseIcon, PlusIcon } from '@/components/icons';
+import { Skeleton } from '@/components/Skeleton';
+import {
+  GroupFooter,
+  SaveNote,
+  SettingRow,
+  SettingsGroup,
+  settingsStyles as styles,
+  type SaveState,
+} from '@/app/[locale]/settings/SettingsUI';
 
 type ProfileData = {
   id: string;
-  email: string;
+  email: string | null;
   full_name: string | null;
   avatar_url: string | null;
   target_roles: string[] | null;
@@ -14,33 +25,21 @@ type ProfileData = {
   email_notifications: boolean;
 };
 
+/** Suggested roles; the chosen names are saved as shown, in the app's language. */
 const COMMON_ROLES = [
-  'Frontend Developer',
-  'Backend Developer',
-  'Full Stack Developer',
-  'DevOps Engineer',
-  'Data Scientist',
-  'Machine Learning Engineer',
-  'Product Manager',
-  'UX Designer',
-  'Software Engineer',
-  'Mobile Developer',
-  'Cloud Engineer',
-  'Security Engineer',
-];
-
-const LANGUAGES = [
-  { code: 'en', name: 'English' },
-  { code: 'es', name: 'Español' },
-  { code: 'fr', name: 'Français' },
-  { code: 'de', name: 'Deutsch' },
-  { code: 'pt', name: 'Português' },
-  { code: 'it', name: 'Italiano' },
-  { code: 'nl', name: 'Nederlands' },
-  { code: 'ja', name: '日本語' },
-  { code: 'zh', name: '中文' },
-  { code: 'ko', name: '한국어' },
-];
+  'frontend',
+  'backend',
+  'fullStack',
+  'devops',
+  'dataScientist',
+  'mlEngineer',
+  'productManager',
+  'uxDesigner',
+  'softwareEngineer',
+  'mobile',
+  'cloud',
+  'security',
+] as const;
 
 const TIMEZONES = [
   'UTC',
@@ -60,323 +59,339 @@ const TIMEZONES = [
   'Pacific/Auckland',
 ];
 
-export function ProfileSettings() {
+const MAX_ROLES = 10;
+
+/**
+ * Profile and Language & region both read /api/settings/profile and mount
+ * together: they share one request.
+ */
+let profileRequest: Promise<ProfileData | null> | null = null;
+function loadProfile(): Promise<ProfileData | null> {
+  if (!profileRequest) {
+    const request = fetch('/api/settings/profile')
+      .then(async (res) => (res.ok ? (((await res.json().catch(() => null))?.profile ?? null) as ProfileData | null) : null))
+      .catch(() => null);
+    profileRequest = request;
+    void request.finally(() => {
+      if (profileRequest === request) profileRequest = null;
+    });
+  }
+  return profileRequest;
+}
+
+async function saveProfile(patch: Partial<Pick<ProfileData, 'full_name' | 'avatar_url' | 'target_roles' | 'timezone'>>) {
+  const res = await fetch('/api/settings/profile', {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(patch),
+  }).catch(() => null);
+  return Boolean(res?.ok);
+}
+
+/**
+ * "Hora del este de Norteamérica (New York)": the zone's name in the app's
+ * language, from the browser. These rows render only in the browser (after
+ * the profile loads), so server and browser never disagree about the wording.
+ */
+function timeZoneLabel(timeZone: string, locale: string): string {
+  try {
+    // UTC has no generic name ("GMT+00:00"); its long name is "Coordinated Universal Time".
+    const name = new Intl.DateTimeFormat(locale, { timeZone, timeZoneName: timeZone === 'UTC' ? 'long' : 'longGeneric' })
+      .formatToParts(new Date())
+      .find((part) => part.type === 'timeZoneName')?.value;
+    if (!name) return timeZone;
+    const city = timeZone.includes('/') ? timeZone.split('/').pop()!.replace(/_/g, ' ') : null;
+    return city ? `${name} (${city})` : name;
+  } catch {
+    return timeZone;
+  }
+}
+
+function sameRoles(a: string[], b: string[]) {
+  return a.length === b.length && a.every((role, i) => role === b[i]);
+}
+
+const isWebAddress = (value: string) => /^https?:\/\/\S+$/i.test(value.trim());
+
+/** Settings → Profile: email (read only), name, photo and target roles, saved with one button. */
+export function ProfileSettings({ email }: { email?: string | null }) {
+  const t = useTranslations('ProfileSettings');
+  const ids = { name: useId(), avatar: useId(), roles: useId(), rolesHelp: useId(), custom: useId() };
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
-  
-  const [profile, setProfile] = useState<ProfileData | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [saved, setSaved] = useState<ProfileData | null>(null);
   const [fullName, setFullName] = useState('');
   const [avatarUrl, setAvatarUrl] = useState('');
   const [targetRoles, setTargetRoles] = useState<string[]>([]);
-  const [language, setLanguage] = useState('en');
-  const [timezone, setTimezone] = useState('UTC');
-  const [emailNotifications, setEmailNotifications] = useState(true);
   const [customRole, setCustomRole] = useState('');
+  const [state, setState] = useState<SaveState>('idle');
+  const [avatarBroken, setAvatarBroken] = useState(false);
 
   useEffect(() => {
-    async function fetchProfile() {
-      try {
-        const res = await fetch('/api/settings/profile');
-        const json = await res.json();
-        
-        if (res.ok && json.profile) {
-          setProfile(json.profile);
-          setFullName(json.profile.full_name ?? '');
-          setAvatarUrl(json.profile.avatar_url ?? '');
-          setTargetRoles(json.profile.target_roles ?? []);
-          setLanguage(json.profile.language ?? 'en');
-          setTimezone(json.profile.timezone ?? 'UTC');
-          setEmailNotifications(json.profile.email_notifications ?? true);
-        }
-      } catch (e) {
-        console.error('Failed to fetch profile:', e);
-        setError('Failed to load profile');
-      } finally {
-        setLoading(false);
+    let cancelled = false;
+    void loadProfile().then((profile) => {
+      if (cancelled) return;
+      if (profile) {
+        setSaved(profile);
+        setFullName(profile.full_name ?? '');
+        setAvatarUrl(profile.avatar_url ?? '');
+        setTargetRoles(profile.target_roles ?? []);
+      } else {
+        setLoadFailed(true);
       }
-    }
-    fetchProfile();
+      setLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  function handleRoleToggle(role: string) {
-    setTargetRoles(prev => 
-      prev.includes(role)
-        ? prev.filter(r => r !== role)
-        : [...prev, role]
-    );
+  const commonLabels = COMMON_ROLES.map((key) => t(`roles.${key}`));
+  const customRoles = targetRoles.filter((role) => !commonLabels.includes(role));
+  const atMax = targetRoles.length >= MAX_ROLES;
+  const dirty =
+    saved !== null &&
+    (fullName !== (saved.full_name ?? '') || avatarUrl !== (saved.avatar_url ?? '') || !sameRoles(targetRoles, saved.target_roles ?? []));
+
+  function edited() {
+    if (state !== 'saving') setState('idle');
   }
 
-  function handleAddCustomRole() {
+  function toggleRole(role: string) {
+    setTargetRoles((prev) => (prev.includes(role) ? prev.filter((r) => r !== role) : [...prev, role]));
+    edited();
+  }
+
+  function addCustomRole() {
     const role = customRole.trim();
-    if (role && !targetRoles.includes(role)) {
-      setTargetRoles(prev => [...prev, role]);
-      setCustomRole('');
-    }
+    if (!role || atMax) return;
+    if (!targetRoles.includes(role)) setTargetRoles((prev) => [...prev, role]);
+    setCustomRole('');
+    edited();
   }
 
-  async function save() {
-    setError(null);
-    setSuccess(false);
-    setSaving(true);
-
-    try {
-      const res = await fetch('/api/settings/profile', {
-        method: 'PATCH',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          full_name: fullName || null,
-          avatar_url: avatarUrl || null,
-          target_roles: targetRoles,
-          language,
-          timezone,
-          email_notifications: emailNotifications,
-        }),
-      });
-
-      const json = await res.json().catch(() => ({}));
-
-      if (!res.ok) {
-        throw new Error(json.error ?? 'Failed to save profile');
-      }
-
-      setSuccess(true);
-      setTimeout(() => setSuccess(false), 3000);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to save');
-    } finally {
-      setSaving(false);
+  async function save(event: React.FormEvent) {
+    event.preventDefault();
+    if (!dirty) return;
+    setState('saving');
+    const next = { full_name: fullName.trim() || null, avatar_url: avatarUrl.trim() || null, target_roles: targetRoles };
+    if (await saveProfile(next)) {
+      setSaved((current) => (current ? { ...current, ...next } : current));
+      setFullName(next.full_name ?? '');
+      setAvatarUrl(next.avatar_url ?? '');
+      setState('saved');
+    } else {
+      setState('error');
     }
   }
 
   if (loading) {
     return (
-      <div className="card">
-        <div className="cardInner stack">
-          <p>Loading profile…</p>
+      <SettingsGroup>
+        <div className={styles.skeletonRows} role="status" aria-label={t('loading')}>
+          <Skeleton width="30%" height="14px" />
+          <Skeleton width="100%" height="40px" borderRadius="8px" />
+          <Skeleton width="30%" height="14px" />
+          <Skeleton width="100%" height="40px" borderRadius="8px" />
         </div>
-      </div>
+      </SettingsGroup>
     );
   }
 
+  const shownEmail = saved?.email || email || '';
+
   return (
-    <div className="card">
-      <div className="cardInner stack">
-        <h2 className="cardTitle">Profile</h2>
-        <p className="cardDesc">
-          Your name, the roles you are aiming for, and your time zone.
-        </p>
+    <form className={styles.group} onSubmit={save}>
+      {loadFailed ? (
+        <div className={styles.block}>
+          <p className={styles.inlineError} role="alert">
+            {t('loadFailed')}
+          </p>
+        </div>
+      ) : null}
 
-        <div className="stack" style={{ gap: 16 }}>
-          {/* Email (read-only) */}
-          <label className="label">
-            Email
-            <input
-              className="input"
-              type="email"
-              value={profile?.email ?? ''}
-              disabled
-              aria-readonly
+      <SettingRow label={t('email')} help={t('emailHelp')}>
+        <span className={styles.rowValue}>{shownEmail}</span>
+      </SettingRow>
+
+      <SettingRow label={t('fullName')} htmlFor={ids.name}>
+        <input
+          id={ids.name}
+          className="input"
+          type="text"
+          autoComplete="name"
+          value={fullName}
+          onChange={(e) => {
+            setFullName(e.target.value);
+            edited();
+          }}
+          maxLength={100}
+        />
+      </SettingRow>
+
+      <SettingRow label={t('avatar')} htmlFor={ids.avatar}>
+        <div className={styles.avatarField}>
+          {isWebAddress(avatarUrl) && !avatarBroken ? (
+            <Image
+              src={avatarUrl.trim()}
+              alt={t('avatarPreview')}
+              width={32}
+              height={32}
+              unoptimized
+              className={styles.avatarPreview}
+              onError={() => setAvatarBroken(true)}
             />
-            <span style={{ fontSize: '0.875rem', color: 'var(--muted)' }}>
-              Your sign-in email can&apos;t be changed here.
-            </span>
-          </label>
+          ) : null}
+          <input
+            id={ids.avatar}
+            className="input"
+            type="url"
+            inputMode="url"
+            value={avatarUrl}
+            onChange={(e) => {
+              setAvatarUrl(e.target.value);
+              setAvatarBroken(false);
+              edited();
+            }}
+            placeholder={t('avatarPlaceholder')}
+          />
+        </div>
+      </SettingRow>
 
-          {/* Full Name */}
-          <label className="label">
-            Full name
-            <input
-              className="input"
-              type="text"
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
-              placeholder="Enter your full name"
-              maxLength={100}
-            />
-          </label>
-
-          {/* Avatar URL */}
-          <label className="label">
-            Avatar image URL
-            <input
-              className="input"
-              type="url"
-              value={avatarUrl}
-              onChange={(e) => setAvatarUrl(e.target.value)}
-              placeholder="https://example.com/avatar.jpg"
-            />
-            {avatarUrl && (
-              <Image 
-                src={avatarUrl} 
-                alt="Avatar preview" 
-                width={64}
-                height={64}
-                style={{ 
-                  borderRadius: '50%', 
-                  marginTop: 8,
-                  objectFit: 'cover'
-                }}
-                onError={(e) => {
-                  (e.target as HTMLImageElement).style.display = 'none';
-                }}
-              />
-            )}
-          </label>
-
-          {/* Target Roles */}
-          <fieldset style={{ border: 'none', padding: 0, margin: 0 }}>
-            <legend style={{ fontWeight: 600, marginBottom: 8 }}>Target roles</legend>
-            <p style={{ fontSize: '0.875rem', color: 'var(--muted)', marginBottom: 12 }}>
-              Select the roles you&apos;re targeting (max 10)
-            </p>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
-              {COMMON_ROLES.map(role => (
+      <SettingRow
+        layout="stacked"
+        label={t('targetRoles')}
+        labelId={ids.roles}
+        help={t('targetRolesHelp', { max: MAX_ROLES })}
+        helpId={ids.rolesHelp}
+        aside={<span className={styles.count}>{t('selected', { count: targetRoles.length, max: MAX_ROLES })}</span>}
+      >
+        <div className={styles.rolesControl}>
+          <div className={styles.chips} role="group" aria-labelledby={ids.roles} aria-describedby={ids.rolesHelp}>
+            {commonLabels.map((role) => {
+              const selected = targetRoles.includes(role);
+              return (
                 <button
                   key={role}
                   type="button"
-                  className={`button ${targetRoles.includes(role) ? 'buttonPrimary' : ''}`}
-                  onClick={() => handleRoleToggle(role)}
-                  disabled={targetRoles.length >= 10 && !targetRoles.includes(role)}
-                  style={{ fontSize: '0.875rem', padding: '4px 12px' }}
+                  className={styles.chip}
+                  onClick={() => toggleRole(role)}
+                  disabled={atMax && !selected}
+                  aria-pressed={selected}
                 >
-                  {targetRoles.includes(role) && '✓ '}{role}
+                  {selected ? <CheckIcon size={14} /> : null}
+                  {role}
                 </button>
-              ))}
-            </div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <input
-                className="input"
-                type="text"
-                value={customRole}
-                onChange={(e) => setCustomRole(e.target.value)}
-                placeholder="Add custom role"
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    handleAddCustomRole();
-                  }
-                }}
-              />
-              <button
-                type="button"
-                className="button"
-                onClick={handleAddCustomRole}
-                disabled={!customRole.trim()}
-              >
-                Add
-              </button>
-            </div>
-            {targetRoles.length > 0 && (
-              <div style={{ marginTop: 12 }}>
-                <p style={{ fontSize: '0.875rem', fontWeight: 600, marginBottom: 4 }}>
-                  Selected: {targetRoles.length}/10
-                </p>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                  {targetRoles.map(role => (
-                    <span
-                      key={role}
-                      style={{
-                        background: 'var(--primary)',
-                        color: 'white',
-                        padding: '2px 8px',
-                        borderRadius: 4,
-                        fontSize: '0.75rem',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 4,
-                      }}
-                    >
-                      {role}
-                      <button
-                        type="button"
-                        onClick={() => handleRoleToggle(role)}
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          color: 'white',
-                          cursor: 'pointer',
-                          padding: 0,
-                          fontSize: '1rem',
-                          lineHeight: 1,
-                        }}
-                      >
-                        ×
-                      </button>
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-          </fieldset>
-
-          <hr style={{ border: 'none', borderTop: '1px solid var(--border)', width: '100%' }} />
-
-          {/* Language */}
-          <label className="label">
-            Preferred language
-            <select
-              className="select"
-              value={language}
-              onChange={(e) => setLanguage(e.target.value)}
-            >
-              {LANGUAGES.map(lang => (
-                <option key={lang.code} value={lang.code}>
-                  {lang.name}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          {/* Timezone */}
-          <label className="label">
-            Time zone
-            <select
-              className="select"
-              value={timezone}
-              onChange={(e) => setTimezone(e.target.value)}
-            >
-              {TIMEZONES.map(tz => (
-                <option key={tz} value={tz}>
-                  {tz}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          {/* Email Notifications */}
-          <label className="checkbox-label">
+              );
+            })}
+            {customRoles.map((role) => (
+              <span key={role} className={`${styles.chip} ${styles.chipCustom}`}>
+                {role}
+                <button type="button" className={styles.chipRemove} onClick={() => toggleRole(role)} aria-label={t('removeRole', { role })}>
+                  <CloseIcon size={14} />
+                </button>
+              </span>
+            ))}
+          </div>
+          <div className={styles.addRole}>
             <input
-              type="checkbox"
-              checked={emailNotifications}
-              onChange={(e) => setEmailNotifications(e.target.checked)}
+              id={ids.custom}
+              className="input"
+              type="text"
+              value={customRole}
+              onChange={(e) => setCustomRole(e.target.value)}
+              placeholder={t('customRole')}
+              aria-label={t('customRole')}
+              maxLength={120}
+              disabled={atMax}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  addCustomRole();
+                }
+              }}
             />
-            <span>Receive email notifications</span>
-          </label>
-        </div>
-
-        <div className="row" style={{ justifyContent: 'flex-end', marginTop: 16 }}>
-          <button
-            className="button buttonPrimary"
-            onClick={save}
-            disabled={saving}
-          >
-            {saving ? 'Saving…' : 'Save profile'}
-          </button>
-        </div>
-
-        {error && (
-          <div className="error" role="alert">
-            {error}
+            <button type="button" className="button" onClick={addCustomRole} disabled={!customRole.trim() || atMax}>
+              <PlusIcon size={16} />
+              {t('add')}
+            </button>
           </div>
+        </div>
+      </SettingRow>
+
+      <GroupFooter>
+        <SaveNote state={state} saved={t('saved')} error={t('saveFailed')} />
+        <button className="button buttonPrimary" type="submit" disabled={!dirty || state === 'saving'}>
+          {state === 'saving' ? t('saving') : t('save')}
+        </button>
+      </GroupFooter>
+    </form>
+  );
+}
+
+/** Settings → Language & region → Time zone. Saved as soon as it changes. */
+export function TimeZoneSetting() {
+  const t = useTranslations('ProfileSettings');
+  const locale = useLocale();
+  const id = useId();
+  const [zone, setZone] = useState<string | null>(null);
+  const [deviceZone, setDeviceZone] = useState<string | null>(null);
+  const [state, setState] = useState<SaveState>('idle');
+
+  useEffect(() => {
+    let cancelled = false;
+    void loadProfile().then((profile) => {
+      if (cancelled) return;
+      setZone(profile?.timezone || 'UTC');
+      try {
+        setDeviceZone(Intl.DateTimeFormat().resolvedOptions().timeZone || null);
+      } catch {
+        setDeviceZone(null);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (state !== 'saved') return;
+    const timer = window.setTimeout(() => setState('idle'), 3000);
+    return () => window.clearTimeout(timer);
+  }, [state]);
+
+  async function change(next: string) {
+    const previous = zone;
+    setZone(next);
+    setState('saving');
+    if (await saveProfile({ timezone: next })) {
+      setState('saved');
+    } else {
+      setZone(previous);
+      setState('error');
+    }
+  }
+
+  // The saved zone and this device's zone are always offered, even when they aren't in the short list.
+  const zones = [...TIMEZONES];
+  for (const extra of [zone, deviceZone]) if (extra && !zones.includes(extra)) zones.push(extra);
+
+  return (
+    <>
+      <SettingRow label={t('timezone')} help={t('timezoneHelp')} htmlFor={id}>
+        {zone === null ? (
+          <Skeleton width="100%" height="40px" borderRadius="8px" />
+        ) : (
+          <select id={id} className="select" value={zone} onChange={(e) => void change(e.target.value)} disabled={state === 'saving'}>
+            {zones.map((tz) => (
+              <option key={tz} value={tz}>
+                {timeZoneLabel(tz, locale)}
+              </option>
+            ))}
+          </select>
         )}
-        {success && (
-          <div className="success" role="status">
-            Profile saved successfully.
-          </div>
-        )}
-      </div>
-    </div>
+      </SettingRow>
+      <SaveNote state={state} saved={t('saved')} error={t('timezoneFailed')} inSection />
+    </>
   );
 }

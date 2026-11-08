@@ -1,10 +1,12 @@
-import Link from 'next/link';
+import { getTranslations } from 'next-intl/server';
+import { Link } from '@/i18n/routing';
 import { AppShell } from '@/components/AppShell';
 import { RequireAuth } from '@/components/RequireAuth';
 import { createClient } from '@/lib/supabase/server';
 import { CoverLetters, type CoverLetter, type ResumeOption } from '@/components/coverLetters/CoverLetters';
 
 export default async function CoverLettersPage() {
+  const tPage = await getTranslations('PageTitles');
   const supabase = await createClient();
   const { data: userData } = await supabase.auth.getUser();
 
@@ -27,10 +29,10 @@ export default async function CoverLettersPage() {
 
   return (
     <AppShell
-      title="Cover letters"
+      title={tPage('coverLetters')}
       actions={
         <Link className="button" href="/resume">
-          Résumé
+          {tPage('resumeLink')}
         </Link>
       }
     >

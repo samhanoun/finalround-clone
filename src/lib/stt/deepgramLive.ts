@@ -5,6 +5,10 @@
  * channel 0 = candidate and channel 1 = interviewer, and Deepgram's
  * `multichannel` results say which channel they belong to.
  *
+ * Phone / in-person mode (`speakers` set): only the microphone channel goes
+ * out, Deepgram's diarization numbers the voices, and a SpeakerResolver says
+ * which number is the candidate (src/lib/stt/speakers.ts).
+ *
  * Audio goes through our relay (src/server/sttRelay.ts), which holds the
  * Deepgram key and ends the stream when the session stops or runs out of
  * minutes; its close codes say when reconnecting can't help.
@@ -19,9 +23,10 @@
  *   final without waiting for Deepgram's own end-of-speech detection.
  */
 
-import type { CaptureFrame, CaptureLevels, CaptureSource } from '@/lib/audio/capture';
+import { micChannel, type CaptureFrame, type CaptureLevels, type CaptureSource } from '@/lib/audio/capture';
 import { hasSignal } from '@/lib/audio/levels';
-import { FATAL_CLOSE_MESSAGES, RELAY_CLOSE } from './relayProtocol';
+import { FATAL_CLOSE_CODES, FATAL_CLOSE_MESSAGES, RELAY_CLOSE, type SttErrorCode } from './relayProtocol';
+import type { SpeakerResolver } from './speakers';
 
 export type SpeakerRole = CaptureSource;
 
@@ -70,11 +75,57 @@ export type LiveTranscriberOptions = {
   createSocket?: (url: string) => SocketLike;
   now?: () => number;
   random?: () => number;
+  /**
+   * Client-side voice detection: while both channels are silent, audio isn't
+   * sent (KeepAlive holds the connection), which cuts transcription cost. Speech
+   * resumes with a short pre-roll so first syllables aren't lost, and the
+   * stream keeps sending through a hangover longer than Deepgram's
+   * end-of-utterance window so endpointing still sees the silence it needs.
+   */
+  gateSilence?: boolean;
+  /** RMS level (0–1) above which a frame counts as speech. */
+  voiceThreshold?: number;
+  /** Phone / in-person mode: send the microphone only and tell the voices apart with this. */
+  speakers?: SpeakerResolver;
 };
 
 type BufferedFrame = { startSample: number; samples: number; pcm: Int16Array };
 
-type DeepgramWord = { word?: string; punctuated_word?: string; start?: number; end?: number };
+/** A run of contiguous audio sent on one connection: where it starts in Deepgram's time and in capture samples. */
+type SentSegment = { connectionSec: number; captureSample: number };
+
+const PRE_ROLL_SECONDS = 0.35;
+const HANGOVER_SECONDS = 1.5;
+
+/** The louder channel's RMS level (0–1) of an interleaved PCM16 frame. */
+export function frameLevel(pcm: Int16Array, channels = 2): number {
+  const sums = new Array<number>(channels).fill(0);
+  for (let i = 0; i < pcm.length; i += 1) sums[i % channels] += pcm[i] * pcm[i];
+  const perChannel = pcm.length / channels || 1;
+  return Math.max(...sums.map((sum) => Math.sqrt(sum / perChannel) / 32768));
+}
+
+type DeepgramWord = { word?: string; punctuated_word?: string; start?: number; end?: number; speaker?: number };
+
+/** Consecutive words from one diarized voice, in connection seconds. */
+type SpeakerSpan = { speaker: number; start: number; end: number; text: string };
+
+function speakerSpans(words: DeepgramWord[]): SpeakerSpan[] {
+  const spans: SpeakerSpan[] = [];
+  for (const word of words) {
+    const speaker = typeof word.speaker === 'number' ? word.speaker : 0;
+    const token = word.punctuated_word ?? word.word ?? '';
+    const last = spans.at(-1);
+    if (last && last.speaker === speaker) {
+      last.end = word.end ?? last.end;
+      last.text = `${last.text} ${token}`.trim();
+    } else {
+      spans.push({ speaker, start: word.start ?? 0, end: word.end ?? word.start ?? 0, text: token });
+    }
+  }
+  return spans;
+}
+
 
 type DeepgramResults = {
   type: 'Results';
@@ -88,7 +139,8 @@ type DeepgramResults = {
 };
 
 const OPEN = 1;
-const CHANNELS = 2;
+/** The capture always delivers both channels; phone mode sends only the first. */
+const CAPTURE_CHANNELS = 2;
 const BACKOFF_MS = [250, 500, 1_000, 2_000, 4_000, 8_000];
 
 export class LiveTranscriber {
@@ -101,6 +153,13 @@ export class LiveTranscriber {
   private readonly createSocket: (url: string) => SocketLike;
   private readonly now: () => number;
   private readonly random: () => number;
+  private readonly gateSilence: boolean;
+  private readonly voiceThreshold: number;
+  private readonly speakers: SpeakerResolver | null;
+  /** Channels sent to Deepgram. */
+  private readonly channels: number;
+  /** Phone mode: whose final words came last, so a change of voice ends the previous turn. */
+  private lastFinalRole: SpeakerRole | null = null;
 
   private status: LiveSttStatus = 'idle';
   private socket: SocketLike | null = null;
@@ -118,10 +177,16 @@ export class LiveTranscriber {
   private captureStartedAt: number | null = null;
   /** Capture sample where the current connection's audio starts (Deepgram times are relative to it). */
   private connectionBaseSample: number | null = null;
+  /** With voice detection, the connection's audio has gaps: each sent run maps Deepgram time back to capture time. */
+  private segments: SentSegment[] = [];
+  private connectionSentSamples = 0;
+  private nextSentSample: number | null = null;
+  /** Capture sample of the last frame with voice in it. */
+  private lastVoiceSample = -Infinity;
   /** Per channel: capture sample up to which Deepgram has sent final results. */
-  private finalizedUntil = [0, 0];
+  private finalizedUntil: number[];
   /** Per channel: capture time already delivered as final when this connection opened. */
-  private deliveredUntilSec = [0, 0];
+  private deliveredUntilSec: number[];
   private lastSentAt = 0;
 
   private lastLoudAt = [0, 0];
@@ -131,7 +196,7 @@ export class LiveTranscriber {
   private readonly resultListeners = new Set<(result: TranscriptResult) => void>();
   private readonly utteranceEndListeners = new Set<(event: UtteranceEndEvent) => void>();
   private readonly speechStartedListeners = new Set<(event: SpeechStartedEvent) => void>();
-  private readonly statusListeners = new Set<(status: LiveSttStatus, error: string | null) => void>();
+  private readonly statusListeners = new Set<(status: LiveSttStatus, error: string | null, code: SttErrorCode | null) => void>();
 
   constructor(options: LiveTranscriberOptions) {
     this.getUrl = options.getUrl;
@@ -142,7 +207,14 @@ export class LiveTranscriber {
     this.closeTimeoutMs = options.closeTimeoutMs ?? 2_000;
     this.createSocket = options.createSocket ?? ((url) => new WebSocket(url) as unknown as SocketLike);
     this.now = options.now ?? (() => Date.now());
+    // nosemgrep: ajinabraham.njsscan.crypto.crypto_node.node_insecure_random_generator -- reconnect jitter, not a secret
     this.random = options.random ?? (() => Math.random());
+    this.gateSilence = options.gateSilence ?? false;
+    this.voiceThreshold = options.voiceThreshold ?? 0.008;
+    this.speakers = options.speakers ?? null;
+    this.channels = this.speakers ? 1 : CAPTURE_CHANNELS;
+    this.finalizedUntil = new Array<number>(this.channels).fill(0);
+    this.deliveredUntilSec = new Array<number>(this.channels).fill(0);
   }
 
   getStatus(): LiveSttStatus {
@@ -158,20 +230,46 @@ export class LiveTranscriber {
   /** Feed one capture frame. Safe to call while (re)connecting: frames wait in the ring buffer. */
   sendFrame(frame: CaptureFrame): void {
     if (this.stopping || this.status === 'error' || this.status === 'closed') return;
-    const samples = frame.pcm.length / CHANNELS;
+    const samples = frame.pcm.length / CAPTURE_CHANNELS;
     // Wall-clock time of capture sample 0, so Deepgram's word times can be compared with other events.
     this.captureStartedAt ??= frame.receivedAt - (samples / this.sampleRate) * 1000;
-    const buffered: BufferedFrame = { startSample: this.totalSamples, samples, pcm: frame.pcm };
+    const pcm = this.channels === 1 ? micChannel(frame.pcm) : frame.pcm;
+    const buffered: BufferedFrame = { startSample: this.totalSamples, samples, pcm };
     this.totalSamples += samples;
     this.ring.push(buffered);
     this.trimRing();
-    if (this.status === 'live') this.sendPcm(buffered);
+    if (this.status !== 'live') return;
+    if (!this.gateSilence) {
+      this.sendPcm(buffered);
+      return;
+    }
+    const voiced = frameLevel(pcm, this.channels) >= this.voiceThreshold;
+    if (voiced) {
+      const resuming = buffered.startSample - this.lastVoiceSample > HANGOVER_SECONDS * this.sampleRate;
+      this.lastVoiceSample = buffered.startSample + samples;
+      // Coming back from silence: send the pre-roll first so the first syllable isn't cut.
+      if (resuming) this.sendPreRoll(buffered.startSample);
+      this.sendPcm(buffered);
+    } else if (buffered.startSample - this.lastVoiceSample <= HANGOVER_SECONDS * this.sampleRate) {
+      this.sendPcm(buffered);
+    }
+  }
+
+  /** Frames from just before `beforeSample` that weren't sent yet. */
+  private sendPreRoll(beforeSample: number): void {
+    const from = beforeSample - PRE_ROLL_SECONDS * this.sampleRate;
+    for (const frame of this.ring) {
+      if (frame.startSample >= beforeSample) break;
+      if (frame.startSample + frame.samples > from && (this.nextSentSample === null || frame.startSample >= this.nextSentSample)) {
+        this.sendPcm(frame);
+      }
+    }
   }
 
   /** Feed capture levels; used to Finalize a channel as soon as its speaker goes quiet. */
   noteLevels(levels: CaptureLevels): void {
     const now = this.now();
-    CHANNEL_ROLES.forEach((role, channel) => {
+    CHANNEL_ROLES.slice(0, this.channels).forEach((role, channel) => {
       if (hasSignal(levels[role])) {
         this.lastLoudAt[channel] = now;
         this.speaking[channel] = true;
@@ -223,7 +321,8 @@ export class LiveTranscriber {
     return () => this.speechStartedListeners.delete(listener);
   }
 
-  onStatus(listener: (status: LiveSttStatus, error: string | null) => void): () => void {
+  /** `error` is English for logs and tests; `code` says the same for the UI's own messages. */
+  onStatus(listener: (status: LiveSttStatus, error: string | null, code: SttErrorCode | null) => void): () => void {
     this.statusListeners.add(listener);
     return () => this.statusListeners.delete(listener);
   }
@@ -235,7 +334,7 @@ export class LiveTranscriber {
     try {
       socket = this.createSocket(this.getUrl());
     } catch (e) {
-      this.fail(e instanceof Error ? e.message : 'Could not open the transcription connection.');
+      this.fail(e instanceof Error ? e.message : 'Could not open the transcription connection.', 'openFailed');
       return;
     }
     socket.binaryType = 'arraybuffer';
@@ -261,7 +360,11 @@ export class LiveTranscriber {
   private handleOpen(): void {
     this.everLive = true;
     this.connectionBaseSample = null;
+    this.segments = [];
+    this.connectionSentSamples = 0;
+    this.nextSentSample = null;
     this.deliveredUntilSec = this.finalizedUntil.map((sample) => sample / this.sampleRate);
+    this.speakers?.reset();
     this.setStatus('live');
 
     // Replay whatever Deepgram never finalized: the tail of the last connection
@@ -279,24 +382,24 @@ export class LiveTranscriber {
     }
     const fatal = FATAL_CLOSE_MESSAGES[event.code];
     if (fatal) {
-      this.fail(fatal);
+      this.fail(fatal, FATAL_CLOSE_CODES[event.code]);
       return;
     }
     if (event.code === RELAY_CLOSE.rateLimited) {
       this.attempt = Math.max(this.attempt, BACKOFF_MS.length - 1); // wait the longest backoff
-      this.scheduleReconnect('Too many reconnects in a minute; waiting before trying again.');
+      this.scheduleReconnect('Too many reconnects in a minute; waiting before trying again.', 'rateLimited');
       return;
     }
-    this.scheduleReconnect(
-      event.code === RELAY_CLOSE.upstreamFailed
-        ? 'The transcription service dropped the stream. Reconnecting…'
-        : "Can't reach the live transcription server. Reconnecting…",
-    );
+    if (event.code === RELAY_CLOSE.upstreamFailed) {
+      this.scheduleReconnect('The transcription service dropped the stream. Reconnecting…', 'upstreamFailed');
+    } else {
+      this.scheduleReconnect("Can't reach the live transcription server. Reconnecting…", 'unreachable');
+    }
   }
 
-  private scheduleReconnect(reason: string): void {
+  private scheduleReconnect(reason: string, code: SttErrorCode): void {
     this.attempt += 1;
-    this.setStatus(this.everLive ? 'reconnecting' : 'connecting', reason);
+    this.setStatus(this.everLive ? 'reconnecting' : 'connecting', reason, code);
     const base = BACKOFF_MS[Math.min(this.attempt - 1, BACKOFF_MS.length - 1)];
     const delay = Math.round(base * (1 + 0.2 * this.random()));
     this.reconnectTimer = setTimeout(() => {
@@ -305,12 +408,12 @@ export class LiveTranscriber {
     }, delay);
   }
 
-  private fail(message: string): void {
+  private fail(message: string, code: SttErrorCode): void {
     this.clearTimers();
     const socket = this.socket;
     this.socket = null;
     socket?.close(1000);
-    this.setStatus('error', message);
+    this.setStatus('error', message, code);
   }
 
   private finishStop(): void {
@@ -338,6 +441,12 @@ export class LiveTranscriber {
     const socket = this.socket;
     if (!socket || socket.readyState !== OPEN) return;
     if (this.connectionBaseSample === null) this.connectionBaseSample = frame.startSample;
+    // A gap in what we send starts a new segment, so Deepgram's times still map to capture time.
+    if (this.nextSentSample !== frame.startSample) {
+      this.segments.push({ connectionSec: this.connectionSentSamples / this.sampleRate, captureSample: frame.startSample });
+    }
+    this.connectionSentSamples += frame.samples;
+    this.nextSentSample = frame.startSample + frame.samples;
     const { pcm } = frame;
     const whole = pcm.byteOffset === 0 && pcm.byteLength === pcm.buffer.byteLength;
     socket.send(whole ? pcm.buffer : pcm.slice().buffer);
@@ -377,17 +486,30 @@ export class LiveTranscriber {
     const role = CHANNEL_ROLES[channel];
     if (!role) return;
 
+    // Phone mode: the one channel carries both people, so the event is for both.
+    const roles = this.speakers ? CHANNEL_ROLES : [role];
     if (message.type === 'UtteranceEnd' && typeof message.last_word_end === 'number') {
-      const event = { role, lastWordEndSec: this.toCaptureSeconds(message.last_word_end), receivedAt };
-      this.utteranceEndListeners.forEach((listener) => listener(event));
+      const lastWordEndSec = this.toCaptureSeconds(message.last_word_end);
+      roles.forEach((r) => this.utteranceEndListeners.forEach((listener) => listener({ role: r, lastWordEndSec, receivedAt })));
     } else if (message.type === 'SpeechStarted' && typeof message.timestamp === 'number') {
-      const event = { role, atSec: this.toCaptureSeconds(message.timestamp), receivedAt };
-      this.speechStartedListeners.forEach((listener) => listener(event));
+      const atSec = this.toCaptureSeconds(message.timestamp);
+      roles.forEach((r) => this.speechStartedListeners.forEach((listener) => listener({ role: r, atSec, receivedAt })));
     }
   }
 
+  /**
+   * The channel a message names, when it's one this connection sends; -1 for anything else. The index
+   * comes off the wire and picks which per-channel slot is written, so only an index we know gets through.
+   */
+  private channelOf(index: unknown): number {
+    for (let channel = 0; channel < this.channels; channel += 1) {
+      if (index === channel) return channel;
+    }
+    return -1;
+  }
+
   private handleResults(message: DeepgramResults, receivedAt: number): void {
-    const channel = message.channel_index?.[0] ?? 0;
+    const channel = this.channelOf(message.channel_index?.[0] ?? 0);
     const role = CHANNEL_ROLES[channel];
     if (!role || this.connectionBaseSample === null) return;
 
@@ -401,13 +523,14 @@ export class LiveTranscriber {
     // delivered. Drop words whose midpoint falls inside that delivered region.
     const deliveredUntil = this.deliveredUntilSec[channel];
     let text = alternative?.transcript?.trim() ?? '';
-    const words = alternative?.words ?? [];
+    let words = alternative?.words ?? [];
     if (text && startSec < deliveredUntil && words.length > 0) {
       const fresh = words.filter(
         (word) => this.toCaptureSeconds(((word.start ?? 0) + (word.end ?? 0)) / 2) >= deliveredUntil,
       );
       if (fresh.length < words.length) {
         text = fresh.map((word) => word.punctuated_word ?? word.word ?? '').join(' ').trim();
+        words = fresh;
       }
     }
 
@@ -422,6 +545,19 @@ export class LiveTranscriber {
     if (message.from_finalize && this.finalizeRequested[channel]) {
       speechFinal = true;
       this.finalizeRequested[channel] = false;
+    }
+
+    if (this.speakers) {
+      this.emitBySpeaker(text ? words : [], text, {
+        isFinal,
+        speechFinal: isFinal && speechFinal,
+        startSec,
+        endSec,
+        endedAt: this.wallClockMs(endSec),
+        confidence: alternative?.confidence ?? 0,
+        receivedAt,
+      });
+      return;
     }
 
     // Empty finals still go out: they clear any stale interim text for that speaker.
@@ -441,13 +577,98 @@ export class LiveTranscriber {
     this.resultListeners.forEach((listener) => listener(result));
   }
 
-  private toCaptureSeconds(connectionSeconds: number): number {
-    return (this.connectionBaseSample ?? 0) / this.sampleRate + connectionSeconds;
+  /**
+   * Phone / in-person mode: one channel carries both people. Words are split
+   * by Deepgram's speaker number, each voice is labelled through the voice
+   * sample, and a change of voice ends the previous speaker's turn. Every
+   * result also clears the other person's interim words, which it replaces.
+   */
+  private emitBySpeaker(words: DeepgramWord[], text: string, result: Omit<TranscriptResult, 'role' | 'text'>): void {
+    const speakers = this.speakers as SpeakerResolver;
+    const spans = words.length
+      ? speakerSpans(words).map((span) => ({ ...span, start: this.toCaptureSeconds(span.start), end: this.toCaptureSeconds(span.end) }))
+      : text
+        ? [{ speaker: 0, start: result.startSec, end: result.endSec, text }]
+        : [];
+
+    const runs: Array<{ role: SpeakerRole; text: string; startSec: number; endSec: number }> = [];
+    for (const span of spans) {
+      const audio = this.ringSlice(span.start, span.end);
+      const atMs = this.wallClockMs(span.start);
+      // Finals are added once; interim audio only informs the guess, since it comes again as final.
+      if (result.isFinal && audio.length > 0) speakers.addSpeech(span.speaker, audio, atMs);
+      const role = speakers.role(span.speaker, { pending: result.isFinal ? undefined : audio, atMs });
+      const last = runs.at(-1);
+      if (last && last.role === role) {
+        last.text = `${last.text} ${span.text}`.trim();
+        last.endSec = span.end;
+      } else {
+        runs.push({ role, text: span.text, startSec: span.start, endSec: span.end });
+      }
+    }
+
+    const emit = (next: TranscriptResult) => this.resultListeners.forEach((listener) => listener(next));
+    if (!result.isFinal) {
+      for (const role of CHANNEL_ROLES) {
+        const said = runs.filter((run) => run.role === role).map((run) => run.text).join(' ');
+        emit({ ...result, role, text: said, speechFinal: false });
+      }
+      return;
+    }
+
+    runs.forEach((run, index) => {
+      if (this.lastFinalRole && this.lastFinalRole !== run.role) {
+        // The other person started talking: the previous turn is over.
+        emit({ ...result, role: this.lastFinalRole, text: '', speechFinal: true, startSec: run.startSec, endSec: run.startSec });
+      }
+      this.lastFinalRole = run.role;
+      emit({
+        ...result,
+        role: run.role,
+        text: run.text,
+        speechFinal: index === runs.length - 1 && result.speechFinal,
+        startSec: run.startSec,
+        endSec: run.endSec,
+        endedAt: this.wallClockMs(run.endSec),
+      });
+    });
+    const lastRole = runs.at(-1)?.role;
+    for (const role of CHANNEL_ROLES) {
+      if (role !== lastRole) emit({ ...result, role, text: '' });
+    }
   }
 
-  private setStatus(status: LiveSttStatus, error: string | null = null): void {
+  /** Mono audio between two capture times, from the ring buffer (phone mode). */
+  private ringSlice(fromSec: number, toSec: number): Int16Array {
+    const from = Math.max(0, Math.floor(fromSec * this.sampleRate));
+    const to = Math.floor(toSec * this.sampleRate);
+    if (to <= from) return new Int16Array(0);
+    const out = new Int16Array(to - from);
+    for (const frame of this.ring) {
+      const start = Math.max(from, frame.startSample);
+      const end = Math.min(to, frame.startSample + frame.samples);
+      if (end > start) out.set(frame.pcm.subarray(start - frame.startSample, end - frame.startSample), start - from);
+    }
+    return out;
+  }
+
+  private wallClockMs(captureSeconds: number): number | null {
+    return this.captureStartedAt === null ? null : this.captureStartedAt + captureSeconds * 1000;
+  }
+
+  private toCaptureSeconds(connectionSeconds: number): number {
+    let segment: SentSegment | undefined;
+    for (const candidate of this.segments) {
+      if (candidate.connectionSec <= connectionSeconds + 1e-6) segment = candidate;
+      else break;
+    }
+    if (!segment) return (this.connectionBaseSample ?? 0) / this.sampleRate + connectionSeconds;
+    return segment.captureSample / this.sampleRate + (connectionSeconds - segment.connectionSec);
+  }
+
+  private setStatus(status: LiveSttStatus, error: string | null = null, code: SttErrorCode | null = null): void {
     if (this.status === status && error === null) return;
     this.status = status;
-    this.statusListeners.forEach((listener) => listener(status, error));
+    this.statusListeners.forEach((listener) => listener(status, error, code));
   }
 }

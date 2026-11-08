@@ -1,41 +1,31 @@
-'use client';
-
+import { getTranslations } from 'next-intl/server';
 import { AppShell } from '@/components/AppShell';
 import { AnalyticsNav } from '@/components/analytics/AnalyticsNav';
 import { CustomDashboard } from '@/components/analytics/CustomDashboard';
-import { ScheduledReports } from '@/components/analytics/ScheduledReports';
 import { AnalyticsReconciliation } from '@/components/AnalyticsReconciliation';
 
-export default function AnalyticsPage() {
-  return (
-    <AppShell title="Analytics">
-      <div className="stack">
-        <p className="help">
-          Your live sessions, practice interviews and scores over time.
-        </p>
+/**
+ * Analytics → Overview. The data checks (totals reconciled against raw
+ * events) are a support tool, so they only show with ?debug=1.
+ */
+export default async function AnalyticsPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
+  const tPage = await getTranslations('PageTitles');
+  const { debug } = await searchParams;
 
+  return (
+    <AppShell title={tPage('analytics')}>
+      <div className="stack">
         <AnalyticsNav />
 
         {/* Exports its own CSV and PDF. */}
-        <CustomDashboard />
+        <CustomDashboard intro={tPage('analyticsIntro')} />
 
-        <ScheduledReports />
-
-        <details className="data-checks card">
-          <summary className="cardTitle">Data checks</summary>
-          <AnalyticsReconciliation />
-        </details>
+        {debug === '1' ? (
+          <section aria-label={tPage('dataChecks')}>
+            <AnalyticsReconciliation />
+          </section>
+        ) : null}
       </div>
-
-      <style jsx>{`
-        .data-checks {
-          padding: 18px 24px;
-        }
-
-        .data-checks > summary {
-          cursor: pointer;
-        }
-      `}</style>
     </AppShell>
   );
 }

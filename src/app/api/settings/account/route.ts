@@ -1,71 +1,71 @@
 import { NextResponse } from 'next/server';
+import { z } from 'zod';
+import { jsonError } from '@/lib/api';
+import { cancelBillingForDeletion } from '@/lib/billing';
+import { getStripe } from '@/lib/stripe';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { z } from 'zod';
 
 const deleteSchema = z.object({
-  confirm_email: z.string().email(),
-  reason: z.string().optional(),
+  confirm_email: z.string().trim().email(),
 });
 
+/**
+ * DELETE /api/settings/account: deletes the signed-in account once the user has typed its email.
+ * A paid plan stops billing first; if its Stripe subscription can't be cancelled, nothing is deleted.
+ */
 export async function DELETE(request: Request) {
   const supabase = await createClient();
   const { data: userData } = await supabase.auth.getUser();
+  const user = userData.user;
+  if (!user) return jsonError(401, 'unauthorized');
 
-  if (!userData.user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  const validation = deleteSchema.safeParse(await request.json().catch(() => null));
+  if (!validation.success) return jsonError(400, 'invalid_body', validation.error.flatten());
+  const { confirm_email } = validation.data;
 
-  const body = await request.json();
-  const validation = deleteSchema.safeParse(body);
-
-  if (!validation.success) {
-    return NextResponse.json(
-      { error: 'Invalid input', details: validation.error.issues },
-      { status: 400 }
-    );
-  }
-
-  const { confirm_email, reason } = validation.data;
-
-  // Verify the email matches
+  // The typed address must be the account's sign-in address (Supabase Auth's, which the profile's copy
+  // can lag behind). Email addresses are compared without regard to case.
   const { data: profile } = await supabase
     .from('profiles')
     .select('email')
-    .eq('id', userData.user.id)
-    .single();
+    .eq('id', user.id)
+    .maybeSingle();
+  const accountEmail = (user.email ?? profile?.email ?? '').trim().toLowerCase();
 
-  if (!profile || profile.email !== confirm_email) {
-    return NextResponse.json(
-      { error: 'Email does not match your account' },
-      { status: 400 }
-    );
+  if (!accountEmail || accountEmail !== confirm_email.trim().toLowerCase()) {
+    return jsonError(400, 'email_mismatch');
   }
 
   try {
-    // Use admin client to delete the user (this cascades to all related tables via RLS/on delete cascade)
-    const adminClient = createAdminClient();
-    
-    // Log deletion reason for analytics (optional)
-    console.log(`User ${userData.user.id} requested account deletion. Reason: ${reason || 'not provided'}`);
+    const admin = createAdminClient();
 
-    // Delete the user - this will cascade delete all their data due to RLS policies
-    const { error: deleteError } = await adminClient.auth.admin.deleteUser(userData.user.id);
-
-    if (deleteError) {
-      console.error('Account deletion error:', deleteError);
-      return NextResponse.json(
-        { error: 'Failed to delete account. Please try again later.' },
-        { status: 500 }
-      );
+    // Billing stops first. Once the account is gone nothing maps the Stripe customer back to it, so a
+    // subscription left running would go on charging. Without Stripe on this server there's nothing to stop.
+    const stripe = getStripe();
+    if (stripe) {
+      try {
+        await cancelBillingForDeletion(stripe, admin, user.id);
+      } catch (e) {
+        console.error('[account] billing could not be cancelled, so the account was kept', {
+          userId: user.id,
+          error: e instanceof Error ? e.message : e,
+        });
+        return jsonError(502, 'billing_cancel_failed');
+      }
     }
 
-    return NextResponse.json({ success: true, message: 'Account deleted successfully' });
+    // Everything the user owns goes with the auth user (on delete cascade); the few rows that only point
+    // at them (who invited a teammate, the audit log) keep their place with the pointer set to null.
+    const { error: deleteError } = await admin.auth.admin.deleteUser(user.id);
+    if (deleteError) {
+      console.error('[account] deletion failed', { userId: user.id, error: deleteError.message });
+      return jsonError(500, 'delete_failed');
+    }
+
+    return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('Account deletion exception:', error);
-    return NextResponse.json(
-      { error: 'An unexpected error occurred' },
-      { status: 500 }
-    );
+    console.error('[account] deletion failed', { userId: user.id, error: error instanceof Error ? error.message : error });
+    return jsonError(500, 'delete_failed');
   }
 }

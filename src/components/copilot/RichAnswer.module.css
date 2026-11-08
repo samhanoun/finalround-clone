@@ -1,0 +1,146 @@
+/* Syntax colours on the graphite code well: three soft hues and the text
+   ramp. Ice and Ember stay with the two voices, so code doesn't borrow them. */
+.keyword {
+  color: #f0a58f;
+}
+
+.string {
+  color: #a3d9a5;
+}
+
+.comment {
+  color: var(--text-3, #85858b);
+}
+
+.number {
+  color: #e6c27a;
+}
+
+.type {
+  color: var(--text-1, #ededed);
+  font-weight: 500;
+}
+
+.function {
+  color: var(--text-1, #ededed);
+}
+
+/* System design diagrams: graphite boxes, muted arrows */
+.diagram {
+  margin: 12px 0 0;
+  padding: 12px;
+  overflow-x: auto;
+  border: 1px solid var(--hairline, rgba(237, 237, 237, 0.08));
+  border-radius: var(--radius-row, 10px);
+  background: var(--sunken, #0f0f10);
+}
+
+.diagram svg {
+  min-width: 320px;
+}
+
+.box {
+  fill: var(--raised, #232325);
+  stroke: var(--hairline-hover, rgba(237, 237, 237, 0.24));
+  stroke-width: 1;
+}
+
+.boxLabel {
+  fill: var(--text-1, #ededed);
+  font-size: 12px;
+  font-family: var(--font-sans, sans-serif);
+}
+
+.edge {
+  fill: none;
+  stroke: var(--text-3, #85858b);
+  stroke-width: 1.25;
+}
+
+.arrowHead {
+  fill: var(--text-3, #85858b);
+}
+
+.edgeLabel {
+  fill: var(--text-2, #a1a1a6);
+  font-size: 11px;
+  font-family: var(--font-sans, sans-serif);
+}
+
+/* [S1] marks: where a fact came from */
+.sourceMark {
+  margin-left: 2px;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: var(--raised, #232325);
+  color: var(--text-2, #a1a1a6);
+  font-family: var(--font-code, monospace);
+  font-size: 0.68em;
+  font-weight: 500;
+  vertical-align: super;
+}
+
+.codePanel {
+  display: grid;
+  gap: 12px;
+}
+
+.problemPicker select {
+  width: 100%;
+}
+
+.problemTitle {
+  margin: 0;
+  overflow: hidden;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.versions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.versionTab {
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-control, 8px);
+  background: transparent;
+  color: var(--text-2, #a1a1a6);
+  font: inherit;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition:
+    background-color var(--dur-fast, 140ms) var(--ease, ease),
+    color var(--dur-fast, 140ms) var(--ease, ease);
+}
+
+.versionTab:hover {
+  color: var(--text-1, #ededed);
+}
+
+.versionTab[aria-selected='true'] {
+  border-color: var(--hairline-strong, rgba(237, 237, 237, 0.14));
+  background: var(--raised, #232325);
+  color: var(--text-1, #ededed);
+}
+
+.codeBlock {
+  max-height: 60vh;
+  margin: 0;
+  padding: 12px 16px;
+  overflow: auto;
+  border: 1px solid var(--hairline, rgba(237, 237, 237, 0.08));
+  border-radius: var(--radius-row, 10px);
+  background: var(--sunken, #0f0f10);
+  font-family: var(--font-code, monospace);
+  font-size: calc(var(--answer-font, 16px) * 0.84);
+  line-height: 1.55;
+  color: var(--text-1, #ededed);
+  white-space: pre;
+}

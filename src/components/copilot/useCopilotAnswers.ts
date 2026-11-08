@@ -21,19 +21,7 @@ import { latencyEventPayload, type TurnTiming } from '@/lib/copilot/latency';
 import { readAnswerStream } from '@/lib/copilot/sse';
 import type { Utterance } from '@/lib/stt/utterances';
 
-const ANSWER_ERRORS: Record<string, string> = {
-  answers_unavailable: 'Answers are not set up on the server (no API key for the answer model).',
-  question_blocked: 'That question looked like an attempt to steer the assistant, so it was not answered.',
-  quota_exceeded: 'You have used all your copilot minutes for now.',
-  quota_unavailable: 'Your plan could not be checked (SUPABASE_SERVICE_ROLE_KEY missing?).',
-  session_expired: 'This copilot session expired. Start a new one.',
-  session_not_active: 'This copilot session has ended.',
-  rate_limited: 'Too many answers in a short time. Try again in a moment.',
-  image_too_large: 'The screen capture was too large to send.',
-  invalid_image: 'The screen capture could not be read.',
-};
-
-/** What a Solve screen request shows as its question. */
+/** What a Solve screen request records as its question; the answer view shows Answer.screenQuestion instead. */
 export const SCREEN_QUESTION_TEXT = 'What’s on the shared screen';
 
 /** Lines of conversation sent with each question. */
@@ -67,11 +55,11 @@ async function streamAnswer(
       });
   if (!res.ok || !res.body) {
     const json = (await res.json().catch(() => ({}))) as { error?: string };
-    const code = json.error ?? `http_${res.status}`;
-    throw new Error(ANSWER_ERRORS[code] ?? `Could not get an answer (${code}).`);
+    // The error code; the answer view words it in the user's language (Answer.errors).
+    throw new Error(json.error ?? `http_${res.status}`);
   }
   const done = await readAnswerStream(res.body, onText);
-  return { model: done.model, ttftMs: done.ttftMs ?? null };
+  return { model: done.model, ttftMs: done.ttftMs ?? null, sources: done.sources ?? [] };
 }
 
 /** The classifier is optional: any failure means "no opinion", and the gate's fallback decides. */
@@ -218,10 +206,11 @@ export function useCopilotAnswers({ sessionId }: { sessionId: string | null }) {
     return gateRef.current?.answerNow(liveInterviewerText) != null;
   }, []);
 
-  /** A line typed in the composer: interviewer lines are always answered. */
+  /** A line typed in the composer: interviewer lines are always answered, and Answer now can answer them again. */
   const addTypedLine = useCallback(
     (speaker: TranscriptLine['speaker'], text: string) => {
       const controller = controllerRef.current;
+      if (speaker === 'interviewer') gateRef.current?.noteTyped(text);
       if (speaker === 'interviewer' && controller) {
         void controller.request({
           text,

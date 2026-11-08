@@ -1,16 +1,20 @@
+import { getTranslations } from 'next-intl/server';
 import { AppShell } from '@/components/AppShell';
 import { RequireAuth } from '@/components/RequireAuth';
-import { LiveCopilotClient } from '@/components/LiveCopilotClient';
+import { LiveCopilotScreen } from '@/components/copilot/LiveCopilotScreen';
 import { createClient } from '@/lib/supabase/server';
-import { isLiveCopilotBetaEnabled } from '@/lib/features';
+import { isLiveCopilotEnabled } from '@/lib/features';
 
-export default async function LiveCopilotPage() {
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export default async function LiveCopilotPage({ searchParams }: { searchParams: Promise<{ goal?: string; debug?: string }> }) {
+  const t = await getTranslations('LivePage');
   const supabase = await createClient();
   const { data: userData } = await supabase.auth.getUser();
 
   if (!userData.user) {
     return (
-      <AppShell title="Live copilot">
+      <AppShell title={t('title')}>
         <RequireAuth>
           <div />
         </RequireAuth>
@@ -18,24 +22,19 @@ export default async function LiveCopilotPage() {
     );
   }
 
-  const isEnabled = isLiveCopilotBetaEnabled();
-
-  return (
-    <AppShell title="Live copilot" actions={<span className="badge">Beta</span>}>
-      <RequireAuth>
-        {isEnabled ? (
-          <LiveCopilotClient />
-        ) : (
-          <div className="card">
-            <div className="cardInner stack">
-              <h2 className="cardTitle">Live copilot is switched off</h2>
-              <p className="cardDesc">
-                Set <code>NEXT_PUBLIC_BETA_LIVE_COPILOT=true</code> to turn it on in this environment.
-              </p>
-            </div>
+  if (!isLiveCopilotEnabled()) {
+    return (
+      <AppShell title={t('title')}>
+        <RequireAuth>
+          <div className="emptyState">
+            <h2 className="cardTitle">{t('offTitle')}</h2>
+            <p style={{ margin: 0 }}>{t('offHelp')}</p>
           </div>
-        )}
-      </RequireAuth>
-    </AppShell>
-  );
+        </RequireAuth>
+      </AppShell>
+    );
+  }
+
+  const { goal, debug } = await searchParams;
+  return <LiveCopilotScreen title={t('title')} initialGoalId={goal && UUID.test(goal) ? goal : null} debug={debug === '1'} />;
 }

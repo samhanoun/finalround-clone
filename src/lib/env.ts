@@ -11,17 +11,14 @@ const RawEnvSchema = z.object({
 
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1).optional(),
 
-  // LLM Providers
+  // LLM providers. Models are routed by id ("claude-*" → Anthropic, "gpt-*"/"o*"
+  // → OpenAI). LLM_PROVIDER only says which provider the question gate tries
+  // first when both have keys ('google' is accepted but not used).
   LLM_PROVIDER: z.enum(['openai', 'anthropic', 'google', 'auto']).optional(),
   OPENAI_API_KEY: z.string().min(1).optional(),
   ANTHROPIC_API_KEY: z.string().min(1).optional(),
-  GOOGLE_GENERATIVE_AI_API_KEY: z.string().min(1).optional(),
 
-  // Default model preferences
-  DEFAULT_MODEL: z.string().min(1).optional(),
-  FALLBACK_MODEL: z.string().min(1).optional(),
-
-  // Live copilot models (OpenAI model ids)
+  // Live copilot models (OpenAI or Anthropic model ids)
   COPILOT_GATE_MODEL: z.string().min(1).optional(),
   COPILOT_ANSWER_MODEL: z.string().min(1).optional(),
   COPILOT_CODING_MODEL: z.string().min(1).optional(),
@@ -64,9 +61,6 @@ export const env = RawEnvSchema.parse(blankToUndefined({
   LLM_PROVIDER: process.env.LLM_PROVIDER,
   OPENAI_API_KEY: process.env.OPENAI_API_KEY,
   ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
-  GOOGLE_GENERATIVE_AI_API_KEY: process.env.GOOGLE_GENERATIVE_AI_API_KEY,
-  DEFAULT_MODEL: process.env.DEFAULT_MODEL,
-  FALLBACK_MODEL: process.env.FALLBACK_MODEL,
 
   COPILOT_GATE_MODEL: process.env.COPILOT_GATE_MODEL,
   COPILOT_ANSWER_MODEL: process.env.COPILOT_ANSWER_MODEL,
@@ -94,14 +88,7 @@ export function requireEnv(name: keyof typeof env): string {
   return val;
 }
 
+/** The question gate's preferred provider (see src/lib/copilot/gateModel.ts). */
 export function llmProvider() {
   return env.LLM_PROVIDER ?? 'auto';
-}
-
-export function defaultModel() {
-  return env.DEFAULT_MODEL ?? 'gpt-4o-mini';
-}
-
-export function fallbackModel() {
-  return env.FALLBACK_MODEL ?? 'claude-haiku-3-5';
 }

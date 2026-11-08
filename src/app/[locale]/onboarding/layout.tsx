@@ -1,4 +1,5 @@
-import { redirect } from 'next/navigation';
+import { getLocale } from 'next-intl/server';
+import { redirect } from '@/i18n/routing';
 import { createClient } from '@/lib/supabase/server';
 
 export default async function OnboardingLayout({
@@ -6,11 +7,12 @@ export default async function OnboardingLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const locale = await getLocale();
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
   if (!user) {
-    redirect('/auth?next=/onboarding');
+    return redirect({ href: '/auth?next=/onboarding', locale });
   }
 
   // Check if onboarding is already completed
@@ -21,12 +23,9 @@ export default async function OnboardingLayout({
     .single();
 
   if (profile?.onboarding_completed) {
-    redirect('/dashboard');
+    return redirect({ href: '/dashboard', locale });
   }
 
-  return (
-    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
-      {children}
-    </div>
-  );
+  // OnboardingFlow lays out its own full-height page.
+  return children;
 }

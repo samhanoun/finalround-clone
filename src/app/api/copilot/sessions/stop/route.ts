@@ -64,7 +64,8 @@ export async function POST(req: NextRequest) {
   const nowIso = new Date().toISOString();
   const consentRevocation = revokeConsentMetadata(session.metadata, nowIso);
 
-  // Charges the minutes and closes the session (service role, once).
+  // Charges the minutes and closes the session (service role, once), then
+  // learns from it for Goals → Memory after the response.
   const { ended, error: endError } = await endCopilotSession(session, {
     status: 'stopped',
     endedAt: new Date(nowIso),

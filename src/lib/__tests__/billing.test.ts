@@ -5,6 +5,7 @@ import type Stripe from 'stripe';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 jest.mock('@/lib/env', () => ({ env: { PRICE_ID_PRO_EUR: 'price_eur', PRICE_ID_PRO_USD: 'price_usd' } }));
+jest.mock('@/lib/notify', () => ({ notify: jest.fn() }));
 
 import { getOrCreateStripeCustomer, proAccessUntil, proPriceId, recordCheckout, syncSubscription } from '@/lib/billing';
 
@@ -76,6 +77,26 @@ describe('proPriceId', () => {
 });
 
 describe('syncSubscription', () => {
+  it('ignores events for an account deleted outside the app instead of failing (Stripe would retry for days)', async () => {
+    const { stripe } = fakeStripe(subscription());
+    const upsert = jest.fn().mockResolvedValue({ error: { code: '23503', message: 'violates foreign key constraint' } });
+    const query: Record<string, unknown> = {};
+    query.select = () => query;
+    query.eq = () => query;
+    query.maybeSingle = async () => ({ data: { user_id: 'gone-user' }, error: null });
+    query.upsert = upsert;
+    const getUserById = jest.fn().mockResolvedValue({ data: { user: null }, error: { status: 404, message: 'User not found' } });
+    const admin = { from: () => query, auth: { admin: { getUserById } } } as unknown as SupabaseClient;
+    jest.spyOn(console, 'warn').mockImplementation(() => {});
+
+    await expect(syncSubscription(stripe, admin, 'sub_1')).resolves.toBeUndefined();
+    expect(getUserById).toHaveBeenCalledWith('gone-user');
+
+    // A foreign-key error for a user who still exists is a real failure.
+    getUserById.mockResolvedValue({ data: { user: { id: 'gone-user' } }, error: null });
+    await expect(syncSubscription(stripe, admin, 'sub_1')).rejects.toThrow('Could not save the subscription');
+  });
+
   it('re-reads the subscription and grants Pro while it is active, with the period from the item', async () => {
     const { stripe, retrieve } = fakeStripe(subscription());
     const { admin, calls } = fakeAdmin({ stripe_customers: [{ user_id: 'user-1', stripe_customer_id: 'cus_1' }] });

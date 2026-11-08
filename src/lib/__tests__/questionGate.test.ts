@@ -253,6 +253,25 @@ describe('QuestionGate Answer now', () => {
     expect(gate.answerNow()).toBeNull();
     expect(fired).toHaveLength(0);
   });
+
+  it('answers a question typed as the interviewer again, until the interviewer speaks', async () => {
+    const { gate, fired } = setup();
+    await gate.observe(interviewer('Why this company?', 0));
+    const before = fired.length;
+    // Typing a line doesn't fire the gate (the caller answers it), but Answer now repeats it.
+    gate.noteTyped('  How would you design a URL shortener?  ');
+    expect(fired).toHaveLength(before);
+    expect(gate.answerNow()?.text).toBe('How would you design a URL shortener?');
+
+    await gate.observe(interviewer('Tell me about your last project.', 30));
+    expect(gate.answerNow()?.text).toBe('Tell me about your last project.');
+  });
+
+  it('ignores an empty typed line', () => {
+    const { gate } = setup();
+    gate.noteTyped('   ');
+    expect(gate.answerNow()).toBeNull();
+  });
 });
 
 describe('QuestionGate classifier for unsure lines', () => {

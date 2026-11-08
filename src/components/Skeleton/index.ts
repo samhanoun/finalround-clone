@@ -1,9 +1,10 @@
-export { 
-  Skeleton, 
-  CardSkeleton, 
-  FormSkeleton, 
-  TableSkeleton, 
+export {
+  Skeleton,
+  CardSkeleton,
+  FormSkeleton,
+  TableSkeleton,
   DashboardSkeleton,
+  PageSkeleton,
   LoadingSpinner,
-  LoadingDots 
+  LoadingDots,
 } from './Skeleton';

@@ -6,27 +6,24 @@ export type CopilotErrorPayload = {
   };
 };
 
-const COPILOT_ERROR_MESSAGES: Record<string, string> = {
-  rate_limited: 'Too many requests right now. Please wait a moment and try again.',
-  unauthorized: 'Your session expired. Please sign in again.',
-  session_active: 'Stop active sessions before deleting copilot data.',
-  invalid_confirmation: 'Confirmation phrase does not match. Please type it exactly.',
-  session_not_found: 'Session no longer exists or you no longer have access to it.',
-  session_expired: 'This copilot session has expired. Start a new session to continue.',
-  confirmation_user_mismatch: 'Confirmation details do not match your account.',
+/** A next-intl translator for the CopilotErrors messages. */
+export type CopilotErrorTranslator = {
+  (key: string, values?: Record<string, string | number>): string;
+  has(key: string): boolean;
 };
 
-export function formatCopilotActionError(payload: CopilotErrorPayload | null, fallback: string): string {
+/** Turns an API error code into the user's language; unknown codes get `fallback`. */
+export function formatCopilotActionError(
+  payload: CopilotErrorPayload | null,
+  fallback: string,
+  t: CopilotErrorTranslator,
+): string {
   const code = payload?.error?.trim();
   if (!code) return fallback;
 
-  const fromMap = COPILOT_ERROR_MESSAGES[code];
-  if (fromMap) return fromMap;
-
   if (code === 'internal_error') {
     const requestId = payload?.extra?.requestId;
-    return requestId ? `Something went wrong on our side. Reference: ${requestId}` : 'Something went wrong on our side. Please try again.';
+    return requestId ? t('internalWithReference', { reference: requestId }) : t('internal');
   }
-
-  return fallback;
+  return t.has(code) ? t(code) : fallback;
 }

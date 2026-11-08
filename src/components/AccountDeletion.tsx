@@ -1,19 +1,31 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useId, useState } from 'react';
+import { useRouter } from '@/i18n/routing';
+import { useTranslations } from 'next-intl';
+import { createClient } from '@/lib/supabase/browser';
+import { SettingRow, SettingsGroup, settingsStyles as styles } from '@/app/[locale]/settings/SettingsUI';
 
+/** Typed to confirm; it stays the same in every language. */
+const CONFIRM_WORD = 'DELETE';
+
+/** How long the confirmation stays on screen before going home. */
+const GOODBYE_MS = 2000;
+
+/** Settings → Account → Danger zone. Two steps: what goes, then the email and the typed word. */
 export function AccountDeletion() {
+  const t = useTranslations('AccountDeletion');
   const router = useRouter();
+  const ids = { email: useId(), word: useId(), title: useId() };
   const [email, setEmail] = useState('');
-  const [reason, setReason] = useState('');
   const [confirmText, setConfirmText] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
-  const [showWarning, setShowWarning] = useState(false);
+  const [confirming, setConfirming] = useState(false);
 
-  async function handleDelete() {
+  async function handleDelete(event: React.FormEvent) {
+    event.preventDefault();
     setError(null);
     setSaving(true);
 
@@ -21,28 +33,30 @@ export function AccountDeletion() {
       const res = await fetch('/api/settings/account', {
         method: 'DELETE',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          confirm_email: email,
-          reason: reason || undefined,
-        }),
+        body: JSON.stringify({ confirm_email: email }),
       });
 
       const json = await res.json().catch(() => ({}));
 
       if (!res.ok) {
-        throw new Error(json.error ?? 'Failed to delete account');
+        throw new Error(typeof json.error === 'string' && t.has(`errors.${json.error}`) ? t(`errors.${json.error}`) : t('failed'));
       }
 
       setSuccess(true);
-      
-      // Sign out and redirect after a short delay
-      setTimeout(async () => {
-        await fetch('/api/auth/logout', { method: 'POST' });
+
+      // The account is gone: this browser's session goes now (even if the tab is closed during the
+      // pause), and home follows once the confirmation has been read.
+      try {
+        await createClient().auth.signOut();
+      } catch {
+        // The session belonged to the deleted account either way; going home still follows.
+      }
+      setTimeout(() => {
         router.push('/');
         router.refresh();
-      }, 2000);
+      }, GOODBYE_MS);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to delete account');
+      setError(e instanceof Error ? e.message : t('failed'));
     } finally {
       setSaving(false);
     }
@@ -50,132 +64,107 @@ export function AccountDeletion() {
 
   if (success) {
     return (
-      <div className="card">
-        <div className="cardInner stack">
-          <h2 className="cardTitle" style={{ color: 'var(--success)' }}>
-            Account deleted
-          </h2>
-          <p>
-            Your account has been permanently deleted. All your data has been removed.
-            Taking you to the home page…
-          </p>
+      <SettingsGroup danger>
+        <div className={styles.block} role="status">
+          <p className={styles.rowLabel}>{t('deletedTitle')}</p>
+          <p className={styles.rowHelp}>{t('deletedBody')}</p>
         </div>
-      </div>
+      </SettingsGroup>
     );
   }
 
-  if (!showWarning) {
+  if (!confirming) {
     return (
-      <div className="card">
-        <div className="cardInner stack">
-          <h2 className="cardTitle">Delete account</h2>
-          <p className="cardDesc">
-            Permanently delete your account and all associated data. This action cannot be undone.
-          </p>
-          
-          <div 
-            style={{ 
-              background: 'var(--alert-soft)', 
-              border: '1px solid rgba(255, 107, 107, 0.35)',
-              borderRadius: 12, 
-              padding: 16,
-            }}
-          >
-            <p style={{ margin: 0, fontWeight: 600, color: 'var(--alert-text)' }}>
-              This permanently deletes:
-            </p>
-            <ul style={{ margin: '8px 0 0', paddingLeft: 20 }}>
-              <li>Your profile and account</li>
-              <li>All interview sessions</li>
-              <li>All résumés and cover letters</li>
-              <li>All usage history and quotas</li>
-            </ul>
-          </div>
-
-          <button
-            className="button buttonDanger"
-            onClick={() => setShowWarning(true)}
-            style={{ alignSelf: 'flex-start' }}
-          >
-            Delete my account
+      <SettingsGroup danger>
+        <SettingRow layout="inline" label={t('title')} help={t('desc')}>
+          <button className="button buttonDanger" type="button" onClick={() => setConfirming(true)}>
+            {t('start')}
           </button>
+        </SettingRow>
+        <div className={styles.block}>
+          <p className={styles.rowHelp}>{t('deletes')}</p>
+          <ul className={styles.dangerList}>
+            <li>{t('deletesProfile')}</li>
+            <li>{t('deletesSessions')}</li>
+            <li>{t('deletesDocuments')}</li>
+            <li>{t('deletesUsage')}</li>
+            <li>{t('deletesPlan')}</li>
+          </ul>
         </div>
-      </div>
+      </SettingsGroup>
     );
   }
 
   return (
-    <div className="card">
-      <div className="cardInner stack">
-        <h2 className="cardTitle" style={{ color: 'var(--error)' }}>
-          Confirm account deletion
-        </h2>
-        <p className="cardDesc">
-          Enter your email address and type DELETE to confirm.
-        </p>
+    <form className={`${styles.group} ${styles.groupDanger}`} onSubmit={handleDelete} aria-labelledby={ids.title}>
+      <div className={styles.block}>
+        <div className={styles.form}>
+          <div className={styles.rowText}>
+            <h3 id={ids.title} className={styles.rowLabel}>
+              {t('confirmTitle')}
+            </h3>
+            <p className={styles.rowHelp}>{t('confirmDesc', { word: CONFIRM_WORD })}</p>
+          </div>
 
-        <div className="stack" style={{ gap: 16 }}>
-          <label className="label">
-            Your email address
+          <label className="label" htmlFor={ids.email}>
+            {t('email')}
             <input
+              id={ids.email}
               className="input"
               type="email"
+              autoComplete="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@example.com"
+              placeholder={t('emailPlaceholder')}
+              required
             />
           </label>
 
-          <label className="label">
-            Why are you leaving? (optional)
-            <textarea
-              className="input"
-              value={reason}
-              onChange={(e) => setReason(e.target.value)}
-              placeholder="What could we have done better?"
-              rows={3}
-              style={{ resize: 'vertical' }}
-            />
-          </label>
-
-          <label className="label">
-            Type <strong>DELETE</strong> to confirm
+          <label className="label" htmlFor={ids.word}>
+            <span>{t.rich('typeWord', { word: CONFIRM_WORD, strong: (chunks) => <strong className="mono">{chunks}</strong> })}</span>
             <input
-              className="input"
+              id={ids.word}
+              className="input mono"
               type="text"
+              autoComplete="off"
+              spellCheck={false}
               value={confirmText}
               onChange={(e) => setConfirmText(e.target.value)}
-              placeholder="DELETE"
+              placeholder={CONFIRM_WORD}
             />
           </label>
-        </div>
 
-        <div className="row" style={{ justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
+          {error ? (
+            <p className={styles.inlineError} role="alert">
+              {error}
+            </p>
+          ) : null}
+        </div>
+      </div>
+
+      <div className={styles.groupFooter}>
+        <div className={styles.footerActions}>
           <button
-            className="button"
+            className="button buttonGhost"
+            type="button"
             onClick={() => {
-              setShowWarning(false);
+              setConfirming(false);
               setConfirmText('');
+              setError(null);
             }}
             disabled={saving}
           >
-            Cancel
+            {t('cancel')}
           </button>
           <button
             className="button buttonDanger"
-            onClick={handleDelete}
-            disabled={saving || email !== email.toLowerCase() || confirmText !== 'DELETE'}
+            type="submit"
+            disabled={saving || !email.trim() || confirmText !== CONFIRM_WORD}
           >
-            {saving ? 'Deleting…' : 'Delete account permanently'}
+            {saving ? t('deleting') : t('confirm')}
           </button>
         </div>
-
-        {error && (
-          <div className="error" role="alert">
-            {error}
-          </div>
-        )}
       </div>
-    </div>
+    </form>
   );
 }

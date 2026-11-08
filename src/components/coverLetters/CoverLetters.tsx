@@ -1,7 +1,10 @@
 'use client';
 
-import Link from 'next/link';
-import { useId, useState } from 'react';
+import { Link } from '@/i18n/routing';
+import { useId, useLayoutEffect, useRef, useState } from 'react';
+import { useFormatter, useTranslations } from 'next-intl';
+import { ChevronLeftIcon, ChevronRightIcon, CopyIcon, DownloadIcon } from '@/components/icons';
+import { Segmented } from '@/components/practice/Controls';
 import styles from './CoverLetters.module.css';
 
 export type CoverLetter = {
@@ -22,34 +25,26 @@ export type CoverLetter = {
 
 export type ResumeOption = { id: string; filename: string | null };
 
-const TONES = [
-  { value: 'professional', label: 'Professional' },
-  { value: 'friendly', label: 'Warm' },
-  { value: 'confident', label: 'Confident' },
-  { value: 'formal', label: 'Formal' },
-] as const;
+const TONES = ['professional', 'friendly', 'confident', 'formal'] as const;
 
-const ERRORS: Record<string, string> = {
-  llm_unavailable: 'No AI model is set up for this app yet: it needs an OpenAI or Anthropic API key.',
-  resume_not_parsed: "That résumé hasn't been read yet. Pick another.",
-  resume_required: 'Pick a résumé so the letter can use your experience.',
-  rate_limited: 'Too many requests in a row. Wait a few seconds and try again.',
-  invalid_body: 'Check the form: the job description needs at least a few sentences.',
-};
+type T = ReturnType<typeof useTranslations>;
 
-function errorText(code: unknown, fallback: string) {
-  return (typeof code === 'string' && ERRORS[code]) || fallback;
+function errorText(t: T, code: unknown, fallback: string) {
+  return typeof code === 'string' && t.has(`errors.${code}`) ? t(`errors.${code}`) : fallback;
 }
 
-function letterTitle(letter: CoverLetter) {
+function letterTitle(t: T, letter: CoverLetter) {
   const meta = letter.metadata ?? {};
-  if (meta.jobTitle && meta.companyName) return `${meta.jobTitle} at ${meta.companyName}`;
-  return letter.title ?? 'Cover letter';
+  if (meta.jobTitle && meta.companyName) return t('titleAt', { role: meta.jobTitle, company: meta.companyName });
+  return letter.title ?? t('fallbackTitle');
 }
 
 export function CoverLetters(props: { initialLetters: CoverLetter[]; resumes: ResumeOption[] }) {
+  const t = useTranslations('CoverLetters');
+  const format = useFormatter();
   const [letters, setLetters] = useState(props.initialLetters);
   const [openId, setOpenId] = useState<string | null>(null);
+  const listId = useId();
   const open = letters.find((letter) => letter.id === openId) ?? null;
 
   if (open) {
@@ -75,44 +70,52 @@ export function CoverLetters(props: { initialLetters: CoverLetter[]; resumes: Re
           setOpenId(letter.id);
         }}
       />
-      <section className="card" aria-label="Your letters">
-        <div className="cardInner stack">
-          <h2 className="cardTitle">Your letters</h2>
-          {letters.length === 0 ? (
-            <p className="help">No letters yet. The ones you write are saved here, ready to edit.</p>
-          ) : (
-            <ul className={styles.list}>
-              {letters.map((letter) => (
-                <li key={letter.id}>
-                  <button type="button" className={styles.listItem} onClick={() => setOpenId(letter.id)}>
-                    <span className={styles.listTitle}>{letterTitle(letter)}</span>
-                    <span className={styles.listMeta}>{new Date(letter.updated_at || letter.created_at).toLocaleDateString()}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+      <section className={styles.letters} aria-labelledby={listId}>
+        <h2 className={styles.lettersTitle} id={listId}>
+          {t('yours')}
+          <span className={styles.count}>{letters.length}</span>
+        </h2>
+        {letters.length === 0 ? (
+          <p className={`emptyState ${styles.empty}`}>{t('none')}</p>
+        ) : (
+          <ul className={styles.list}>
+            {letters.map((letter) => (
+              <li key={letter.id}>
+                <button type="button" className={styles.listItem} onClick={() => setOpenId(letter.id)}>
+                  <span className={styles.listText}>
+                    <span className={styles.listTitle}>{letterTitle(t, letter)}</span>
+                    <span className={styles.listMeta}>
+                      {format.dateTime(new Date(letter.updated_at || letter.created_at), { dateStyle: 'medium' })}
+                    </span>
+                  </span>
+                  <ChevronRightIcon size={16} className={styles.listChevron} />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
     </div>
   );
 }
 
 function WriteForm(props: { resumes: ResumeOption[]; onWritten: (letter: CoverLetter) => void }) {
+  const t = useTranslations('CoverLetters');
   const [jobTitle, setJobTitle] = useState('');
   const [company, setCompany] = useState('');
   const [job, setJob] = useState('');
   const [resumeId, setResumeId] = useState(props.resumes[0]?.id ?? '');
-  const [tone, setTone] = useState<(typeof TONES)[number]['value']>('professional');
+  const [tone, setTone] = useState<(typeof TONES)[number]>('professional');
   const [extra, setExtra] = useState('');
   const [writing, setWriting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const ids = { title: useId(), company: useId(), job: useId(), resume: useId(), extra: useId() };
+  const ids = { title: useId(), company: useId(), job: useId(), resume: useId(), resumeHelp: useId(), extra: useId(), heading: useId() };
 
   async function write(event: React.FormEvent) {
     event.preventDefault();
     setError(null);
     setWriting(true);
+    const failed = t('writeFailed');
     try {
       const res = await fetch('/api/cover-letters', {
         method: 'POST',
@@ -128,10 +131,10 @@ function WriteForm(props: { resumes: ResumeOption[]; onWritten: (letter: CoverLe
         }),
       });
       const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(errorText(json?.error, "The letter wasn't written. Try again."));
+      if (!res.ok) throw new Error(errorText(t, json?.error, failed));
       props.onWritten(json.cover_letter as CoverLetter);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "The letter wasn't written. Try again.");
+      setError(e instanceof Error ? e.message : failed);
     } finally {
       setWriting(false);
     }
@@ -140,83 +143,103 @@ function WriteForm(props: { resumes: ResumeOption[]; onWritten: (letter: CoverLe
   const noResumes = props.resumes.length === 0;
 
   return (
-    <form className="card" onSubmit={write}>
-      <div className="cardInner stack">
-        <div>
-          <h2 className="cardTitle">Write a cover letter</h2>
-          <p className="cardDesc">Built from your résumé and the job posting. Edit it as much as you like afterwards.</p>
-        </div>
-        <div className={styles.twoCol}>
-          <label className="label" htmlFor={ids.title}>
-            Role
-            <input id={ids.title} className="input" value={jobTitle} onChange={(e) => setJobTitle(e.target.value)} required maxLength={150} placeholder="e.g. Product Designer" />
-          </label>
-          <label className="label" htmlFor={ids.company}>
-            Company
-            <input id={ids.company} className="input" value={company} onChange={(e) => setCompany(e.target.value)} required maxLength={150} placeholder="e.g. Acme" />
-          </label>
-        </div>
-        <label className="label" htmlFor={ids.job}>
-          Job description
-          <textarea
-            id={ids.job}
-            className="textarea"
-            rows={6}
-            value={job}
-            onChange={(e) => setJob(e.target.value)}
+    <form className={styles.form} onSubmit={write} aria-labelledby={ids.heading}>
+      <div className={styles.formHead}>
+        <h2 className={styles.formTitle} id={ids.heading}>
+          {t('writeTitle')}
+        </h2>
+        <p className={styles.formDesc}>{t('writeDesc')}</p>
+      </div>
+      <div className={styles.twoCol}>
+        <label className="label" htmlFor={ids.title}>
+          {t('role')}
+          <input
+            id={ids.title}
+            className="input"
+            value={jobTitle}
+            onChange={(e) => setJobTitle(e.target.value)}
             required
-            minLength={50}
-            maxLength={20_000}
-            placeholder="Paste the posting: responsibilities and requirements matter most."
+            maxLength={150}
+            placeholder={t('rolePlaceholder')}
           />
         </label>
-        <label className="label" htmlFor={ids.resume}>
-          Résumé
-          <select id={ids.resume} className="select" value={resumeId} onChange={(e) => setResumeId(e.target.value)} required disabled={noResumes}>
-            {noResumes ? <option value="">Upload a résumé first</option> : null}
-            {props.resumes.map((resume) => (
-              <option key={resume.id} value={resume.id}>
-                {resume.filename ?? 'Résumé'}
-              </option>
-            ))}
-          </select>
-          {noResumes ? (
-            <span className="help">
-              <Link href="/resume">Upload your résumé</Link> and it will appear here.
-            </span>
-          ) : null}
+        <label className="label" htmlFor={ids.company}>
+          {t('company')}
+          <input
+            id={ids.company}
+            className="input"
+            value={company}
+            onChange={(e) => setCompany(e.target.value)}
+            required
+            maxLength={150}
+            placeholder={t('companyPlaceholder')}
+          />
         </label>
-        <div className={styles.field}>
-          <span className="label">Tone</span>
-          <div className={styles.segmented} role="radiogroup" aria-label="Tone">
-            {TONES.map((option) => (
-              <button
-                key={option.value}
-                type="button"
-                role="radio"
-                aria-checked={tone === option.value}
-                className={styles.segment}
-                onClick={() => setTone(option.value)}
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
-        </div>
-        <label className="label" htmlFor={ids.extra}>
-          Anything to mention (optional)
-          <input id={ids.extra} className="input" value={extra} onChange={(e) => setExtra(e.target.value)} maxLength={500} placeholder="e.g. I use the product every day; I can relocate in May." />
-        </label>
-        {error ? (
-          <p className={styles.error} role="alert">
-            {error}
-          </p>
+      </div>
+      <label className="label" htmlFor={ids.job}>
+        {t('job')}
+        <textarea
+          id={ids.job}
+          className="textarea"
+          rows={6}
+          value={job}
+          onChange={(e) => setJob(e.target.value)}
+          required
+          minLength={50}
+          maxLength={20_000}
+          placeholder={t('jobPlaceholder')}
+        />
+      </label>
+      <label className="label" htmlFor={ids.resume}>
+        {t('resume')}
+        <select
+          id={ids.resume}
+          className="select"
+          value={resumeId}
+          onChange={(e) => setResumeId(e.target.value)}
+          required
+          disabled={noResumes}
+          aria-describedby={noResumes ? ids.resumeHelp : undefined}
+        >
+          {noResumes ? <option value="">{t('uploadFirst')}</option> : null}
+          {props.resumes.map((resume) => (
+            <option key={resume.id} value={resume.id}>
+              {resume.filename ?? t('resume')}
+            </option>
+          ))}
+        </select>
+        {noResumes ? (
+          <span id={ids.resumeHelp} className="help">
+            {t.rich('uploadHelp', { link: (chunks) => <Link href="/resume">{chunks}</Link> })}
+          </span>
         ) : null}
-        <div className={styles.actions}>
-          <button type="submit" className="button buttonPrimary" disabled={writing || noResumes || !jobTitle.trim() || !company.trim() || job.trim().length < 50}>
-            {writing ? 'Writing your letter…' : 'Write the letter'}
-          </button>
-        </div>
+      </label>
+      <Segmented
+        label={t('tone')}
+        options={TONES.map((value) => ({ value, label: t(`tones.${value}`) }))}
+        value={tone}
+        onChange={setTone}
+      />
+      <label className="label" htmlFor={ids.extra}>
+        {t('extra')}
+        <input
+          id={ids.extra}
+          className="input"
+          value={extra}
+          onChange={(e) => setExtra(e.target.value)}
+          maxLength={500}
+          placeholder={t('extraPlaceholder')}
+        />
+      </label>
+      {error ? (
+        <p className={styles.error} role="alert">
+          {error}
+        </p>
+      ) : null}
+      <div className={styles.actions}>
+        <button type="submit" className="button buttonPrimary" disabled={writing || noResumes || !jobTitle.trim() || !company.trim() || job.trim().length < 50}>
+          {writing ? t('writing') : t('write')}
+        </button>
       </div>
     </form>
   );
@@ -228,6 +251,7 @@ function LetterEditor(props: {
   onSaved: (letter: CoverLetter) => void;
   onDeleted: (id: string) => void;
 }) {
+  const t = useTranslations('CoverLetters');
   const { letter } = props;
   const [content, setContent] = useState(letter.content ?? '');
   const [busy, setBusy] = useState<'save' | 'delete' | null>(null);
@@ -235,9 +259,19 @@ function LetterEditor(props: {
   const [error, setError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const editorId = useId();
+  const headingId = useId();
+  const textRef = useRef<HTMLTextAreaElement>(null);
   const meta = letter.metadata ?? {};
   const dirty = content !== (letter.content ?? '');
   const words = content.trim() ? content.trim().split(/\s+/).length : 0;
+
+  // The page grows with the letter, so it reads as a page rather than a box that scrolls.
+  useLayoutEffect(() => {
+    const field = textRef.current;
+    if (!field) return;
+    field.style.height = 'auto';
+    field.style.height = `${field.scrollHeight}px`;
+  }, [content]);
 
   async function save() {
     setBusy('save');
@@ -251,9 +285,9 @@ function LetterEditor(props: {
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error();
       props.onSaved({ ...letter, ...(json.cover_letter ?? {}), content });
-      setNotice('Saved');
+      setNotice(t('saved'));
     } catch {
-      setError("Your changes weren't saved. Try again.");
+      setError(t('saveFailed'));
     } finally {
       setBusy(null);
     }
@@ -267,7 +301,7 @@ function LetterEditor(props: {
       if (!res.ok) throw new Error();
       props.onDeleted(letter.id);
     } catch {
-      setError("The letter wasn't deleted. Try again.");
+      setError(t('deleteFailed'));
       setBusy(null);
     }
   }
@@ -275,95 +309,100 @@ function LetterEditor(props: {
   async function copy() {
     try {
       await navigator.clipboard.writeText(content);
-      setNotice('Copied');
+      setNotice(t('copied'));
     } catch {
-      setError("Couldn't copy. Select the text and copy it instead.");
+      setError(t('copyFailed'));
     }
   }
 
   return (
     <div className={styles.editor}>
       <div className={styles.editorBar}>
-        <button type="button" className="button buttonGhost" onClick={props.onClose}>
-          All letters
+        <button type="button" className={`button buttonGhost ${styles.back}`} onClick={props.onClose}>
+          <ChevronLeftIcon size={16} />
+          {t('allLetters')}
         </button>
         <div className={styles.editorActions}>
-          {notice ? (
-            <span className={styles.notice} role="status">
-              {notice}
-            </span>
-          ) : null}
-          <button type="button" className="button" onClick={copy}>
-            Copy
+          <span className={styles.notice} role="status">
+            {dirty ? t('unsaved') : notice}
+          </span>
+          <button type="button" className="button buttonGhost" onClick={copy}>
+            <CopyIcon size={16} />
+            {t('copy')}
           </button>
-          <a className="button" href={`/api/cover-letters/${letter.id}/export?format=txt`}>
-            Download
+          <a className="button buttonGhost" href={`/api/cover-letters/${letter.id}/export?format=txt`}>
+            <DownloadIcon size={16} />
+            {t('download')}
           </a>
           <button type="button" className="button buttonPrimary" onClick={save} disabled={!dirty || busy !== null}>
-            {busy === 'save' ? 'Saving…' : 'Save changes'}
+            {busy === 'save' ? t('saving') : t('save')}
           </button>
         </div>
       </div>
 
-      <section className={`card ${styles.paper}`} aria-label="Cover letter">
-        <div className="cardInner stack">
-          <div className={styles.paperHead}>
-            <h2 className="cardTitle">{letterTitle(letter)}</h2>
-            {typeof meta.alignmentScore === 'number' ? (
-              <span className="badge badgeIce" title="How well your résumé matches the job, as judged by the AI">
-                Fit {meta.alignmentScore}/100
-              </span>
-            ) : null}
-          </div>
-          {meta.matchedKeywords?.length ? (
-            <div className={styles.keywords} aria-label="Job keywords your résumé covers">
-              {meta.matchedKeywords.map((keyword) => (
-                <span key={keyword} className={styles.keyword}>
-                  {keyword}
+      <article className={styles.paper} aria-labelledby={headingId}>
+        <header className={styles.paperHead}>
+          <h2 className={styles.paperTitle} id={headingId}>
+            {letterTitle(t, letter)}
+          </h2>
+          {typeof meta.alignmentScore === 'number' || meta.matchedKeywords?.length ? (
+            <div className={styles.paperMeta}>
+              {typeof meta.alignmentScore === 'number' ? (
+                <span className={styles.fit} title={t('fitHelp')}>
+                  {t('fit', { score: meta.alignmentScore })}
                 </span>
-              ))}
+              ) : null}
+              {meta.matchedKeywords?.length ? (
+                <ul className={styles.keywords} aria-label={t('keywords')}>
+                  {meta.matchedKeywords.map((keyword) => (
+                    <li key={keyword} className={styles.keyword}>
+                      {keyword}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
             </div>
           ) : null}
-          <label className="srOnly" htmlFor={editorId}>
-            Letter text
-          </label>
-          <textarea
-            id={editorId}
-            className={`textarea ${styles.letter}`}
-            value={content}
-            onChange={(e) => {
-              setContent(e.target.value);
-              setNotice(null);
-            }}
-            rows={20}
-          />
-          <div className={styles.paperFoot}>
-            <span className={styles.listMeta}>
-              {words} {words === 1 ? 'word' : 'words'}
-            </span>
-            {confirmDelete ? (
-              <span className={styles.confirm}>
-                Delete this letter?
-                <button type="button" className="button buttonDanger" onClick={remove} disabled={busy !== null}>
-                  {busy === 'delete' ? 'Deleting…' : 'Delete'}
-                </button>
-                <button type="button" className="button buttonGhost" onClick={() => setConfirmDelete(false)}>
-                  Keep it
-                </button>
-              </span>
-            ) : (
-              <button type="button" className="button buttonGhost" onClick={() => setConfirmDelete(true)}>
-                Delete letter
+        </header>
+        <label className="srOnly" htmlFor={editorId}>
+          {t('letterText')}
+        </label>
+        <textarea
+          ref={textRef}
+          id={editorId}
+          className={styles.letter}
+          value={content}
+          onChange={(e) => {
+            setContent(e.target.value);
+            setNotice(null);
+          }}
+          rows={16}
+          spellCheck
+        />
+        <footer className={styles.paperFoot}>
+          <span className={styles.words}>{t('words', { count: words })}</span>
+          {confirmDelete ? (
+            <span className={styles.confirm}>
+              {t('confirmDelete')}
+              <button type="button" className="button buttonDanger buttonSmall" onClick={remove} disabled={busy !== null}>
+                {busy === 'delete' ? t('deleting') : t('delete')}
               </button>
-            )}
-          </div>
-          {error ? (
-            <p className={styles.error} role="alert">
-              {error}
-            </p>
-          ) : null}
-        </div>
-      </section>
+              <button type="button" className="button buttonGhost buttonSmall" onClick={() => setConfirmDelete(false)}>
+                {t('keep')}
+              </button>
+            </span>
+          ) : (
+            <button type="button" className="button buttonGhost buttonSmall" onClick={() => setConfirmDelete(true)}>
+              {t('deleteLetter')}
+            </button>
+          )}
+        </footer>
+        {error ? (
+          <p className={styles.error} role="alert">
+            {error}
+          </p>
+        ) : null}
+      </article>
     </div>
   );
 }

@@ -55,11 +55,13 @@ test.describe('live copilot loop', () => {
 
     // Sign in and land on the live page.
     await page.goto('/en/auth?next=/en/copilot/live');
-    const form = page.getByRole('form', { name: 'Auth form' });
+    const form = page.getByRole('form', { name: 'Sign in' });
     await form.getByLabel('Email').fill(login.email);
     await form.getByLabel('Password').fill(login.secret);
     await form.getByRole('button', { name: 'Sign in' }).click();
     await page.waitForURL('**/copilot/live');
+    // The latency drawer checked below is a support panel, shown only with ?debug=1.
+    await page.goto('/en/copilot/live?debug=1');
 
     // Setup step: company, role, résumé, job.
     const setup = page.getByRole('region', { name: 'Session setup' });

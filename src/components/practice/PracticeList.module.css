@@ -1,0 +1,495 @@
+/* Practice: the score trend, the list of interviews, and statuses shown as a dot and quiet text. */
+.page {
+  display: grid;
+  gap: 24px;
+}
+
+/* Score trend: the latest figure, then a neutral line with the latest point in the accent */
+.trend {
+  display: grid;
+  grid-template-columns: minmax(180px, 240px) minmax(0, 1fr);
+  align-items: stretch;
+  gap: 32px;
+  padding: 24px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+}
+
+.trendFigure {
+  display: grid;
+  align-content: start;
+  gap: 4px;
+}
+
+.trendTitle {
+  margin: 0;
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.trendValue {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 4px 0 0;
+}
+
+.trendNumber {
+  font-size: 48px;
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.trendOf {
+  color: var(--text-3);
+  font-size: 13px;
+}
+
+.trendChange {
+  margin: 4px 0 0;
+  color: var(--text-2);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.trendChange[data-direction='up'] {
+  color: var(--positive-text);
+}
+
+.trendChange[data-direction='down'] {
+  color: var(--negative-text);
+}
+
+.chart {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  grid-template-rows: 128px auto;
+  gap: 8px;
+  min-width: 0;
+}
+
+.axis {
+  position: relative;
+}
+
+.axis span,
+.dates span {
+  color: var(--text-3);
+  font-family: var(--font-code);
+  font-size: 12px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.axis span {
+  position: absolute;
+  right: 0;
+  transform: translateY(-50%);
+}
+
+.plot {
+  position: relative;
+}
+
+.plotSvg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.gridLine {
+  stroke: var(--hairline);
+  stroke-width: 1;
+}
+
+.line {
+  fill: none;
+  stroke: var(--text-3);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.point,
+.latestPoint {
+  position: absolute;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.point {
+  width: 6px;
+  height: 6px;
+  background: var(--text-3);
+}
+
+.latestPoint {
+  width: 10px;
+  height: 10px;
+  background: var(--accent);
+  box-shadow: 0 0 0 3px var(--surface);
+}
+
+.dates {
+  display: flex;
+  grid-column: 2;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+/* The list. No overflow clipping: a row's menu floats over the rows below. */
+.listPanel {
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+}
+
+.listTitle {
+  margin: 0;
+  padding: 20px 24px 12px;
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.listTitle:focus {
+  outline: none;
+}
+
+.listHead,
+.rowLink {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 152px 64px 128px;
+  align-items: center;
+  gap: 16px;
+}
+
+/* Lines up with the row's link: its 8px end padding, the 32px menu button and 16px after it. */
+.listHead {
+  height: 32px;
+  padding: 0 56px 0 24px;
+  border-bottom: 1px solid var(--hairline);
+  color: var(--text-3);
+  font-size: 12px;
+}
+
+.listHead span:nth-child(3),
+.listHead span:nth-child(4) {
+  text-align: right;
+}
+
+.list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.list li + li {
+  border-top: 1px solid var(--hairline);
+}
+
+/* A row: the link to the interview, then its menu */
+.row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  transition: background-color var(--dur-fast) var(--ease);
+}
+
+.row:last-child {
+  border-radius: 0 0 calc(var(--radius-card) - 1px) calc(var(--radius-card) - 1px);
+}
+
+.row[data-mode='view']:hover {
+  background: rgba(237, 237, 237, 0.03);
+}
+
+.rowLink {
+  min-width: 0;
+  min-height: 44px;
+  padding: 8px 8px 8px 24px;
+  color: var(--text-1);
+  text-decoration: none;
+}
+
+.rowMenu {
+  position: relative;
+  padding-right: 16px;
+}
+
+.menuButton {
+  color: var(--text-3);
+}
+
+/* 32px with a mouse; touch keeps the 44px target. */
+@media (pointer: fine) {
+  .menuButton {
+    width: 32px;
+    height: 32px;
+  }
+}
+
+.menuButton[aria-expanded='true'] {
+  background: var(--raised);
+  color: var(--text-1);
+}
+
+.menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 16px;
+  z-index: 30;
+  display: grid;
+  min-width: 168px;
+  padding: 4px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-row);
+  background: var(--raised);
+  box-shadow: var(--float);
+  animation: menuIn var(--dur-menu) var(--ease);
+}
+
+@keyframes menuIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+.menuItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--text-1);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease);
+}
+
+.menuItem svg {
+  flex-shrink: 0;
+  color: var(--text-3);
+}
+
+.menuItem:hover,
+.menuItem:focus-visible {
+  background: var(--raised-2);
+}
+
+.menuItemDanger,
+.menuItemDanger svg {
+  color: var(--negative-text);
+}
+
+.menuItem:active {
+  transform: scale(0.98);
+}
+
+/* Renaming, or confirming a delete, in place of the row */
+.rowForm {
+  display: flex;
+  flex-wrap: wrap;
+  grid-column: 1 / -1;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 8px 16px 8px 24px;
+}
+
+.rowInput {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+
+.confirmText {
+  flex: 1 1 240px;
+  margin: 0;
+  color: var(--text-1);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.rowError {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 0 24px 12px;
+  color: var(--negative-text);
+  font-size: 13px;
+}
+
+@media (pointer: coarse) {
+  /* The menu button is 44px here: 8 + 44 + 16. */
+  .listHead {
+    padding-right: 68px;
+  }
+
+  .menuItem {
+    min-height: 44px;
+  }
+}
+
+.rowTitle {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 14px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rowScore {
+  font-size: 15px;
+  font-weight: 500;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.rowDate {
+  color: var(--text-3);
+  font-size: 13px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Status: a dot and quiet text. Not started is a ring, in progress a light dot, completed green. */
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: var(--text-2);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.statusDot {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.status[data-status='draft'] .statusDot {
+  border: 1.5px solid var(--text-3);
+}
+
+.status[data-status='in_progress'] .statusDot {
+  background: var(--text-1);
+}
+
+.status[data-status='completed'] .statusDot {
+  background: var(--positive);
+}
+
+/* First run */
+.empty {
+  gap: 16px;
+  padding: 40px 32px;
+}
+
+.empty p {
+  max-width: 48ch;
+  margin: 0;
+  color: var(--text-2);
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+@media (max-width: 767px) {
+  .trend {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 20px;
+    padding: 16px;
+  }
+
+  .chart {
+    grid-template-rows: 112px auto;
+  }
+
+  .listTitle {
+    padding: 16px 16px 8px;
+  }
+
+  .listHead {
+    display: none;
+  }
+
+  .list {
+    border-top: 1px solid var(--hairline);
+  }
+
+  .rowLink {
+    grid-template-columns: auto auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      'title title title score'
+      'status date . score';
+    gap: 4px 8px;
+    min-height: 64px;
+    padding: 12px 4px 12px 16px;
+  }
+
+  .rowMenu {
+    padding-right: 8px;
+  }
+
+  .menu {
+    right: 8px;
+  }
+
+  /* The field or question on its own line, the two buttons together under it. */
+  .rowForm {
+    justify-content: flex-end;
+    padding: 12px 16px;
+  }
+
+  .rowInput,
+  .confirmText {
+    flex-basis: 100%;
+  }
+
+  .rowError {
+    padding: 0 16px 12px;
+  }
+
+  .rowTitle {
+    grid-area: title;
+  }
+
+  .status {
+    grid-area: status;
+  }
+
+  .rowDate {
+    grid-area: date;
+    text-align: left;
+  }
+
+  .rowDate::before {
+    content: '·';
+    margin-right: 8px;
+  }
+
+  .rowScore {
+    grid-area: score;
+    padding-left: 8px;
+    font-size: 17px;
+  }
+
+  .empty {
+    padding: 24px 20px;
+  }
+}

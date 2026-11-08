@@ -2,10 +2,14 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useTranslations } from 'next-intl';
+import { addRevision, type CodeArtifact } from '@/lib/copilot/codeArtifacts';
 import { AnswerView, MAX_FONT_PX, MIN_FONT_PX, type ConnectionState, type TailLine } from './AnswerView';
 import { useDocumentPip } from './useDocumentPip';
 import { onDesktopCommand } from '@/lib/desktop';
+import { ExternalIcon } from '@/components/icons';
 import type { CopilotAnswers } from './useCopilotAnswers';
+import styles from './AnswerPanel.module.css';
 
 const FONT_STORAGE_KEY = 'apex.answerFontPx';
 const DEFAULT_FONT_PX = 16;
@@ -25,6 +29,22 @@ function isInteractive(target: EventTarget | null): boolean {
   return typeof element?.closest === 'function' && element.closest('button, input, textarea, select, a') !== null;
 }
 
+/** Code from this session's answers, versioned per problem (the code panel). */
+function useCodeArtifacts(answers: CopilotAnswers): CodeArtifact[] {
+  const [artifacts, setArtifacts] = useState<CodeArtifact[]>([]);
+  useEffect(() => {
+    let lastSeen: unknown = null;
+    return answers.subscribe(() => {
+      const state = answers.getState();
+      if (state.status !== 'answered' || !state.question || state === lastSeen) return;
+      lastSeen = state;
+      const question = state.question;
+      setArtifacts((current) => addRevision(current, question, state.text, Date.now()));
+    });
+  }, [answers]);
+  return artifacts;
+}
+
 /**
  * Where answers show during a session: in the page, or popped out into an
  * always-on-top Picture-in-Picture window so the meeting tab can stay in front.
@@ -37,6 +57,8 @@ export function AnswerPanel({
   disabled,
   connection,
   tail,
+  autoScreen,
+  mobileBar = false,
 }: {
   answers: CopilotAnswers;
   onAnswerNow: () => void;
@@ -45,9 +67,15 @@ export function AnswerPanel({
   disabled: boolean;
   connection: ConnectionState;
   tail: TailLine[];
+  /** Automatic Solve screen switch. */
+  autoScreen?: { on: boolean; onToggle: (on: boolean) => void };
+  /** Phones: the page has a bottom bar with Answer now and Solve screen. */
+  mobileBar?: boolean;
 }) {
+  const t = useTranslations('AnswerPanel');
   const pip = useDocumentPip();
   const { pipWindow } = pip;
+  const codeArtifacts = useCodeArtifacts(answers);
   // Only mounted on the client during a session, so reading storage here can't break hydration.
   const [fontPx, setFontPx] = useState(storedFontPx);
   const [popOutError, setPopOutError] = useState<string | null>(null);
@@ -91,10 +119,10 @@ export function AnswerPanel({
 
   const popOut = useCallback(() => {
     setPopOutError(null);
-    pip.open({ ...WINDOW_SIZE, title: 'Apex Round · Answers' }).catch(() => {
-      setPopOutError('The floating window could not open. Click Pop out again.');
+    pip.open({ ...WINDOW_SIZE, title: t('windowTitle') }).catch(() => {
+      setPopOutError(t('popOutFailed'));
     });
-  }, [pip]);
+  }, [pip, t]);
 
   // Desktop app: Ctrl+Shift+H pops the answers out or brings them back. The
   // shortcut arrives with a user gesture, which opening the window needs.
@@ -121,10 +149,14 @@ export function AnswerPanel({
       tail={tail}
       fontPx={fontPx}
       onFontPx={changeFont}
+      codeArtifacts={codeArtifacts}
+      autoScreen={autoScreen}
+      mobileBar={variant === 'inline' && mobileBar}
       actions={
         variant === 'inline' && pip.supported ? (
-          <button className="button" type="button" onClick={popOut} title="Keep answers on top of your meeting">
-            Pop out
+          <button className="button buttonGhost" type="button" onClick={popOut} title={t('popOutTitle')}>
+            <ExternalIcon size={16} className={styles.icon} />
+            {t('popOut')}
           </button>
         ) : null
       }
@@ -134,15 +166,11 @@ export function AnswerPanel({
   if (pipWindow) {
     return (
       <>
-        <section className="card" aria-label="Answer window status">
-          <div className="cardInner row" style={{ justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-            <p className="small" style={{ margin: 0 }}>
-              Answers are showing in the floating window, on top of your meeting.
-            </p>
-            <button className="button" type="button" onClick={pip.close}>
-              Bring back here
-            </button>
-          </div>
+        <section className={styles.popped} aria-label={t('statusLabel')}>
+          <p className={styles.poppedText}>{t('inWindow')}</p>
+          <button className="button" type="button" onClick={pip.close}>
+            {t('bringBack')}
+          </button>
         </section>
         {createPortal(view('window'), pipWindow.document.body)}
       </>
@@ -152,11 +180,7 @@ export function AnswerPanel({
   return (
     <>
       {view('inline')}
-      {!pip.supported ? (
-        <p className="small" style={{ margin: 0 }}>
-          A floating answer window needs Chrome or Edge 116 or later. Answers show here instead.
-        </p>
-      ) : null}
+      {!pip.supported ? <p className={styles.note}>{t('noPip')}</p> : null}
       {popOutError ? (
         <div className="error" role="status">
           {popOutError}

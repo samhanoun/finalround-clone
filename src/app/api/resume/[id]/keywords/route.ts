@@ -51,20 +51,21 @@ export async function POST(
   const suggestions = suggestKeywords(doc.parsed_text, parse.data.jobDescription);
 
   // Get current keywords in the resume
-  const currentKeywords = doc.keywords || [];
+  const currentKeywords: string[] = doc.keywords || [];
 
-  // Categorize keywords
+  // The job's keywords the résumé already covers, and the ones it lacks (suggestions).
+  const covered = jobKeywords.filter((k) => !suggestions.includes(k));
   const categorized = {
-    found: jobKeywords.filter((k) => currentKeywords.includes(k.toLowerCase())),
+    found: covered,
     missing: suggestions,
     allFromJob: jobKeywords,
   };
 
-  // Update document with keywords
+  // The document's keywords are the ones it covers (as the ATS check saves them), never the missing ones.
   await supabase
     .from('resume_documents')
     .update({
-      keywords: [...new Set([...currentKeywords, ...jobKeywords])],
+      keywords: [...new Set([...currentKeywords.filter((k) => !suggestions.includes(k)), ...covered])],
     })
     .eq('id', id);
 

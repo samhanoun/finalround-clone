@@ -8,8 +8,8 @@ import { test, expect } from '@playwright/test';
 test.describe('Live copilot page, signed out', () => {
   test('asks the visitor to log in instead of showing the copilot', async ({ page }) => {
     await page.goto('/en/copilot/live');
-    await expect(page.getByRole('heading', { name: "You're not logged in" })).toBeVisible();
-    await expect(page.getByRole('link', { name: 'Go to login' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'You’re signed out' })).toBeVisible();
+    await expect(page.getByRole('main').getByRole('link', { name: 'Sign in' })).toBeVisible();
     await expect(page.getByRole('region', { name: 'Session setup' })).toHaveCount(0);
   });
 

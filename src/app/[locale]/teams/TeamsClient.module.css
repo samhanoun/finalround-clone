@@ -1,229 +1,462 @@
+/* Teams: one page of sections. Lists are rows in a group, separated by
+   hairlines; roles and statuses are quiet text. */
 .page {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
+  display: grid;
+  gap: 32px;
+  max-width: 960px;
 }
 
-.empty {
-  max-width: 640px;
-}
-
-.header {
+/* Overview */
+.overview {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-end;
   justify-content: space-between;
-  gap: 16px;
+  gap: 16px 32px;
+}
+
+.identity {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
 }
 
 .teamName {
-  margin: 0 0 8px;
-  font-size: 22px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
+  margin: 0;
+  font-size: 20px;
+  font-weight: 500;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
 }
 
-.badges {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+.teamMeta {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-2);
 }
 
 .stats {
+  display: flex;
   margin: 0;
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 16px;
 }
 
 .stat {
-  padding: 2px 0 2px 16px;
-  border-left: 2px solid var(--line-strong);
+  display: grid;
+  gap: 2px;
+  padding: 0 24px;
+}
+
+.stat + .stat {
+  border-left: 1px solid var(--hairline);
+}
+
+.stat:last-child {
+  padding-right: 0;
 }
 
 .stat dt {
-  color: var(--mist);
-  font-size: 13.5px;
+  font-size: 12px;
+  color: var(--text-3);
+  white-space: nowrap;
 }
 
 .stat dd {
-  margin: 2px 0 0;
-  font-size: 1.75rem;
-  font-weight: 600;
-  letter-spacing: -0.03em;
+  margin: 0;
+  font-size: 24px;
+  font-weight: 500;
+  line-height: 1.2;
   font-variant-numeric: tabular-nums;
 }
 
-.tabs {
-  display: inline-flex;
-  align-self: flex-start;
-  flex-wrap: wrap;
-  gap: 4px;
-  padding: 4px;
-  border-radius: 12px;
-  background: var(--well);
-  border: 1px solid var(--line);
-}
-
-.tab {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 38px;
-  padding: 0 16px;
-  border: 0;
-  border-radius: 9px;
-  background: transparent;
-  color: var(--mist);
-  font: inherit;
-  font-size: 14.5px;
-  font-weight: 500;
-  cursor: pointer;
-}
-
-.tab:hover {
-  color: var(--paper);
-}
-
-.tab[aria-current='page'] {
-  background: var(--deck-2);
-  color: var(--paper);
-}
-
-.count {
-  min-width: 20px;
-  height: 20px;
-  padding: 0 6px;
-  border-radius: 999px;
-  background: var(--ember);
-  color: var(--midnight);
+.stat .statNote {
   font-size: 12px;
-  font-weight: 700;
-  line-height: 20px;
-  text-align: center;
+  font-weight: 400;
+  line-height: 1.4;
+  color: var(--text-3);
+  white-space: nowrap;
 }
 
 .error {
   margin: 0;
-  padding: 12px 14px;
-  border-radius: 10px;
-  background: var(--alert-soft);
-  border: 1px solid rgba(255, 107, 107, 0.35);
-  color: var(--alert-text);
-  font-size: 14.5px;
+  padding: 10px 12px;
+  border-radius: var(--radius-row);
+  background: var(--negative-soft);
+  color: var(--negative-text);
+  font-size: 14px;
 }
 
-.note {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
+/* Sections */
+.section {
+  display: grid;
   gap: 12px;
+  min-width: 0;
+}
+
+.sectionHeadRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.sectionTitle {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
   margin: 0;
-  padding: 20px 24px;
-  color: var(--mist);
-}
-
-.note p {
-  margin: 0;
-}
-
-.tableCard {
-  overflow-x: auto;
-}
-
-.table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 14.5px;
-}
-
-.table th {
-  padding: 14px 20px;
-  border-bottom: 1px solid var(--line);
-  color: var(--mist);
-  font-size: 13px;
+  font-size: 16px;
   font-weight: 500;
-  text-align: left;
-  white-space: nowrap;
+  line-height: 1.4;
 }
 
-.table td {
-  padding: 12px 20px;
-  border-bottom: 1px solid #1b2742;
-  vertical-align: middle;
+.sectionDesc {
+  margin: -4px 0 0;
+  max-width: 68ch;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-2);
 }
 
-.table tbody tr:last-child td {
-  border-bottom: 0;
+.count {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.group {
+  min-width: 0;
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-card);
+}
+
+.group > * + * {
+  border-top: 1px solid var(--hairline);
+}
+
+.groupDanger {
+  border-color: rgba(229, 72, 77, 0.32);
+}
+
+.list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.list > li + li {
+  border-top: 1px solid var(--hairline);
+}
+
+.block {
+  margin: 0;
+  padding: 16px 20px;
+}
+
+.blockText {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+
+.blockTitle {
+  margin: 0 0 8px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-1);
+}
+
+.quiet {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-3);
+}
+
+.errorText {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--negative-text);
+}
+
+.strong {
+  font-weight: 500;
+  color: var(--text-1);
+}
+
+.skeletonRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 20px;
+}
+
+/* Members */
+.memberRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 152px 144px 88px;
+  align-items: center;
+  gap: 16px;
+  min-height: 60px;
+  padding: 10px 20px;
 }
 
 .person {
   display: flex;
   align-items: center;
   gap: 12px;
+  min-width: 0;
 }
 
 .avatar {
-  flex-shrink: 0;
-  width: 34px;
-  height: 34px;
+  flex: none;
+  width: 28px;
+  height: 28px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  overflow: hidden;
   border-radius: 50%;
-  background: var(--deck-2);
-  border: 1px solid var(--line-strong);
-  color: var(--ember-text);
-  font-weight: 600;
-  font-size: 13.5px;
-}
-
-.personName {
-  display: block;
+  background: var(--raised);
+  color: var(--text-2);
+  font-size: 12px;
   font-weight: 500;
 }
 
-.personEmail {
+.avatarImage {
   display: block;
-  color: var(--mist);
-  font-size: 13.5px;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.personText {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.personName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-1);
+}
+
+.personMeta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  color: var(--text-3);
+}
+
+.personMeta:empty {
+  display: none;
+}
+
+.memberRole {
+  min-width: 0;
 }
 
 .roleSelect {
-  min-height: 36px;
-  width: auto;
+  min-height: 32px;
+  padding-top: 4px;
+  padding-bottom: 4px;
+  font-size: 13px;
+}
+
+.roleText {
   font-size: 14px;
+  color: var(--text-2);
 }
 
-.muted {
-  color: var(--mist);
+.memberJoined {
+  font-size: 13px;
+  color: var(--text-3);
   white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
-.actionsCell {
-  text-align: right;
+.rowActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
 }
 
-.readOnly {
+/* Invitations */
+.inviteForm {
+  display: grid;
+  gap: 8px;
+  padding: 16px 20px;
+}
+
+.inviteTitle {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-2);
+}
+
+.inviteFields {
+  display: flex;
+  gap: 8px;
+}
+
+.inviteFields :global(.input) {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.inviteFields :global(.button),
+.inlineField :global(.button),
+.linkRow :global(.button) {
+  flex: none;
+}
+
+.inviteRole {
+  flex: 0 0 240px;
+  width: 240px;
+}
+
+.inviteRow,
+.simpleRow,
+.dangerRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 60px;
+  padding: 10px 20px;
+}
+
+.linkRow {
   display: flex;
   flex-wrap: wrap;
-  justify-content: space-between;
+  align-items: center;
   gap: 8px;
-  padding: 12px 14px;
-  border-radius: 10px;
-  background: var(--well);
-  font-size: 14.5px;
+  margin-top: 12px;
 }
 
-.readOnly > span:first-child {
-  color: var(--mist);
+/* Copyable values: links, identifiers, DNS records */
+.copyList {
+  display: grid;
+  gap: 8px;
 }
 
-.readOnly code {
+.copyRow {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+}
+
+.copyName {
+  font-size: 13px;
+  color: var(--text-3);
+}
+
+.copyValue {
+  display: block;
+  flex: 1 1 260px;
+  min-width: 0;
+  padding: 7px 10px;
+  border-radius: 6px;
+  background: var(--sunken);
+  border: 1px solid var(--hairline);
+  color: var(--text-1);
   font-family: var(--font-code);
   font-size: 13px;
-  overflow-wrap: anywhere;
+  line-height: 18px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  user-select: all;
+}
+
+.mono {
+  font-family: var(--font-code);
+}
+
+/* Single sign-on */
+.state {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-3);
+}
+
+.state[data-on='true'] {
+  color: var(--text-1);
+}
+
+.state[data-on='true'] .dot {
+  background: var(--positive);
+}
+
+.ssoForm {
+  display: grid;
+  gap: 16px;
+  max-width: 600px;
+}
+
+.field {
+  display: grid;
+  gap: 6px;
+}
+
+.sourceChoice {
+  max-width: 320px;
+}
+
+/* The DNS records (when a save asks for proof) and the note below them. */
+.liveBlock {
+  display: grid;
+  gap: 16px;
+}
+
+.records {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border-radius: var(--radius-row);
+  background: var(--raised);
+}
+
+.records .blockTitle {
+  margin: 0;
+}
+
+.record {
+  display: grid;
+  gap: 8px;
+}
+
+.record + .record {
+  padding-top: 12px;
+  border-top: 1px solid var(--hairline);
+}
+
+.recordDomain {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.records .copyValue {
+  background: var(--bg);
 }
 
 .formActions {
@@ -231,82 +464,163 @@
   flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
-  gap: 10px;
+  gap: 12px;
 }
 
-.saved {
-  color: var(--live-text);
-  font-size: 14px;
-}
-
-.ssoRow {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-.ssoRow .help {
-  margin-top: 4px;
-}
-
-.switch {
-  flex-shrink: 0;
-  position: relative;
-  width: 46px;
-  height: 26px;
-  padding: 0;
-  border: 1px solid var(--line-strong);
-  border-radius: 999px;
-  background: var(--deck-2);
-  cursor: pointer;
-}
-
-.switch span {
-  position: absolute;
-  top: 3px;
-  left: 3px;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: var(--mist);
-  transition: transform 140ms ease, background 140ms ease;
-}
-
-.switch[aria-checked='true'] {
-  background: var(--ember-soft);
-  border-color: var(--ember);
-}
-
-.switch[aria-checked='true'] span {
-  transform: translateX(20px);
-  background: var(--ember);
-}
-
-.backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 200;
+/* Team details */
+.fieldRow {
   display: grid;
-  place-items: center;
-  padding: 16px;
-  background: rgba(3, 7, 18, 0.7);
-}
-
-.modal {
-  width: min(460px, 100%);
-  display: flex;
-  flex-direction: column;
+  grid-template-columns: 160px minmax(0, 1fr);
+  align-items: center;
   gap: 16px;
-  padding: 24px;
-  border-radius: var(--radius);
-  background: var(--deck);
-  border: 1px solid var(--line-glow);
-  box-shadow: var(--float);
+  min-height: 56px;
+  padding: 8px 20px;
 }
 
-@media (max-width: 720px) {
+.fieldLabel {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-1);
+}
+
+.fieldValue {
+  font-size: 14px;
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+
+.fieldValueMono {
+  font-family: var(--font-code);
+  font-size: 13px;
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+
+.inlineField {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.inlineField :global(.input) {
+  flex: 1 1 240px;
+  max-width: 360px;
+}
+
+.savedNote {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-3);
+}
+
+/* Starting a team */
+.createForm {
+  display: grid;
+  gap: 16px;
+  max-width: 480px;
+  padding: 20px;
+}
+
+.createForm > * + * {
+  border-top: 0;
+}
+
+/* Phones: lists, stacked forms */
+@media (max-width: 767px) {
+  .page {
+    gap: 28px;
+  }
+
+  .overview {
+    display: grid;
+    align-items: start;
+  }
+
   .stats {
+    display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px 0;
+  }
+
+  .stat {
+    padding: 0 16px;
+  }
+
+  .stat:nth-child(odd) {
+    padding-left: 0;
+    border-left: 0;
+  }
+
+  .stat:last-child {
+    padding-right: 16px;
+  }
+
+  .memberRow {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      'person actions'
+      'role joined';
+    gap: 8px 12px;
+    padding: 12px 16px;
+  }
+
+  .person {
+    grid-area: person;
+  }
+
+  .memberRole {
+    grid-area: role;
+    padding-left: 40px;
+  }
+
+  .memberJoined {
+    grid-area: joined;
+    justify-self: end;
+  }
+
+  .rowActions {
+    grid-area: actions;
+  }
+
+  .inviteForm,
+  .block,
+  .skeletonRow {
+    padding: 16px;
+  }
+
+  .inviteFields {
+    display: grid;
+  }
+
+  .inviteRole {
+    width: 100%;
+  }
+
+  .inviteRow,
+  .simpleRow,
+  .dangerRow {
+    flex-wrap: wrap;
+    padding: 12px 16px;
+  }
+
+  .copyRow {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .copyName {
+    grid-column: 1 / -1;
+  }
+
+  .fieldRow {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+    padding: 12px 16px;
+  }
+
+  .createForm {
+    padding: 16px;
   }
 }

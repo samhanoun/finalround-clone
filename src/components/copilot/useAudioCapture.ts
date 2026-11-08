@@ -1,9 +1,12 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { DualAudioCapture, type CaptureFrame, type CaptureLevels, type CaptureSource } from '@/lib/audio/capture';
+import { CaptureError, DualAudioCapture, type CaptureErrorCode, type CaptureFrame, type CaptureLevels, type CaptureSource } from '@/lib/audio/capture';
 
 export type AudioCaptureStatus = 'idle' | 'starting' | 'live' | 'error';
+
+/** Why capture stopped or didn't start; AudioSourcesPanel words it (AudioSources.captureErrors). */
+export type AudioCaptureError = CaptureErrorCode | 'share-ended' | 'mic-ended' | 'unknown';
 
 export type AudioCapture = ReturnType<typeof useAudioCapture>;
 
@@ -24,7 +27,7 @@ export function useAudioCapture() {
   const frameListeners = useRef(new Set<(frame: CaptureFrame) => void>());
   const levelListeners = useRef(new Set<(levels: CaptureLevels) => void>());
   const [status, setStatus] = useState<AudioCaptureStatus>('idle');
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<AudioCaptureError | null>(null);
   /** Set when a source ended on its own (the user stopped sharing, the mic unplugged), not via stop(). */
   const [ended, setEnded] = useState<{ source: CaptureSource; at: number } | null>(null);
 
@@ -35,9 +38,13 @@ export function useAudioCapture() {
   }, []);
 
   // Call from a click/keydown handler: the screen-share prompt needs the user gesture.
-  const start = useCallback(async () => {
+  const start = useCallback(async (options: { useMicrophone?: boolean; singleMic?: boolean } = {}) => {
     if (captureRef.current) return;
-    const capture = new DualAudioCapture({ testMicAsInterviewer: TEST_MIC_AS_INTERVIEWER });
+    const capture = new DualAudioCapture({
+      testMicAsInterviewer: TEST_MIC_AS_INTERVIEWER,
+      useMicrophone: options.useMicrophone,
+      singleMic: options.singleMic,
+    });
     captureRef.current = capture;
     setError(null);
     setEnded(null);
@@ -51,11 +58,7 @@ export function useAudioCapture() {
       captureRef.current = null;
       setStatus('idle');
       setEnded({ source, at: Date.now() });
-      setError(
-        source === 'interviewer'
-          ? 'Meeting audio sharing stopped. Start listening again to keep transcribing.'
-          : 'Your microphone was disconnected. Start listening again.',
-      );
+      setError(source === 'interviewer' ? 'share-ended' : 'mic-ended');
     });
 
     try {
@@ -65,7 +68,8 @@ export function useAudioCapture() {
       capture.stop();
       if (captureRef.current === capture) captureRef.current = null;
       setStatus('error');
-      setError(e instanceof Error ? e.message : 'Could not start audio capture.');
+      if (!(e instanceof CaptureError)) console.error('[audio] capture failed', e);
+      setError(e instanceof CaptureError ? e.code : 'unknown');
     }
   }, []);
 

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { runCopilotRetentionSweep, buildCopilotRetentionCutoffs } from '@/lib/copilotRetention';
 import { requireEnv } from '@/lib/env';
+import { isCronAuthorized } from '@/lib/cronAuth';
 
 /**
  * Retention Sweep Scheduler API Route
@@ -9,27 +10,19 @@ import { requireEnv } from '@/lib/env';
  * This endpoint implements the PRD-aligned retention sweep scheduler.
  * It can be triggered via cron job or called directly.
  * 
- * GET /api/cron/retention?dryRun=true|false
- * 
+ * GET or POST /api/cron/retention?dryRun=true|false
+ * Authorization: Bearer <CRON_SECRET>
+ *
  * Query Parameters:
  * - dryRun: If "false", actually executes deletion. Defaults to true (safe dry-run mode).
- * - cronKey: Required - must match CRON_SECRET env var for authentication
- * 
- * CRON SETUP:
- * - Vercel: Add to vercel.json:
- *   {
- *     "crons": [
- *       {
- *         "path": "/api/cron/retention?cronKey=YOUR_SECRET_KEY",
- *         "schedule": "0 3 * * *"
- *       }
- *     ]
- *   }
- * - External: Configure your cron service to hit this endpoint with ?cronKey=YOUR_SECRET_KEY
- * 
+ *
+ * CRON SETUP: schedule it daily (for example 03:00 UTC) with the secret in the
+ * Authorization header, never in the URL (URLs end up in access logs):
+ *   curl -fsS -X POST -H "Authorization: Bearer $CRON_SECRET"  *     "https://<your-domain>/api/cron/retention?dryRun=false"
+ *
  * SECURITY:
  * - Requires CRON_SECRET env var to be set (minimum 32 characters)
- * - Requests without valid cronKey are rejected with 401
+ * - Requests without the right bearer token are rejected with 401 (constant-time comparison)
  * 
  * DRY-RUN EVIDENCE COLLECTION:
  * - Each execution logs the policy, cutoffs, and deletion counts
@@ -55,11 +48,10 @@ export async function GET(request: Request) {
   }
 
   const { searchParams } = new URL(request.url);
-  const providedKey = searchParams.get('cronKey');
-  
-  if (!providedKey || providedKey !== cronSecret) {
+
+  if (!isCronAuthorized(request, [cronSecret])) {
     return NextResponse.json(
-      { error: 'Unauthorized', message: 'Invalid or missing cronKey parameter' },
+      { error: 'Unauthorized', message: 'Send the cron secret as Authorization: Bearer <CRON_SECRET>' },
       { status: 401 }
     );
   }

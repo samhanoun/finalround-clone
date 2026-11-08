@@ -1,19 +1,23 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { createHash } from 'crypto';
-import { z } from 'zod';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 import { jsonError } from '@/lib/api';
 import { rateLimit } from '@/lib/rateLimit';
-import { parseResumeDocument, extractResumeData } from '@/lib/resumeParser';
+import { extractDocumentText, extractResumeData } from '@/lib/resumeParser';
+import { RESUME_BUCKET, resumeObjectPath } from '@/lib/resumeStorage';
 
 export const runtime = 'nodejs';
 
-const QuerySchema = z.object({
-  bucket: z.string().min(1).max(64).default('resumes'),
-  autoParse: z.coerce.boolean().default(true),
-});
+/** Résumés are PDF or Word files of up to 5 MB (Resume.errors.file_too_large says so). */
+const MAX_RESUME_BYTES = 5 * 1024 * 1024;
+const RESUME_FILE = /\.(pdf|docx|doc)$/i;
 
+/**
+ * POST /api/resume/upload (multipart: file; ?autoParse=false to skip reading
+ * it) - stores the file in the résumés bucket under the user's own folder
+ * (always: the bucket isn't the caller's choice) and saves its text.
+ */
 export async function POST(req: NextRequest) {
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
   const rl = await rateLimit({ key: `resume_upload:post:${ip}`, limit: 10, windowMs: 60_000 });
@@ -31,41 +35,39 @@ export async function POST(req: NextRequest) {
     return jsonError(500, 'SUPABASE_SERVICE_ROLE_KEY_missing');
   }
 
-  const { searchParams } = new URL(req.url);
-  const parseQ = QuerySchema.safeParse({
-    bucket: searchParams.get('bucket') ?? undefined,
-    autoParse: searchParams.get('autoParse') ?? undefined,
-  });
-  if (!parseQ.success) return jsonError(400, 'invalid_query', parseQ.error.flatten());
+  const autoParse = new URL(req.url).searchParams.get('autoParse') !== 'false';
 
   const form = await req.formData().catch(() => null);
   if (!form) return jsonError(400, 'invalid_form');
 
   const file = form.get('file');
-  if (!(file instanceof File)) return jsonError(400, 'file_required');
+  if (!(file instanceof File) || file.size === 0) return jsonError(400, 'file_required');
+  // Checked before anything is stored: the file picker's filter is only a hint.
+  if (!RESUME_FILE.test(file.name)) return jsonError(415, 'unsupported_type');
+  if (file.size > MAX_RESUME_BYTES) return jsonError(413, 'file_too_large');
 
   const arrayBuffer = await file.arrayBuffer();
   const buf = Buffer.from(arrayBuffer);
 
   const sha256 = createHash('sha256').update(buf).digest('hex');
-  const bucket = parseQ.data.bucket;
-  const path = `${userData.user.id}/${Date.now()}-${file.name}`;
+  // The user's own folder, with a safe file name; the original name is kept in the row for display.
+  const path = resumeObjectPath(userData.user.id, file.name);
 
-  const { error: upErr } = await admin.storage.from(bucket).upload(path, buf, {
+  const { error: upErr } = await admin.storage.from(RESUME_BUCKET).upload(path, buf, {
     contentType: file.type || 'application/octet-stream',
     upsert: false,
   });
   if (upErr) return jsonError(500, 'storage_upload_failed', upErr);
 
-  // Parse document if autoParse is enabled
+  // Read the text from the bytes we already have, rather than downloading the file again.
   let parsedText = null;
   let parsedData = {};
   let parseStatus = 'pending';
   let parseError = null;
 
-  if (parseQ.data.autoParse) {
+  if (autoParse) {
     try {
-      const parseResult = await parseResumeDocument(bucket, path);
+      const parseResult = await extractDocumentText(arrayBuffer, file.name, file.type || 'application/octet-stream');
       parsedText = parseResult.text;
       parsedData = extractResumeData(parseResult.text);
       parseStatus = 'completed';
@@ -82,7 +84,7 @@ export async function POST(req: NextRequest) {
       filename: file.name,
       content_type: file.type,
       size_bytes: buf.length,
-      storage_bucket: bucket,
+      storage_bucket: RESUME_BUCKET,
       storage_path: path,
       parsed_text: parsedText,
       parsed_data: parsedData,
@@ -97,7 +99,7 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({
     document: doc,
     sha256,
-    parsed: parseQ.data.autoParse ? {
+    parsed: autoParse ? {
       status: parseStatus,
       error: parseError,
       wordCount: parsedText ? parsedText.split(/\s+/).length : 0,

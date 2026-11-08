@@ -20,18 +20,16 @@ test.describe('Signup → Onboarding Flow', () => {
     await expect(page.locator('main form, main h1, main h2').first()).toBeVisible();
   });
 
-  test('should switch between login and signup tabs', async ({ page }) => {
-    // Navigate to auth page
-    await page.goto('/auth');
+  test('should switch between login and signup', async ({ page }) => {
+    await page.goto('/en/auth');
+    await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible();
 
-    // Find and click the Sign up tab (not the submit button)
-    const signupTab = page.locator('[role="tab"], button:has-text("Sign up")').filter({ has: page.locator('..') }).first();
-    await signupTab.click({ force: true }).catch(async () => {
-      // If that doesn't work, try the tablist approach
-      await page.locator('button:has-text("Sign up")').nth(0).click();
-    });
-    
-    // The page should still be functional
-    await expect(page.locator('main').first()).toBeVisible();
+    // "I’m new here" turns the form into sign-up, "I have an account" back into sign-in.
+    await page.getByRole('button', { name: 'I’m new here' }).click();
+    await expect(page.getByRole('heading', { name: 'Create your account' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Create account' })).toBeVisible();
+
+    await page.getByRole('button', { name: 'I have an account' }).click();
+    await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible();
   });
 });

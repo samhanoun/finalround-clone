@@ -1,21 +1,25 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useId, useState } from 'react';
+import { useRouter } from '@/i18n/routing';
+import { useLocale, useTranslations } from 'next-intl';
 import { createClient } from '@/lib/supabase/browser';
 import { ApexMark } from './ApexMark';
-import { ChartIcon, JobsIcon, LiveIcon, PracticeIcon, ResumeIcon } from './icons';
+import { ChartIcon, ChevronLeftIcon, JobsIcon, LiveIcon, PracticeIcon, ResumeIcon } from './icons';
+import styles from './OnboardingFlow.module.css';
 
-// Step types
 type OnboardingStep = 'welcome' | 'plan' | 'profile' | 'tutorial';
 
+const STEPS: OnboardingStep[] = ['welcome', 'plan', 'profile', 'tutorial'];
+
 interface Plan {
-  id: string;
-  name: string;
-  price: string;
-  features: string[];
-  popular?: boolean;
+  id: 'free' | 'pro';
+  features: number;
 }
+
+/** Pro is billed in either; checkout uses the one picked on the plan step. */
+type Currency = 'usd' | 'eur';
+const CURRENCIES: Currency[] = ['usd', 'eur'];
 
 interface ProfileData {
   fullName: string;
@@ -24,62 +28,85 @@ interface ProfileData {
   industry: string;
 }
 
+/** What onboarding_state.profile_data holds: the answers so far, and the currency picked for Pro. */
+type SavedAnswers = Partial<ProfileData> & { currency?: string };
+
 // The plans as billed (see the plans table and /api/billing/checkout).
 const PLANS: Plan[] = [
-  {
-    id: 'free',
-    name: 'Free',
-    price: '$0',
-    features: [
-      '10 minutes of live copilot a month',
-      'Sessions up to 10 minutes',
-      'Practice interviews with AI feedback',
-      'Résumé check against a job',
-      'Job tracking',
-    ],
-  },
-  {
-    id: 'pro',
-    name: 'Pro',
-    price: '$29 or €29 a month',
-    popular: true,
-    features: [
-      '400 minutes of live copilot a month',
-      'Sessions up to 30 minutes, 45 minutes a day',
-      '80 minutes of Smart mode a month',
-      '10 in-depth résumé reviews a month',
-      'Everything in Free',
-    ],
-  },
+  { id: 'free', features: 5 },
+  { id: 'pro', features: 4 },
 ];
 
+/** Suggested roles; the chosen names are saved as shown, in the app's language. */
 const ROLE_OPTIONS = [
-  'Software Engineer',
-  'Frontend Developer',
-  'Backend Developer',
-  'Full Stack Developer',
-  'DevOps Engineer',
-  'Data Scientist',
-  'Machine Learning Engineer',
-  'Product Manager',
-  'Technical Lead',
-  'Engineering Manager',
-];
+  'softwareEngineer',
+  'frontend',
+  'backend',
+  'fullStack',
+  'devops',
+  'dataScientist',
+  'mlEngineer',
+  'productManager',
+  'techLead',
+  'engManager',
+] as const;
 
-const EXPERIENCE_LEVELS = [
-  { value: '0-1', label: 'Entry Level (0-1 years)' },
-  { value: '1-3', label: 'Junior (1-3 years)' },
-  { value: '3-5', label: 'Mid-Level (3-5 years)' },
-  { value: '5-10', label: 'Senior (5-10 years)' },
-  { value: '10+', label: 'Staff/Principal (10+ years)' },
-];
+const EXPERIENCE_LEVELS = ['0-1', '1-3', '3-5', '5-10', '10+'] as const;
+type ExperienceLevel = (typeof EXPERIENCE_LEVELS)[number];
+
+/** profiles.years_experience is a whole number: each level is saved as its first year, so entry level is 0. */
+const EXPERIENCE_YEARS: Record<ExperienceLevel, number> = { '0-1': 0, '1-3': 1, '3-5': 3, '5-10': 5, '10+': 10 };
+
+function yearsFor(level: string): number | null {
+  return (EXPERIENCE_LEVELS as readonly string[]).includes(level) ? EXPERIENCE_YEARS[level as ExperienceLevel] : null;
+}
+
+/** The profile columns the answers fill in; none until there's a name (the profile step requires one). */
+function profileFields(profile: ProfileData) {
+  if (!profile.fullName.trim()) return {};
+  return {
+    full_name: profile.fullName.trim(),
+    target_roles: profile.targetRoles,
+    years_experience: yearsFor(profile.yearsExperience),
+    industry: profile.industry.trim() || null,
+  };
+}
+
+/** The saved answers that still fit the form; anything else keeps its default. */
+function savedAnswers(saved: SavedAnswers): Partial<ProfileData> {
+  const answers: Partial<ProfileData> = {};
+  if (typeof saved.fullName === 'string') answers.fullName = saved.fullName;
+  if (Array.isArray(saved.targetRoles)) answers.targetRoles = saved.targetRoles.filter((role) => typeof role === 'string');
+  if (typeof saved.yearsExperience === 'string') answers.yearsExperience = saved.yearsExperience;
+  if (typeof saved.industry === 'string') answers.industry = saved.industry;
+  return answers;
+}
+
+/** What Apex Round does, in the order the welcome text gives it: in the interview, then before it. */
+const FEATURES = [
+  { key: 'live', Icon: LiveIcon },
+  { key: 'practice', Icon: PracticeIcon },
+  { key: 'resume', Icon: ResumeIcon },
+  { key: 'jobs', Icon: JobsIcon },
+] as const;
+
+const TIPS = [
+  { key: 'practice', Icon: PracticeIcon },
+  { key: 'progress', Icon: ChartIcon },
+  { key: 'live', Icon: LiveIcon },
+  { key: 'resume', Icon: ResumeIcon },
+] as const;
 
 export default function OnboardingFlow() {
   const router = useRouter();
-  const supabase = createClient();
+  const locale = useLocale();
+  const t = useTranslations('Onboarding');
+  const [supabase] = useState(() => createClient());
   const [currentStep, setCurrentStep] = useState<OnboardingStep>('welcome');
   const [loading, setLoading] = useState(false);
+  const [saveFailed, setSaveFailed] = useState(false);
   const [plan, setPlan] = useState<string>('');
+  const [currency, setCurrency] = useState<Currency>('usd');
   const [profileData, setProfileData] = useState<ProfileData>({
     fullName: '',
     targetRoles: [],
@@ -96,49 +123,51 @@ export default function OnboardingFlow() {
         return;
       }
 
-      // Check existing onboarding state
+      // Where the user left off, if they started before (a new account has no row yet).
       const { data: onboardingState } = await supabase
         .from('onboarding_state')
         .select('*')
         .eq('user_id', user.id)
-        .single();
+        .maybeSingle();
 
       if (onboardingState?.current_step) {
         setCurrentStep(onboardingState.current_step as OnboardingStep);
         if (onboardingState.plan) setPlan(onboardingState.plan);
-        if (onboardingState.profile_data) {
-          setProfileData(onboardingState.profile_data as ProfileData);
+        const saved = onboardingState.profile_data as SavedAnswers | null;
+        if (saved) {
+          setProfileData((current) => ({ ...current, ...savedAnswers(saved) }));
+          if (CURRENCIES.includes(saved.currency as Currency)) setCurrency(saved.currency as Currency);
         }
       }
     }
     loadState();
   }, [supabase, router]);
 
+  /** Saves the step and the answers so far. A failed save is shown, and the next step's save tries again. */
   async function saveState(step: OnboardingStep) {
     setLoading(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // Update onboarding state
-      await supabase.from('onboarding_state').upsert({
-        user_id: user.id,
-        current_step: step,
-        plan: plan || null,
-        profile_data: profileData,
-      });
+      // One row per user (user_id is unique), so each later save updates it.
+      const { error } = await supabase
+        .from('onboarding_state')
+        .upsert(
+          { user_id: user.id, current_step: step, plan: plan || null, profile_data: { ...profileData, currency } },
+          { onConflict: 'user_id' },
+        );
+      if (error) throw error;
 
-      // Also update profile if we have data
-      if (profileData.fullName) {
-        await supabase.from('profiles').update({
-          full_name: profileData.fullName,
-          target_roles: profileData.targetRoles,
-          years_experience: parseInt(profileData.yearsExperience) || null,
-          industry: profileData.industry || null,
-        }).eq('id', user.id);
+      const fields = profileFields(profileData);
+      if (Object.keys(fields).length > 0) {
+        const { error: profileError } = await supabase.from('profiles').update(fields).eq('id', user.id);
+        if (profileError) throw profileError;
       }
+      setSaveFailed(false);
     } catch (error) {
       console.error('Error saving onboarding state:', error);
+      setSaveFailed(true);
     } finally {
       setLoading(false);
     }
@@ -146,21 +175,25 @@ export default function OnboardingFlow() {
 
   async function completeOnboarding() {
     setLoading(true);
+    setSaveFailed(false);
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // Mark onboarding as complete
-      await supabase.from('profiles').update({
-        onboarding_completed: true,
-      }).eq('id', user.id);
+      // Finished. The answers go in again with the flag, in case an earlier save didn't get through.
+      const { error } = await supabase
+        .from('profiles')
+        .update({ ...profileFields(profileData), onboarding_completed: true })
+        .eq('id', user.id);
+      if (error) throw error;
 
-      // Pro was chosen: go straight to checkout. If billing isn't available, Settings has the upgrade button.
+      // Pro was chosen: straight to checkout, in this language and the currency picked with the plan.
+      // If billing isn't available, Settings has the upgrade button.
       if (plan === 'pro') {
         const res = await fetch('/api/billing/checkout', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ currency: 'usd' }),
+          body: JSON.stringify({ currency, locale }),
         }).catch(() => null);
         const json = res?.ok ? await res.json().catch(() => null) : null;
         if (json?.url) {
@@ -174,33 +207,28 @@ export default function OnboardingFlow() {
       router.push('/dashboard');
     } catch (error) {
       console.error('Error completing onboarding:', error);
+      setSaveFailed(true);
     } finally {
       setLoading(false);
     }
   }
 
+  const error = saveFailed ? t('saveFailed') : null;
+
   function nextStep() {
-    const steps: OnboardingStep[] = ['welcome', 'plan', 'profile', 'tutorial'];
-    const currentIndex = steps.indexOf(currentStep);
-    const nextStep = steps[currentIndex + 1];
-    if (nextStep) {
-      setCurrentStep(nextStep);
-      saveState(nextStep);
+    const next = STEPS[STEPS.indexOf(currentStep) + 1];
+    if (next) {
+      setCurrentStep(next);
+      saveState(next);
     }
   }
 
   function prevStep() {
-    const steps: OnboardingStep[] = ['welcome', 'plan', 'profile', 'tutorial'];
-    const currentIndex = steps.indexOf(currentStep);
-    const prevStep = steps[currentIndex - 1];
-    if (prevStep) {
-      setCurrentStep(prevStep);
-      saveState(prevStep);
+    const previous = STEPS[STEPS.indexOf(currentStep) - 1];
+    if (previous) {
+      setCurrentStep(previous);
+      saveState(previous);
     }
-  }
-
-  function handlePlanSelect(planId: string) {
-    setPlan(planId);
   }
 
   function handleRoleToggle(role: string) {
@@ -212,14 +240,8 @@ export default function OnboardingFlow() {
     });
   }
 
-  // Render steps
   if (currentStep === 'welcome') {
-    return (
-      <WelcomeStep
-        onNext={nextStep}
-        loading={loading}
-      />
-    );
+    return <WelcomeStep onNext={nextStep} loading={loading} error={error} />;
   }
 
   if (currentStep === 'plan') {
@@ -227,10 +249,13 @@ export default function OnboardingFlow() {
       <PlanStep
         plans={PLANS}
         selectedPlan={plan}
-        onSelect={handlePlanSelect}
+        onSelect={setPlan}
+        currency={currency}
+        onCurrency={setCurrency}
         onNext={nextStep}
         onBack={prevStep}
         loading={loading}
+        error={error}
       />
     );
   }
@@ -244,134 +269,208 @@ export default function OnboardingFlow() {
         onNext={nextStep}
         onBack={prevStep}
         loading={loading}
+        error={error}
       />
     );
   }
 
   if (currentStep === 'tutorial') {
-    return (
-      <TutorialStep
-        onComplete={completeOnboarding}
-        onBack={prevStep}
-        loading={loading}
-      />
-    );
+    return <TutorialStep onComplete={completeOnboarding} onBack={prevStep} loading={loading} error={error} />;
   }
 
   return null;
 }
 
-// Welcome Step Component
-function WelcomeStep({ onNext, loading }: { onNext: () => void; loading: boolean }) {
+/** One step: where you are, the title, the content, and Back beside the one primary action. */
+function StepFrame({
+  step,
+  title,
+  description,
+  onBack,
+  primary,
+  error,
+  children,
+}: {
+  step: OnboardingStep;
+  title: string;
+  description: string;
+  onBack?: () => void;
+  primary: React.ReactNode;
+  /** A save that didn't get through, shown above the actions. */
+  error?: string | null;
+  children: React.ReactNode;
+}) {
+  const t = useTranslations('Onboarding');
+  const titleId = useId();
+  const index = STEPS.indexOf(step);
   return (
-    <div className="onboarding-container">
-      <div className="onboarding-card">
-        <div className="onboarding-icon">
-          <ApexMark size={52} />
+    <div className={styles.page}>
+      <main id="main-content" className={styles.panel} tabIndex={-1} aria-labelledby={titleId}>
+        <div className={styles.top}>
+          <ApexMark size={28} />
+          <span className={styles.stepCount}>{t('stepOf', { current: index + 1, total: STEPS.length })}</span>
         </div>
-        <h1>Welcome to Apex Round</h1>
-        <p className="onboarding-description">
-          Help in the interview, and practice before it. Setup takes about two minutes.
-        </p>
-
-        <div className="onboarding-features">
-          <div className="feature-item">
-            <span className="feature-icon"><PracticeIcon size={20} /></span>
-            <span>Practice interviews with a score and feedback</span>
-          </div>
-          <div className="feature-item">
-            <span className="feature-icon"><ResumeIcon size={20} /></span>
-            <span>Your résumé, checked against each job</span>
-          </div>
-          <div className="feature-item">
-            <span className="feature-icon"><JobsIcon size={20} /></span>
-            <span>Every application, tracked by stage</span>
-          </div>
-          <div className="feature-item">
-            <span className="feature-icon"><LiveIcon size={20} /></span>
-            <span>A live copilot during real interviews</span>
-          </div>
+        <div className={styles.progress} aria-hidden="true">
+          {STEPS.map((name, i) => (
+            <span key={name} className={styles.segment} data-done={i <= index ? '' : undefined} />
+          ))}
         </div>
-
-        <button
-          className="button buttonPrimary onboarding-button"
-          onClick={onNext}
-          disabled={loading}
-        >
-          Get started
-        </button>
-      </div>
+        <div className={styles.heading}>
+          <h1 id={titleId} className={styles.title}>
+            {title}
+          </h1>
+          <p className={styles.description}>{description}</p>
+        </div>
+        <div className={styles.body}>{children}</div>
+        {error ? (
+          <p className={styles.error} role="alert">
+            {error}
+          </p>
+        ) : null}
+        <div className={styles.actions}>
+          {onBack ? (
+            <button type="button" className={`button buttonGhost ${styles.back}`} onClick={onBack}>
+              <ChevronLeftIcon size={16} />
+              {t('back')}
+            </button>
+          ) : null}
+          {primary}
+        </div>
+      </main>
     </div>
   );
 }
 
-// Plan Step Component
+function WelcomeStep({ onNext, loading, error }: { onNext: () => void; loading: boolean; error: string | null }) {
+  const t = useTranslations('Onboarding.welcome');
+  return (
+    <StepFrame
+      step="welcome"
+      title={t('title')}
+      description={t('desc')}
+      error={error}
+      primary={
+        <button type="button" className="button buttonPrimary buttonLarge" onClick={onNext} disabled={loading}>
+          {t('start')}
+        </button>
+      }
+    >
+      <ul className={styles.features}>
+        {FEATURES.map(({ key, Icon }) => (
+          <li key={key} className={styles.feature}>
+            <span className={styles.featureIcon}>
+              <Icon size={18} />
+            </span>
+            {t(key)}
+          </li>
+        ))}
+      </ul>
+    </StepFrame>
+  );
+}
+
 function PlanStep({
   plans,
   selectedPlan,
   onSelect,
+  currency,
+  onCurrency,
   onNext,
   onBack,
-  loading
+  loading,
+  error,
 }: {
   plans: Plan[];
   selectedPlan: string;
   onSelect: (planId: string) => void;
+  currency: Currency;
+  onCurrency: (currency: Currency) => void;
   onNext: () => void;
   onBack: () => void;
   loading: boolean;
+  error: string | null;
 }) {
+  const t = useTranslations('Onboarding');
+  const tBilling = useTranslations('Billing');
+  const baseId = useId();
   return (
-    <div className="onboarding-container">
-      <div className="onboarding-card">
-        <button className="back-button" onClick={onBack}>Back</button>
-        <h1>Choose a plan</h1>
-        <p className="onboarding-description">
-          Start free and upgrade whenever you need more minutes. Pro opens checkout when you finish.
-        </p>
-
-        <div className="plans-grid">
-          {plans.map((plan) => (
-            <div
-              key={plan.id}
-              className={`plan-card ${selectedPlan === plan.id ? 'selected' : ''} ${plan.popular ? 'popular' : ''}`}
-              onClick={() => onSelect(plan.id)}
-            >
-              {plan.popular && <span className="popular-badge">Most popular</span>}
-              <h3>{plan.name}</h3>
-              <div className="plan-price">{plan.price}</div>
-              <ul className="plan-features">
-                {plan.features.map((feature, idx) => (
-                  <li key={idx}>✓ {feature}</li>
-                ))}
-              </ul>
-              <div className={`plan-select ${selectedPlan === plan.id ? 'selected' : ''}`}>
-                {selectedPlan === plan.id ? '✓ Selected' : 'Select'}
-              </div>
-            </div>
-          ))}
-        </div>
-
+    <StepFrame
+      step="plan"
+      title={t('plan.title')}
+      description={t('plan.desc')}
+      onBack={onBack}
+      error={error}
+      primary={
         <button
-          className="button buttonPrimary onboarding-button"
+          type="button"
+          className="button buttonPrimary buttonLarge"
           onClick={onNext}
           disabled={loading || !selectedPlan}
         >
-          Continue
+          {t('continue')}
         </button>
-      </div>
-    </div>
+      }
+    >
+      <fieldset className={styles.plans}>
+        <legend className="srOnly">{t('plan.title')}</legend>
+        {plans.map((plan) => {
+          const selected = selectedPlan === plan.id;
+          const id = `${baseId}-${plan.id}`;
+          return (
+            <div key={plan.id} className={styles.plan} data-selected={selected ? '' : undefined}>
+              <input
+                id={id}
+                className={styles.radio}
+                type="radio"
+                name={`${baseId}-plan`}
+                value={plan.id}
+                checked={selected}
+                onChange={() => onSelect(plan.id)}
+                aria-describedby={`${id}-price ${id}-features`}
+              />
+              <label htmlFor={id} className={styles.planLabel}>
+                <span className={styles.planName}>{t(`plan.${plan.id}.name`)}</span>
+                <span className={styles.radioMark} aria-hidden="true" />
+              </label>
+              <p id={`${id}-price`} className={styles.planPrice}>
+                {t(`plan.${plan.id}.price`)}
+              </p>
+              <ul id={`${id}-features`} className={styles.planFeatures}>
+                {Array.from({ length: plan.features }, (_, idx) => (
+                  <li key={idx}>{t(`plan.${plan.id}.feature${idx + 1}`)}</li>
+                ))}
+              </ul>
+            </div>
+          );
+        })}
+      </fieldset>
+      {/* Under the Pro option: what checkout will charge in. */}
+      {selectedPlan === 'pro' ? (
+        <div className={styles.currency}>
+          <label className="label">
+            {tBilling('payIn')}
+            <select className="select" value={currency} onChange={(e) => onCurrency(e.target.value as Currency)}>
+              {CURRENCIES.map((code) => (
+                <option key={code} value={code}>
+                  {tBilling(`currencies.${code}`)}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      ) : null}
+    </StepFrame>
   );
 }
 
-// Profile Step Component
 function ProfileStep({
   profileData,
   onUpdate,
   onRoleToggle,
   onNext,
   onBack,
-  loading
+  loading,
+  error,
 }: {
   profileData: ProfileData;
   onUpdate: (data: ProfileData) => void;
@@ -379,181 +478,133 @@ function ProfileStep({
   onNext: () => void;
   onBack: () => void;
   loading: boolean;
+  error: string | null;
 }) {
-  const isValid = profileData.fullName.trim() !== '' &&
-                   profileData.targetRoles.length > 0 &&
-                   profileData.yearsExperience !== '';
+  const t = useTranslations('Onboarding');
+  const isValid =
+    profileData.fullName.trim() !== '' && profileData.targetRoles.length > 0 && profileData.yearsExperience !== '';
 
   return (
-    <div className="onboarding-container">
-      <div className="onboarding-card">
-        <button className="back-button" onClick={onBack}>Back</button>
-        <h1>About you</h1>
-        <p className="onboarding-description">
-          Answers and practice questions are tuned to the roles you pick here.
-        </p>
+    <StepFrame
+      step="profile"
+      title={t('profile.title')}
+      description={t('profile.desc')}
+      onBack={onBack}
+      error={error}
+      primary={
+        <button
+          type="button"
+          className="button buttonPrimary buttonLarge"
+          onClick={onNext}
+          disabled={loading || !isValid}
+        >
+          {t('continue')}
+        </button>
+      }
+    >
+      <div className={styles.form}>
+        <label className="label">
+          {t('profile.name')}
+          <input
+            className="input"
+            type="text"
+            autoComplete="name"
+            value={profileData.fullName}
+            onChange={(e) => onUpdate({ ...profileData, fullName: e.target.value })}
+            placeholder={t('profile.namePlaceholder')}
+          />
+        </label>
 
-        <div className="profile-form">
-          <div className="form-group">
-            <label className="label">Full name</label>
-            <input
-              className="input"
-              type="text"
-              value={profileData.fullName}
-              onChange={(e) => onUpdate({ ...profileData, fullName: e.target.value })}
-              placeholder="Your name"
-            />
-          </div>
-
-          <div className="form-group">
-            <label className="label">Roles you are aiming for (pick at least one)</label>
-            <div className="role-tags">
-              {ROLE_OPTIONS.map((role) => (
+        <fieldset className={styles.group}>
+          <legend className={styles.groupLabel}>{t('profile.roles')}</legend>
+          <div className={styles.roles}>
+            {ROLE_OPTIONS.map((key) => {
+              const role = t(`roles.${key}`);
+              const selected = profileData.targetRoles.includes(role);
+              return (
                 <button
-                  key={role}
-                  className={`role-tag ${profileData.targetRoles.includes(role) ? 'selected' : ''}`}
+                  key={key}
+                  className={styles.role}
                   onClick={() => onRoleToggle(role)}
+                  aria-pressed={selected}
                   type="button"
                 >
                   {role}
                 </button>
-              ))}
-            </div>
+              );
+            })}
           </div>
+        </fieldset>
 
-          <div className="form-group">
-            <label className="label">Years of experience</label>
+        <div className={styles.twoUp}>
+          <label className="label">
+            {t('profile.experience')}
             <select
-              className="input"
+              className="select"
               value={profileData.yearsExperience}
               onChange={(e) => onUpdate({ ...profileData, yearsExperience: e.target.value })}
             >
-              <option value="">Select experience level</option>
+              <option value="">{t('profile.experiencePick')}</option>
               {EXPERIENCE_LEVELS.map((level) => (
-                <option key={level.value} value={level.value}>
-                  {level.label}
+                <option key={level} value={level}>
+                  {t(`levels.${level}`)}
                 </option>
               ))}
             </select>
-          </div>
+          </label>
 
-          <div className="form-group">
-            <label className="label">Industry (optional)</label>
+          <label className="label">
+            {t('profile.industry')}
             <input
               className="input"
               type="text"
               value={profileData.industry}
               onChange={(e) => onUpdate({ ...profileData, industry: e.target.value })}
-              placeholder="e.g. Tech, finance, healthcare"
+              placeholder={t('profile.industryPlaceholder')}
             />
-          </div>
+          </label>
         </div>
-
-        <button
-          className="button buttonPrimary onboarding-button"
-          onClick={onNext}
-          disabled={loading || !isValid}
-        >
-          Continue
-        </button>
       </div>
-    </div>
+    </StepFrame>
   );
 }
 
-// Tutorial Step Component
 function TutorialStep({
   onComplete,
   onBack,
-  loading
+  loading,
+  error,
 }: {
   onComplete: () => void;
   onBack: () => void;
   loading: boolean;
+  error: string | null;
 }) {
-  const [tutorialStep, setTutorialStep] = useState(0);
-
-  const tutorialSteps = [
-    {
-      title: 'Practice an interview',
-      description: 'Answer behavioral or technical questions out loud, then read a score and notes on each answer.',
-      Icon: PracticeIcon,
-    },
-    {
-      title: 'See where you improve',
-      description: 'Scores and session history build up on Home and in Analytics.',
-      Icon: ChartIcon,
-    },
-    {
-      title: 'Use the live copilot',
-      description: 'Share your meeting with audio. When the interviewer asks a question, a short structured answer appears on your screen.',
-      Icon: LiveIcon,
-    },
-    {
-      title: 'Tune your résumé',
-      description: 'Upload it once, then check it against any job description for missing keywords.',
-      Icon: ResumeIcon,
-    },
-  ];
-
+  const t = useTranslations('Onboarding');
   return (
-    <div className="onboarding-container">
-      <div className="onboarding-card">
-        <button className="back-button" onClick={onBack}>Back</button>
-        <h1>How it works</h1>
-        <p className="onboarding-description">
-          Four things you can do with Apex Round.
-        </p>
-
-        <div className="tutorial-content">
-          <div className="tutorial-progress">
-            {tutorialSteps.map((_, idx) => (
-              <div
-                key={idx}
-                className={`progress-dot ${idx <= tutorialStep ? 'active' : ''}`}
-                onClick={() => setTutorialStep(idx)}
-              />
-            ))}
-          </div>
-
-          <div className="tutorial-step">
-            <div className="tutorial-icon">
-              {(() => {
-                const StepIcon = tutorialSteps[tutorialStep].Icon;
-                return <StepIcon size={36} />;
-              })()}
-            </div>
-            <h3>{tutorialSteps[tutorialStep].title}</h3>
-            <p>{tutorialSteps[tutorialStep].description}</p>
-          </div>
-
-          <div className="tutorial-nav">
-            <button
-              className="button"
-              onClick={() => setTutorialStep(Math.max(0, tutorialStep - 1))}
-              disabled={tutorialStep === 0}
-            >
-              Previous
-            </button>
-            <span className="tutorial-count">{tutorialStep + 1} / {tutorialSteps.length}</span>
-            <button
-              className="button"
-              onClick={() => setTutorialStep(Math.min(tutorialSteps.length - 1, tutorialStep + 1))}
-              disabled={tutorialStep === tutorialSteps.length - 1}
-            >
-              Next
-            </button>
-          </div>
-        </div>
-
-        <button
-          className="button buttonPrimary onboarding-button"
-          onClick={onComplete}
-          disabled={loading}
-        >
-          {loading ? 'Setting up…' : 'Start using Apex Round'}
+    <StepFrame
+      step="tutorial"
+      title={t('tutorial.title')}
+      description={t('tutorial.desc')}
+      onBack={onBack}
+      error={error}
+      primary={
+        <button type="button" className="button buttonPrimary buttonLarge" onClick={onComplete} disabled={loading}>
+          {loading ? t('finishing') : t('finish')}
         </button>
-      </div>
-    </div>
+      }
+    >
+      <ul className={styles.tips}>
+        {TIPS.map(({ key, Icon }) => (
+          <li key={key} className={styles.tip}>
+            <span className={styles.tipIcon} aria-hidden="true">
+              <Icon size={18} />
+            </span>
+            <h2 className={styles.tipTitle}>{t(`tutorial.${key}.title`)}</h2>
+            <p className={styles.tipBody}>{t(`tutorial.${key}.desc`)}</p>
+          </li>
+        ))}
+      </ul>
+    </StepFrame>
   );
 }

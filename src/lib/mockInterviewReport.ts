@@ -1,162 +1,155 @@
 import { z } from 'zod';
+import { HIRING_SIGNALS, LIVE_RUBRIC_KEYS, type HiringSignal, type LiveRubricKey } from '@/lib/copilot/reportRubric';
 
-const ReportDimensionSchema = z.object({
-  score: z.number().min(1).max(5),
-  evidence: z.string().default(''),
-  recommendation: z.string().default(''),
+export { HIRING_SIGNALS, LIVE_RUBRIC_KEYS, type HiringSignal, type LiveRubricKey } from '@/lib/copilot/reportRubric';
+
+/**
+ * Interview reports, kept to what the model wrote. Nothing is filled in: a
+ * list the model left empty stays empty, and an area it didn't score has no
+ * score. A reply without an overall score isn't a report (null), so callers
+ * save nothing. Two rubrics:
+ * - the live copilot's session report: LIVE_RUBRIC_KEYS, the six areas the
+ *   summarize prompt asks for and Past sessions shows ("not captured" when
+ *   the model didn't score one);
+ * - a practice interview's report: PRACTICE_RUBRIC_KEYS, the four areas its
+ *   prompt asks for; an area the model didn't score is left out.
+ */
+
+export const PRACTICE_RUBRIC_KEYS = ['clarity', 'confidence', 'relevance', 'structure'] as const;
+export type PracticeRubricKey = (typeof PRACTICE_RUBRIC_KEYS)[number];
+
+/** One rubric area; `score` is null when the model didn't score it. */
+const DimensionSchema = z.object({
+  score: z.number().int().min(1).max(5).nullable(),
+  evidence: z.string(),
+  recommendation: z.string(),
+});
+export type ReportDimension = z.infer<typeof DimensionSchema>;
+
+const ScoredDimensionSchema = DimensionSchema.extend({ score: z.number().int().min(1).max(5) });
+
+const ReportBaseSchema = z.object({
+  version: z.literal('v1'),
+  mode: z.string(),
+  overall_score: z.number().int().min(0).max(100),
+  hiring_signal: z.enum(HIRING_SIGNALS).nullable(),
+  summary: z.string(),
+  strengths: z.array(z.string()),
+  weaknesses: z.array(z.string()),
+  next_steps: z.array(z.string()),
 });
 
-// PRD-aligned rubric: clarity, confidence, relevance, structure
-const RubricSchema = z.object({
-  clarity: ReportDimensionSchema,
-  confidence: ReportDimensionSchema,
-  relevance: ReportDimensionSchema,
-  structure: ReportDimensionSchema,
+/** The live copilot's session report: every one of the six areas, scored or not. */
+export const MockInterviewReportSchema = ReportBaseSchema.extend({
+  rubric: z.object(
+    Object.fromEntries(LIVE_RUBRIC_KEYS.map((key) => [key, DimensionSchema])) as Record<LiveRubricKey, typeof DimensionSchema>,
+  ),
 });
-
-export const MockInterviewReportSchema = z.object({
-  version: z.literal('v1').default('v1'),
-  mode: z.string().default('general'),
-  overall_score: z.number().min(0).max(100),
-  hiring_signal: z.enum(['strong_no_hire', 'no_hire', 'lean_no_hire', 'lean_hire', 'hire', 'strong_hire']),
-  summary: z.string().default(''),
-  strengths: z.array(z.string()).default([]),
-  weaknesses: z.array(z.string()).default([]),
-  next_steps: z.array(z.string()).default([]),
-  rubric: RubricSchema,
-});
-
 export type MockInterviewReport = z.infer<typeof MockInterviewReportSchema>;
 
-function clampScore(value: unknown) {
-  if (typeof value !== 'number' || Number.isNaN(value)) return 3;
-  return Math.max(1, Math.min(5, Math.round(value)));
+/** A practice interview's report: only the areas the model scored. */
+export const PracticeReportSchema = ReportBaseSchema.extend({
+  rubric: z.object({
+    clarity: ScoredDimensionSchema.optional(),
+    confidence: ScoredDimensionSchema.optional(),
+    relevance: ScoredDimensionSchema.optional(),
+    structure: ScoredDimensionSchema.optional(),
+  }),
+});
+export type PracticeReport = z.infer<typeof PracticeReportSchema>;
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
 
-function normalizeDimension(input: unknown, fallback: z.infer<typeof ReportDimensionSchema>) {
-  const maybe = (typeof input === 'object' && input ? input : {}) as Record<string, unknown>;
-  return {
-    score: clampScore(maybe.score ?? fallback.score),
-    evidence: typeof maybe.evidence === 'string' ? maybe.evidence : fallback.evidence,
-    recommendation: typeof maybe.recommendation === 'string' ? maybe.recommendation : fallback.recommendation,
-  };
+/** A number, or a number written as text ("4"); null for anything else. */
+function asNumber(value: unknown): number | null {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value === 'string' && value.trim() !== '') {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
 }
 
-function normalizeStringList(input: unknown, maxItems = 8): string[] {
-  if (!Array.isArray(input)) return [];
+function asText(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : '';
+}
 
+function stringList(value: unknown, maxItems = 8): string[] {
+  if (!Array.isArray(value)) return [];
   const unique = new Set<string>();
-
-  for (const item of input) {
+  for (const item of value) {
     if (typeof item !== 'string') continue;
     const cleaned = item.trim();
     if (!cleaned) continue;
     unique.add(cleaned);
     if (unique.size >= maxItems) break;
   }
-
   return Array.from(unique);
 }
 
-function ensureMinimumItems(input: string[], fallback: string[], minimum: number): string[] {
-  const merged = [...input];
+/** Next steps in priority order: "P1: …", "P2: …", whatever labels the model used. */
+function prioritized(items: string[]): string[] {
+  return items.map((item, index) => `P${index + 1}: ${item.replace(/^P\d+\s*[:\-]\s*/i, '').trim()}`);
+}
 
-  for (const fallbackItem of fallback) {
-    if (merged.length >= minimum) break;
-    if (!merged.includes(fallbackItem)) merged.push(fallbackItem);
+function overallScore(value: unknown): number | null {
+  const score = asNumber(value);
+  return score === null ? null : Math.max(0, Math.min(100, Math.round(score)));
+}
+
+function hiringSignal(value: unknown): HiringSignal | null {
+  return (HIRING_SIGNALS as readonly unknown[]).includes(value) ? (value as HiringSignal) : null;
+}
+
+function dimension(value: unknown): ReportDimension {
+  const raw = asRecord(value);
+  const score = asNumber(raw.score);
+  return {
+    score: score === null ? null : Math.max(1, Math.min(5, Math.round(score))),
+    evidence: asText(raw.evidence),
+    recommendation: asText(raw.recommendation),
+  };
+}
+
+function reportBase(input: unknown, mode: string) {
+  const raw = asRecord(input);
+  const score = overallScore(raw.overall_score);
+  if (score === null) return null;
+  return {
+    report: {
+      version: 'v1' as const,
+      mode,
+      overall_score: score,
+      hiring_signal: hiringSignal(raw.hiring_signal),
+      summary: asText(raw.summary),
+      strengths: stringList(raw.strengths),
+      weaknesses: stringList(raw.weaknesses),
+      next_steps: prioritized(stringList(raw.next_steps)),
+    },
+    rubric: asRecord(raw.rubric),
+  };
+}
+
+/** The live copilot's session report, or null when the input has no overall score. */
+export function normalizeMockInterviewReport(input: unknown, mode: string): MockInterviewReport | null {
+  const base = reportBase(input, mode);
+  if (!base) return null;
+  const rubric = Object.fromEntries(LIVE_RUBRIC_KEYS.map((key) => [key, dimension(base.rubric[key])]));
+  return MockInterviewReportSchema.parse({ ...base.report, rubric });
+}
+
+/** A practice interview's report, or null when the input has no overall score. */
+export function normalizePracticeReport(input: unknown, mode: string): PracticeReport | null {
+  const base = reportBase(input, mode);
+  if (!base) return null;
+  const rubric: PracticeReport['rubric'] = {};
+  for (const key of PRACTICE_RUBRIC_KEYS) {
+    const area = dimension(base.rubric[key]);
+    if (area.score !== null) rubric[key] = { ...area, score: area.score };
   }
-
-  return merged.slice(0, Math.max(minimum, merged.length));
-}
-
-function applyPriorityOrder(items: string[]): string[] {
-  return items.map((item, index) => {
-    const unlabeled = item.replace(/^P\d+\s*[:\-]\s*/i, '').trim();
-    return `P${index + 1}: ${unlabeled}`;
-  });
-}
-
-export function fallbackMockInterviewReport(mode: string): MockInterviewReport {
-  const report = {
-    version: 'v1' as const,
-    mode,
-    overall_score: 64,
-    hiring_signal: 'lean_no_hire' as const,
-    summary: 'Candidate stayed engaged and showed baseline competency, with room to improve clarity, confidence, relevance, and structure.',
-    strengths: [
-      'Stayed engaged and completed the full mock interview.',
-      'Communicated clearly enough to keep answers understandable.',
-      'Provided relevant examples that addressed the questions.',
-    ],
-    weaknesses: [
-      'Answers need tighter structure and clearer organization.',
-      'Confidence could be improved with more concrete examples.',
-      'Relevance to role requirements could be stronger.',
-    ],
-    next_steps: [
-      'P1: Practice structured responses using STAR or similar frameworks.',
-      'P2: Prepare quantified impact stories aligned to target role requirements.',
-      'P3: Rehearse answers to build confidence and reduce hesitation.',
-    ],
-    rubric: {
-      clarity: { score: 3, evidence: '', recommendation: 'Speak more clearly and avoid filler words.' },
-      confidence: { score: 3, evidence: '', recommendation: 'Project more confidence through tone and pacing.' },
-      relevance: { score: 3, evidence: '', recommendation: 'Ensure answers directly address the question asked.' },
-      structure: { score: 2, evidence: '', recommendation: 'Lead with an answer, then support with 2-3 organized points.' },
-    },
-  };
-
-  return report;
-}
-
-/**
- * `pad` (default true) tops each list up to three items with stock lines, as the
- * copilot summary expects. Reports shown as the model's own words pass false.
- */
-export function normalizeMockInterviewReport(
-  input: unknown,
-  mode: string,
-  { pad = true }: { pad?: boolean } = {},
-): MockInterviewReport {
-  const base = fallbackMockInterviewReport(mode);
-  const maybe = (typeof input === 'object' && input ? input : {}) as Record<string, unknown>;
-  const maybeRubric = (typeof maybe.rubric === 'object' && maybe.rubric ? maybe.rubric : {}) as Record<string, unknown>;
-
-  const list = (value: unknown, fallback: string[]) =>
-    pad ? ensureMinimumItems(normalizeStringList(value), fallback, 3) : normalizeStringList(value);
-  const strengths = list(maybe.strengths, base.strengths);
-  const weaknesses = list(maybe.weaknesses, base.weaknesses);
-  const nextSteps = applyPriorityOrder(list(maybe.next_steps, base.next_steps));
-
-  const normalized = {
-    version: 'v1' as const,
-    mode,
-    overall_score:
-      typeof maybe.overall_score === 'number' && !Number.isNaN(maybe.overall_score)
-        ? Math.max(0, Math.min(100, Math.round(maybe.overall_score)))
-        : base.overall_score,
-    hiring_signal:
-      maybe.hiring_signal === 'strong_no_hire' ||
-      maybe.hiring_signal === 'no_hire' ||
-      maybe.hiring_signal === 'lean_no_hire' ||
-      maybe.hiring_signal === 'lean_hire' ||
-      maybe.hiring_signal === 'hire' ||
-      maybe.hiring_signal === 'strong_hire'
-        ? maybe.hiring_signal
-        : base.hiring_signal,
-    summary: typeof maybe.summary === 'string' ? maybe.summary : base.summary,
-    strengths,
-    weaknesses,
-    next_steps: nextSteps,
-    rubric: {
-      clarity: normalizeDimension(maybeRubric.clarity, base.rubric.clarity),
-      confidence: normalizeDimension(maybeRubric.confidence, base.rubric.confidence),
-      relevance: normalizeDimension(maybeRubric.relevance, base.rubric.relevance),
-      structure: normalizeDimension(maybeRubric.structure, base.rubric.structure),
-    },
-  };
-
-  return MockInterviewReportSchema.parse(normalized);
+  return PracticeReportSchema.parse({ ...base.report, rubric });
 }
 
 export function reportToLegacyPayload(report: MockInterviewReport) {

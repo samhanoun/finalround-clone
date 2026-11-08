@@ -1,8 +1,10 @@
-import { render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import React from 'react';
 import { AudioSourcesPanel } from '@/components/copilot/AudioSourcesPanel';
 import type { AudioCapture } from '@/components/copilot/useAudioCapture';
 import type { LiveTranscription } from '@/components/copilot/useLiveTranscription';
+import type { VoiceSample } from '@/components/copilot/useVoiceSample';
+import { SpeakerResolver } from '@/lib/stt/speakers';
 import { sttStreamUrl } from '@/lib/stt/relayProtocol';
 
 function capture(status: AudioCapture['status']): AudioCapture {
@@ -19,7 +21,7 @@ function capture(status: AudioCapture['status']): AudioCapture {
 }
 
 function transcription(partial: Partial<LiveTranscription> = {}): LiveTranscription {
-  return { status: 'live', error: null, captions: { candidate: '', interviewer: '' }, ...partial };
+  return { status: 'live', error: null, errorCode: null, captions: { candidate: '', interviewer: '' }, ...partial };
 }
 
 describe('AudioSourcesPanel with live transcription', () => {
@@ -46,7 +48,7 @@ describe('AudioSourcesPanel with live transcription', () => {
     rerender(
       <AudioSourcesPanel
         capture={capture('live')}
-        transcription={transcription({ status: 'error', error: 'You have used all your copilot minutes for now.' })}
+        transcription={transcription({ status: 'error', error: 'quota', errorCode: 'quotaExceeded' })}
         disabled={false}
       />,
     );
@@ -54,10 +56,93 @@ describe('AudioSourcesPanel with live transcription', () => {
     expect(screen.getByText('You have used all your copilot minutes for now.')).toBeInTheDocument();
   });
 
+  it('draws one live trace per voice from the level subscription', () => {
+    const live = capture('live');
+    let push: (levels: { interviewer: number; candidate: number }) => void = () => undefined;
+    (live.subscribeLevels as jest.Mock).mockImplementation((listener) => {
+      push = listener;
+      return () => undefined;
+    });
+    const { container } = render(<AudioSourcesPanel capture={live} transcription={transcription()} disabled={false} />);
+    const interviewer = screen.getByRole('meter', { name: 'Interviewer level' });
+    const you = screen.getByRole('meter', { name: 'You level' });
+    expect(interviewer).toHaveAttribute('aria-valuenow', '0');
+
+    act(() => push({ interviewer: 0.1, candidate: 0 }));
+    expect(interviewer).toHaveAttribute('aria-valuenow', '67');
+    expect(interviewer).toHaveAttribute('aria-valuetext', 'Hearing audio');
+    expect(you).toHaveAttribute('aria-valuetext', 'Quiet');
+    const [interviewerPath, youPath] = Array.from(container.querySelectorAll('svg path'));
+    expect(interviewerPath.getAttribute('d')).not.toBe(youPath.getAttribute('d'));
+  });
+
+  it('keeps the share steps one click away while not listening', () => {
+    render(<AudioSourcesPanel capture={capture('idle')} transcription={transcription()} disabled={false} />);
+    expect(screen.getByText('How to share the meeting audio')).toBeInTheDocument();
+    expect(screen.getByText(/Share tab audio/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Start listening' })).toBeEnabled();
+  });
+
   it('hides captions until audio is live', () => {
     render(<AudioSourcesPanel capture={capture('idle')} transcription={transcription()} disabled={false} />);
     expect(screen.queryByLabelText('Live captions')).not.toBeInTheDocument();
     expect(screen.queryByText('Transcribing')).not.toBeInTheDocument();
+  });
+});
+
+describe('AudioSourcesPanel in phone / in-person mode', () => {
+  function voiceSample(partial: Partial<VoiceSample> = {}): VoiceSample {
+    return {
+      state: 'none',
+      progress: 0,
+      tooQuiet: false,
+      record: jest.fn(),
+      cancel: jest.fn(),
+      forget: jest.fn(),
+      resolver: new SpeakerResolver(),
+      ...partial,
+    };
+  }
+
+  it('shows one microphone, no share steps, and asks for a voice sample once listening', () => {
+    const sample = voiceSample();
+    const { rerender } = render(
+      <AudioSourcesPanel capture={capture('idle')} transcription={transcription()} disabled={false} voiceSample={sample} />,
+    );
+    expect(screen.getByRole('meter', { name: 'Both of you level' })).toBeInTheDocument();
+    expect(screen.queryByRole('meter', { name: 'Interviewer level' })).not.toBeInTheDocument();
+    expect(screen.getByText(/Put your phone on speaker/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Record my voice' })).toBeDisabled();
+
+    rerender(<AudioSourcesPanel capture={capture('live')} transcription={transcription()} disabled={false} voiceSample={sample} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Record my voice' }));
+    expect(sample.record).toHaveBeenCalled();
+  });
+
+  it('shows the sentence to read while recording, and the saved state after', () => {
+    const { rerender } = render(
+      <AudioSourcesPanel
+        capture={capture('live')}
+        transcription={transcription()}
+        disabled={false}
+        voiceSample={voiceSample({ state: 'recording', progress: 0.4 })}
+      />,
+    );
+    expect(screen.getByText(/I am getting ready for my interview today/)).toBeInTheDocument();
+    expect(screen.getByRole('progressbar', { name: 'Recording your voice sample' })).toHaveAttribute('aria-valuenow', '40');
+
+    const forget = jest.fn();
+    rerender(
+      <AudioSourcesPanel
+        capture={capture('live')}
+        transcription={transcription()}
+        disabled={false}
+        voiceSample={voiceSample({ state: 'ready', forget })}
+      />,
+    );
+    expect(screen.getByText(/Saved in this browser/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Forget my voice' }));
+    expect(forget).toHaveBeenCalled();
   });
 });
 

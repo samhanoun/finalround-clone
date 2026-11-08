@@ -1,6 +1,8 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { useFormatter, useTranslations } from 'next-intl';
+import { CopyIcon } from './icons';
 import styles from './ReferralPanel.module.css';
 
 /** Referral links open the sign-up form. */
@@ -8,12 +10,7 @@ function referralLink(code: string): string {
   return `${window.location.origin}/auth?mode=signup&ref=${encodeURIComponent(code)}`;
 }
 
-const STATUS_LABEL: Record<string, string> = {
-  pending: 'Clicked',
-  signed_up: 'Signed up',
-  converted: 'Upgraded',
-  expired: 'Expired',
-};
+const STATUSES = ['pending', 'signed_up', 'converted', 'expired'];
 
 type Referral = {
   id: string;
@@ -41,11 +38,15 @@ type ReferralCode = {
 };
 
 export function ReferralPanel() {
+  const t = useTranslations('Referrals');
+  const format = useFormatter();
   const [referralCode, setReferralCode] = useState<ReferralCode | null>(null);
   const [referrals, setReferrals] = useState<Referral[]>([]);
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState<'link' | 'code' | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // The share itself opens on the other site; this says when recording it here failed.
+  const [shareNotRecorded, setShareNotRecorded] = useState(false);
 
   useEffect(() => {
     const fetchReferralData = async () => {
@@ -54,71 +55,52 @@ export function ReferralPanel() {
         const data = await response.json();
 
         if (data.error) {
-          setError(data.error);
+          setError(t('loadFailed'));
         } else {
           setReferralCode(data.referral_code);
           setReferrals(data.referrals || []);
         }
       } catch (err) {
         console.error('Failed to fetch referral data:', err);
-        setError('Failed to load referral data');
+        setError(t('loadFailed'));
       } finally {
         setLoading(false);
       }
     };
 
     fetchReferralData();
+  }, [t]);
+
+  // The link field: when the browser won't let us copy, its text is selected so it can be copied by hand.
+  const linkField = useRef<HTMLInputElement>(null);
+
+  const copy = useCallback((text: string, which: 'link' | 'code') => {
+    navigator.clipboard
+      .writeText(text)
+      .then(() => {
+        setCopied(which);
+        setTimeout(() => setCopied(null), 2000);
+      })
+      .catch(() => {
+        linkField.current?.focus();
+        linkField.current?.select();
+      });
   }, []);
 
   const copyReferralLink = useCallback(() => {
-    if (!referralCode) return;
-    
-    navigator.clipboard.writeText(referralLink(referralCode.code)).then(() => {
-      setCopied('link');
-      setTimeout(() => setCopied(null), 2000);
-    });
-  }, [referralCode]);
+    if (referralCode) copy(referralLink(referralCode.code), 'link');
+  }, [referralCode, copy]);
 
   const copyCode = useCallback(() => {
+    if (referralCode) copy(referralCode.code, 'code');
+  }, [referralCode, copy]);
+
+  /** Shares on LinkedIn and X are recorded; the link itself opens the site (or the mail app). */
+  const recordShare = useCallback(async (platform: 'linkedin' | 'twitter') => {
     if (!referralCode) return;
-    
-    navigator.clipboard.writeText(referralCode.code).then(() => {
-      setCopied('code');
-      setTimeout(() => setCopied(null), 2000);
-    });
-  }, [referralCode]);
-
-  const shareReferral = useCallback(async (platform: string) => {
-    if (!referralCode) return;
-
-    const referralUrl = referralLink(referralCode.code);
-    const shareText = `I use Apex Round to prepare for interviews. Sign up with my code ${referralCode.code}.`;
-    
-    let shareUrl = '';
-    const encodedUrl = encodeURIComponent(referralUrl);
-    const encodedText = encodeURIComponent(shareText);
-
-    switch (platform) {
-      case 'linkedin':
-        shareUrl = `https://www.linkedin.com/shareArticle?mini=true&url=${encodedUrl}&title=${encodedText}`;
-        break;
-      case 'twitter':
-        shareUrl = `https://twitter.com/intent/tweet?text=${encodedText}&url=${encodedUrl}`;
-        break;
-      case 'email':
-        window.location.href = `mailto:?subject=Join Apex Round&body=${encodedText}%0A%0A${encodedUrl}`;
-        return;
-      default:
-        return;
-    }
-
-    if (shareUrl) {
-      window.open(shareUrl, '_blank', 'width=600,height=400');
-    }
-
-    // Record the share
+    setShareNotRecorded(false);
     try {
-      await fetch('/api/social/shares', {
+      const res = await fetch('/api/social/shares', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -128,88 +110,129 @@ export function ReferralPanel() {
           content_title: 'Referral link shared',
         }),
       });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
     } catch (error) {
       console.error('Failed to record share:', error);
+      setShareNotRecorded(true);
     }
   }, [referralCode]);
 
-  if (loading) {
-    return <div className="small">Loading your invite link…</div>;
-  }
+  const heading = (
+    <div className={styles.head}>
+      <h2 className="cardTitle" id="referrals-heading">
+        {t('title')}
+      </h2>
+      <p className="cardDesc">{t('desc')}</p>
+    </div>
+  );
 
-  if (error) {
+  if (loading || error) {
     return (
-      <div className="card">
-        <div className="cardInner stack">
-          <h3 className="cardTitle">Invite a friend</h3>
-          <div className="error">{error}</div>
+      <section className="card" aria-labelledby="referrals-heading">
+        <div className={`cardInner ${styles.inner}`}>
+          {heading}
+          {error ? (
+            <p className={styles.note} role="alert">
+              {error}
+            </p>
+          ) : (
+            <p className={styles.note}>{t('loading')}</p>
+          )}
         </div>
-      </div>
+      </section>
     );
   }
 
   const referralUrl = referralCode ? referralLink(referralCode.code) : '';
+  const encodedUrl = encodeURIComponent(referralUrl);
+  const encodedText = encodeURIComponent(t('shareText', { code: referralCode?.code ?? '' }));
+  const shareLinks = {
+    linkedin: `https://www.linkedin.com/shareArticle?mini=true&url=${encodedUrl}&title=${encodedText}`,
+    twitter: `https://twitter.com/intent/tweet?text=${encodedText}&url=${encodedUrl}`,
+    email: `mailto:?subject=${encodeURIComponent(t('emailSubject'))}&body=${encodedText}%0A%0A${encodedUrl}`,
+  };
 
   return (
-    <div className="card">
-      <div className="cardInner stack">
-        <h3 className="cardTitle">Invite a friend</h3>
-        <p className="cardDesc">Share your link. Everyone who signs up with it shows up here.</p>
+    <section className="card" aria-labelledby="referrals-heading">
+      <div className={`cardInner ${styles.inner}`}>
+        {heading}
 
         <div className={styles.linkRow}>
-          <input className={`input ${styles.link}`} type="text" readOnly value={referralUrl} aria-label="Your invite link" />
-          <button className="button buttonPrimary" onClick={copyReferralLink}>
-            {copied === 'link' ? 'Copied' : 'Copy link'}
+          <input ref={linkField} className={`input ${styles.link}`} type="text" readOnly value={referralUrl} aria-label={t('link')} />
+          <button type="button" className="button" onClick={copyReferralLink}>
+            <CopyIcon size={16} className={styles.buttonIcon} />
+            {copied === 'link' ? t('copied') : t('copyLink')}
           </button>
         </div>
 
         <div className={styles.meta}>
-          <span>
-            Code <code className={styles.code}>{referralCode?.code}</code>
+          <span className={styles.codeLine}>
+            {t.rich('code', { code: referralCode?.code ?? '', value: (chunks) => <code className={styles.code}>{chunks}</code> })}
           </span>
-          <button className="button buttonGhost" onClick={copyCode} aria-label="Copy invite code">
-            {copied === 'code' ? 'Copied' : 'Copy code'}
+          <button type="button" className="button buttonGhost buttonSmall" onClick={copyCode} aria-label={t('copyCodeLabel')}>
+            {copied === 'code' ? t('copied') : t('copyCode')}
           </button>
         </div>
 
         <div className={styles.share}>
-          <span className={styles.shareLabel}>Share on</span>
-          <button className="button" onClick={() => shareReferral('linkedin')}>
-            LinkedIn
-          </button>
-          <button className="button" onClick={() => shareReferral('twitter')} aria-label="Share on X">
+          <span className={styles.shareLabel}>{t('shareOn')}</span>
+          <a
+            className="button buttonSmall"
+            href={shareLinks.linkedin}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={() => void recordShare('linkedin')}
+          >
+            {t('linkedin')}
+          </a>
+          <a
+            className="button buttonSmall"
+            href={shareLinks.twitter}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={() => void recordShare('twitter')}
+            aria-label={t('shareOnX')}
+          >
             X
-          </button>
-          <button className="button" onClick={() => shareReferral('email')} aria-label="Share by email">
-            Email
-          </button>
+          </a>
+          <a className="button buttonSmall" href={shareLinks.email} aria-label={t('shareByEmail')}>
+            {t('email')}
+          </a>
         </div>
+        {shareNotRecorded ? (
+          <p className={styles.note} role="status">
+            {t('shareNotRecorded')}
+          </p>
+        ) : null}
 
         <dl className={styles.stats}>
           <div>
-            <dt>Signed up</dt>
-            <dd>{referralCode?.referral_count || 0}</dd>
+            <dt>{t('statuses.signed_up')}</dt>
+            <dd>{format.number(referralCode?.referral_count || 0)}</dd>
           </div>
           <div>
-            <dt>Upgraded</dt>
-            <dd>{referralCode?.conversion_count || 0}</dd>
+            <dt>{t('statuses.converted')}</dt>
+            <dd>{format.number(referralCode?.conversion_count || 0)}</dd>
           </div>
         </dl>
 
         {referrals.length > 0 && (
-          <ul className={styles.history} aria-label="Invites">
+          <ul className={styles.history} aria-label={t('invites')}>
             {referrals.map((ref) => (
               <li key={ref.id}>
-                <span className={`badge ${ref.status === 'converted' ? 'badgeLive' : ref.status === 'signed_up' ? 'badgeIce' : ''}`}>
-                  {STATUS_LABEL[ref.status] ?? ref.status}
+                <span className={styles.status} data-status={ref.status}>
+                  <span className="dot" aria-hidden="true" />
+                  {STATUSES.includes(ref.status) ? t(`statuses.${ref.status}`) : ref.status}
                 </span>
-                {ref.source && <span className="small muted">via {ref.source}</span>}
-                <span className={`small muted ${styles.when}`}>{new Date(ref.created_at).toLocaleDateString()}</span>
+                {ref.source && <span className={styles.source}>{t('via', { source: ref.source })}</span>}
+                <time className={styles.when} dateTime={ref.created_at}>
+                  {format.dateTime(new Date(ref.created_at), { dateStyle: 'medium' })}
+                </time>
               </li>
             ))}
           </ul>
         )}
       </div>
-    </div>
+    </section>
   );
 }

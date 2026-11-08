@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import { Geist, Geist_Mono, Unbounded } from 'next/font/google';
 import { NextIntlClientProvider } from 'next-intl';
-import { getMessages } from 'next-intl/server';
+import { getMessages, getTranslations } from 'next-intl/server';
 import { notFound } from 'next/navigation';
 import { routing } from '@/i18n/routing';
 import { ClientProviders } from '@/components/ClientProviders';
@@ -27,11 +27,19 @@ const unbounded = Unbounded({
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
+  // Lets the tab bar sit above the home indicator on phones (env(safe-area-inset-*)).
+  viewportFit: 'cover',
+  themeColor: '#141415',
 };
 
-export const metadata: Metadata = {
+export async function generateMetadata({ params }: { params: Promise<{ locale: string }> }): Promise<Metadata> {
+  const { locale } = await params;
+  const t = await getTranslations({ locale, namespace: 'Meta' });
+  return { ...METADATA, description: t('description') };
+}
+
+const METADATA: Metadata = {
   title: 'Apex Round',
-  description: 'A live interview copilot: it hears the question and puts a short, structured answer on your screen.',
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
@@ -69,6 +77,8 @@ export default async function RootLayout({
   }
 
   const messages = await getMessages();
+  const t = await getTranslations('Meta');
+  const tBrand = await getTranslations('Brand');
 
   // Determine if we should apply RTL layout (for future Arabic/Hebrew support)
   const isRTL = ['ar', 'he', 'fa'].includes(locale);
@@ -77,12 +87,12 @@ export default async function RootLayout({
     <html lang={locale} dir={isRTL ? 'rtl' : 'ltr'} suppressHydrationWarning>
       <head>
         <meta name="color-scheme" content="dark" />
-        <meta name="theme-color" content="#0b1324" />
+        <meta name="theme-color" content="#141415" />
       </head>
       <body className={`${geistSans.variable} ${geistMono.variable} ${unbounded.variable}`}>
         {/* Skip to main content link for keyboard users */}
         <a href="#main-content" className="skipLink">
-          Skip to main content
+          {t('skip')}
         </a>
         
         {/* Live region for announcements - screen reader only */}
@@ -93,10 +103,10 @@ export default async function RootLayout({
           aria-atomic="true"
         />
         
-        <DesktopFrame />
+        <DesktopFrame title={tBrand('name')} />
 
         <NextIntlClientProvider messages={messages}>
-          {/* Toasts: DashboardClient, JobsClient, ResumeClient and SettingsClient call useToast. */}
+          {/* Toasts: components across the app call useToast. */}
           <ClientProviders>{children}</ClientProviders>
         </NextIntlClientProvider>
       </body>

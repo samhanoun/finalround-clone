@@ -1,7 +1,6 @@
 import { after, NextRequest } from 'next/server';
 import { z } from 'zod';
 import { jsonError } from '@/lib/api';
-import { env } from '@/lib/env';
 import { createClient } from '@/lib/supabase/server';
 import { rateLimit } from '@/lib/rateLimit';
 import { sanitizeCopilotText } from '@/lib/copilotSecurity';
@@ -11,6 +10,8 @@ import { eventStreamResponse, streamAnswerEvents } from '@/lib/copilot/answerStr
 import { loadActiveCopilotSession, sessionMode } from '@/lib/copilot/activeSession';
 import { answerSystemBlocks, answerUserMessage, type TranscriptLine } from '@/lib/copilot/answerPrompt';
 import { readContextPack } from '@/lib/copilot/contextPack';
+import { renderRetrieved, retrieve, sourceList } from '@/lib/copilot/retrieval';
+import { sessionModels } from '@/lib/answerModels';
 import { QUESTION_CATEGORIES, type QuestionCategory } from '@/lib/copilot/questionGate';
 
 /**
@@ -47,14 +48,7 @@ const BodySchema = z.object({
     .default([]),
 });
 
-const MAX_ANSWER_TOKENS = 700;
 const MODEL_TIMEOUT_MS = 30_000;
-
-/** Fast model for most questions; an optional stronger one for coding and design. */
-function answerModel(category: QuestionCategory): string {
-  const fast = env.COPILOT_ANSWER_MODEL ?? 'gpt-4o-mini';
-  return category === 'coding' || category === 'system_design' ? (env.COPILOT_CODING_MODEL ?? fast) : fast;
-}
 
 function getRequestId(req: NextRequest) {
   return req.headers.get('x-request-id') || crypto.randomUUID();
@@ -99,7 +93,10 @@ export async function POST(req: NextRequest, { params }: Params) {
   if (question.hasPromptInjection) return jsonError(422, 'question_blocked');
 
   const category = parse.data.category;
-  const model = answerModel(category);
+  // Frozen at session start from Settings → Answer model: the answer model for
+  // most questions, the coding model for coding and design.
+  const models = sessionModels(session.metadata);
+  const model = category === 'coding' || category === 'system_design' ? models.coding : models.answer;
   const provider = providerForModel(model);
   if (!provider || !isProviderConfigured(provider)) return jsonError(503, 'answers_unavailable');
 
@@ -109,20 +106,26 @@ export async function POST(req: NextRequest, { params }: Params) {
     .map(({ speaker, cleaned }) => ({ speaker, text: cleaned.sanitized }));
 
   const mode = sessionMode(session);
+  const contextPack = readContextPack(session.metadata);
+  // The few passages of the candidate's own material that fit this question (résumé, materials, memories).
+  const lastInterviewerLines = recentTranscript.filter((line) => line.speaker === 'interviewer').slice(-2).map((line) => line.text);
+  const retrieved = retrieve([question.sanitized, ...lastInterviewerLines].join(' '), contextPack?.chunks ?? [], 4);
   const system = answerSystemBlocks({
     mode,
-    contextPack: readContextPack(session.metadata),
+    contextPack,
     noFullCode: session.metadata?.noFullCodeMode === true,
+    words: models.words,
+    codingLanguage: typeof session.metadata?.codingLanguage === 'string' ? session.metadata.codingLanguage : null,
   });
-  const userMessage = answerUserMessage({ question: question.sanitized, category, recentTranscript });
+  const userMessage = answerUserMessage({ question: question.sanitized, category, recentTranscript, notes: renderRetrieved(retrieved) });
 
   const { body, result } = streamAnswerEvents({
     chat: {
       model,
       system,
       messages: [{ role: 'user', content: userMessage }],
-      maxTokens: MAX_ANSWER_TOKENS,
-      temperature: 0.4,
+      maxTokens: models.maxTokens,
+      temperature: models.temperature,
       timeoutMs: MODEL_TIMEOUT_MS,
     },
     receivedAt,
@@ -130,6 +133,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     signal: req.signal,
     onError: (e) =>
       logAnswerError(requestId, 'llm_answer_failed', { sessionId: id, model, name: e instanceof Error ? e.name : 'unknown' }),
+    sources: sourceList(retrieved),
   });
 
   // Saved once the response is over; a superseded or failed answer is not.
@@ -151,6 +155,7 @@ export async function POST(req: NextRequest, { params }: Params) {
         model,
         ttft_ms: answer.ttftMs,
         total_ms: answer.totalMs,
+        ...(answer.sources.length ? { sources: answer.sources } : {}),
       },
     });
     if (error) logAnswerError(requestId, 'db_insert_answer_failed', { sessionId: id, code: error.code ?? null });

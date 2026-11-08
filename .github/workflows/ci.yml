@@ -1,23 +1,42 @@
 name: CI
 
+# Build and tests (see docs/ci.md):
+# - the web app: lint, typecheck, Jest with coverage, production build
+# - the desktop app (desktop/): typecheck and node --test
+# - Playwright: the whole-app suite (playwright.app.config.ts), the desktop
+#   app launched for real (playwright.desktop.config.ts, on Windows) and the
+#   signed-out specs (playwright.config.ts), all against the local fakes of
+#   Supabase, Deepgram and OpenAI in e2e/fakes, so no job needs a secret.
+# The live copilot loop has its own workflow (e2e-live.yml); dependency, secret
+# and code scanning are in security.yml, codeql-analysis.yml, semgrep.yml and
+# container.yml.
+
 on:
   pull_request:
   push:
     branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  # One run per pull request (a new push cancels the old run); every master
+  # commit keeps its own run.
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   lint_typecheck_test_build:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
           cache: npm
@@ -30,8 +49,31 @@ jobs:
 
       - name: Typecheck
         run: npx tsc -p tsconfig.json --noEmit
-      - name: Unit tests
-        run: npm test
+
+      - name: Unit tests with coverage
+        id: unit
+        run: npm run test:coverage -- --coverageReporters=text-summary --coverageReporters=lcov --coverageReporters=json-summary
+
+      - name: Coverage summary
+        if: ${{ !cancelled() && (steps.unit.outcome == 'success' || steps.unit.outcome == 'failure') && hashFiles('coverage/coverage-summary.json') != '' }}
+        run: |
+          node -e "
+            const total = require('./coverage/coverage-summary.json').total;
+            const rows = ['lines', 'statements', 'functions', 'branches'].map(
+              (key) => '| ' + key + ' | ' + total[key].pct + '% | ' + total[key].covered + ' / ' + total[key].total + ' |',
+            );
+            console.log(['### Unit test coverage', '', '| Metric | Covered | Count |', '|---|---:|---:|', ...rows, '',
+              'Counts the files the Jest tests load. The HTML report is in the coverage artifact (lcov-report/index.html).'].join('\n'));
+          " >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload coverage
+        if: ${{ !cancelled() && (steps.unit.outcome == 'success' || steps.unit.outcome == 'failure') }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: coverage
+          path: coverage
+          if-no-files-found: warn
+          retention-days: 14
 
       - name: Build
         env:
@@ -47,13 +89,47 @@ jobs:
           NEXT_PUBLIC_APP_URL: https://example.com
         run: npm run build
 
-  security:
+  desktop_typecheck_test:
+    name: Desktop app (typecheck and tests)
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: desktop
+    env:
+      # npm test is tsc plus node --test in plain Node: it needs Electron's type
+      # definitions, not its binary (about 100 MB). desktop-release.yml installs it.
+      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck and tests
+        run: npm test
+
+  e2e_app:
+    name: E2E whole app (fake services)
+    # Pinned: Playwright 1.58 cannot install Chromium on ubuntu-latest (26.04).
+    runs-on: ubuntu-24.04
+    # Long: the dev server compiles every page on its first visit (20-60 s each)
+    # and the crawl covers five languages on desktop and phone.
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
           cache: npm
@@ -61,27 +137,130 @@ jobs:
       - name: Install
         run: npm ci
 
-      # Production dependencies only: dev tooling (Jest, ESLint) never ships, and
-      # some of its advisories have no fix short of a major downgrade.
-      - name: Dependency audit (npm, production)
-        run: npm audit --omit=dev --audit-level=high
+      - name: Install Chromium for Playwright
+        run: npx playwright install --with-deps chromium
 
-      - name: Secret scan (gitleaks)
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
-        continue-on-error: true
+      # playwright.app.config.ts starts the fakes and the app (npm run dev on
+      # port 3100, built into .next-e2e) through its webServer entries.
+      - name: Whole-app suite
+        run: npx playwright test -c playwright.app.config.ts
 
-      # GitGuardian (ggshield): warn on PRs, block on pushes to master
-      - name: Secret scan (GitGuardian) — warn on PR
-        if: github.event_name == 'pull_request'
-        uses: GitGuardian/ggshield/actions/secret@v1.29.0
-        env:
-          GITGUARDIAN_API_KEY: ${{ secrets.GITGUARDIAN_API_KEY }}
-        continue-on-error: true
+      - name: Upload report
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: playwright-report-app
+          path: |
+            playwright-report
+            test-results
+          retention-days: 7
 
-      - name: Secret scan (GitGuardian) — block on master
-        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
-        uses: GitGuardian/ggshield/actions/secret@v1.29.0
+  e2e_desktop:
+    name: E2E desktop app (Electron, fake services)
+    # Windows: the desktop app is Windows-first, and Electron runs there with no
+    # virtual display or sandbox setup.
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            desktop/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      # The desktop app's install brings Electron's binary: Playwright drives
+      # that, so no Playwright browser is installed.
+      - name: Install and build the desktop app
+        working-directory: desktop
+        run: |
+          npm ci
+          npm run build
+
+      # playwright.desktop.config.ts starts the fakes and the web app (npm run
+      # dev on port 3100) through its webServer entries.
+      - name: Desktop app suite
+        run: npx playwright test -c playwright.desktop.config.ts
+
+      - name: Upload report
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: playwright-report-desktop
+          path: |
+            playwright-report-desktop
+            test-results
+          retention-days: 7
+
+  e2e_specs:
+    name: E2E signed-out specs (fake services)
+    # Pinned: Playwright 1.58 cannot install Chromium on ubuntu-latest (26.04).
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Install Chromium for Playwright
+        run: npx playwright install --with-deps chromium
+
+      # playwright.config.ts (e2e/*.spec.ts) starts `npm run dev` on port 3000
+      # itself but not the fakes, so they run in the background here.
+      - name: Start the fake services
+        run: |
+          node e2e/fakes/serve.mjs < /dev/null > "$RUNNER_TEMP/fakes.log" 2>&1 &
+          health="http://127.0.0.1:$(node -p "require('./e2e/fakes/config.cjs').PORTS.supabase")/__health"
+          for attempt in $(seq 1 30); do
+            if curl -fsS "$health" > /dev/null 2>&1; then
+              echo "The fake services are up (attempt $attempt)."
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error title=Fake services did not start::$health did not answer within 30 seconds."
+          cat "$RUNNER_TEMP/fakes.log"
+          exit 1
+
+      # The app that webServer starts inherits this job environment:
+      # fakeAppEnv() from e2e/fakes/config.cjs, with the app on port 3000.
+      - name: Point the app at the fake services
         env:
-          GITGUARDIAN_API_KEY: ${{ secrets.GITGUARDIAN_API_KEY }}
+          E2E_APP_PORT: '3000'
+        run: node -e "for (const [key, value] of Object.entries(require('./e2e/fakes/config.cjs').fakeAppEnv())) console.log(key + '=' + value)" >> "$GITHUB_ENV"
+
+      # A longer test timeout than the config's default 30 s: the dev server
+      # compiles each page on its first visit (20-60 s), which a warm local server
+      # doesn't. The config's CI settings (retries, one worker) still apply.
+      - name: Signed-out specs
+        run: npx playwright test --reporter=list,html --timeout=120000
+
+      - name: Upload report
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: playwright-report-specs
+          path: |
+            playwright-report
+            test-results
+          retention-days: 7
+
+      - name: Fake services log
+        if: failure()
+        run: cat "$RUNNER_TEMP/fakes.log"

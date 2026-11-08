@@ -79,7 +79,9 @@ export async function GET(req: NextRequest, { params }: Params) {
 
   const rawPayload = asRecord(reportSource.payload);
   const source = rawPayload.report ?? rawPayload;
+  // The six live areas as saved; one the model didn't score stays unscored ("not captured").
   const report = normalizeMockInterviewReport(source, mode);
+  if (!report) return jsonError(404, 'report_not_found');
 
   const payload = {
     report,

@@ -1,6 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
+import { jsonError } from '@/lib/api';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { MANAGE_ROLES, requireAdmin } from '@/lib/adminAuth';
+import { setSuspended } from '../_lib/suspension';
+
+/** Every admin PATCH has one shape: the action, the id of what it acts on, and the action's own fields under `data`. */
+const PatchSchema = z.object({
+  action: z.string().min(1),
+  flag_id: z.string().uuid(),
+  data: z.record(z.string(), z.unknown()).optional(),
+});
+
+const SEVERITIES = ['low', 'medium', 'high', 'critical'] as const;
 
 export async function GET(request: NextRequest) {
   try {
@@ -15,12 +27,7 @@ export async function GET(request: NextRequest) {
     const severity = searchParams.get('severity');
     const offset = (page - 1) * limit;
 
-    let query = supabase
-      .from('fraud_flags')
-      .select(`
-        *,
-        profiles!inner(email, full_name)
-      `, { count: 'exact' });
+    let query = supabase.from('fraud_flags').select('*', { count: 'exact' });
 
     if (resolved !== null && resolved !== undefined) {
       query = query.eq('resolved', resolved === 'true');
@@ -39,11 +46,23 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
+    // Who each flag is about. fraud_flags.user_id points at auth.users, not profiles, so there's no
+    // relationship to embed: the profiles are a second query.
+    const userIds = [...new Set((flags ?? []).map((flag) => flag.user_id as string))];
+    const { data: profiles, error: profilesError } = userIds.length
+      ? await supabase.from('profiles').select('id, email, full_name').in('id', userIds)
+      : { data: [], error: null };
+    if (profilesError) {
+      console.error('Error fetching flagged users:', profilesError);
+      return NextResponse.json({ error: profilesError.message }, { status: 500 });
+    }
+    const people = new Map((profiles ?? []).map((p) => [p.id as string, p as { email: string | null; full_name: string | null }]));
+
     const fraudFlags = flags?.map(flag => ({
       id: flag.id,
       user_id: flag.user_id,
-      user_email: flag.profiles?.email,
-      user_name: flag.profiles?.full_name,
+      user_email: people.get(flag.user_id)?.email ?? null,
+      user_name: people.get(flag.user_id)?.full_name ?? null,
       flag_type: flag.flag_type,
       severity: flag.severity,
       description: flag.description,
@@ -90,91 +109,75 @@ export async function GET(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
+  const auth = await requireAdmin(MANAGE_ROLES);
+  if (!auth.ok) return auth.response;
+
+  const parsed = PatchSchema.safeParse(await request.json().catch(() => null));
+  if (!parsed.success) return jsonError(400, 'invalid_body', parsed.error.flatten());
+  const { action, flag_id: flagId, data = {} } = parsed.data;
+
   try {
-    const auth = await requireAdmin(MANAGE_ROLES);
-    if (!auth.ok) return auth.response;
-
     const supabase = createAdminClient();
-    const body = await request.json();
-    const { flag_id, action, data } = body;
-
-    if (!flag_id || !action) {
-      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
-    }
 
     switch (action) {
       case 'resolve': {
-        const { error } = await supabase
+        const { data: rows, error } = await supabase
           .from('fraud_flags')
-          .update({ 
-            resolved: true,
-            resolved_by: auth.userId,
-            resolved_at: new Date().toISOString()
-          })
-          .eq('id', flag_id);
-
+          .update({ resolved: true, resolved_by: auth.userId, resolved_at: new Date().toISOString() })
+          .eq('id', flagId)
+          .select('id');
         if (error) throw error;
+        if (!rows?.length) return jsonError(404, 'not_found');
         return NextResponse.json({ success: true });
       }
 
       case 'escalate': {
-        const severities = ['low', 'medium', 'high', 'critical'];
-        const { data: flag } = await supabase
-          .from('fraud_flags')
-          .select('severity')
-          .eq('id', flag_id)
-          .single();
+        const { data: flag, error: readError } = await supabase.from('fraud_flags').select('severity').eq('id', flagId).maybeSingle();
+        if (readError) throw readError;
+        if (!flag) return jsonError(404, 'not_found');
 
-        const currentIndex = severities.indexOf(flag?.severity || 'low');
-        const newSeverity = severities[Math.min(currentIndex + 1, severities.length - 1)];
-
-        const { error } = await supabase
-          .from('fraud_flags')
-          .update({ severity: newSeverity })
-          .eq('id', flag_id);
-
+        const currentIndex = SEVERITIES.indexOf(flag.severity);
+        const newSeverity = SEVERITIES[Math.min(Math.max(currentIndex, 0) + 1, SEVERITIES.length - 1)];
+        const { error } = await supabase.from('fraud_flags').update({ severity: newSeverity }).eq('id', flagId);
         if (error) throw error;
         return NextResponse.json({ success: true, severity: newSeverity });
       }
 
       case 'update_metadata': {
-        const { error } = await supabase
-          .from('fraud_flags')
-          .update({ metadata: data.metadata })
-          .eq('id', flag_id);
-
+        const metadata = z.record(z.string(), z.unknown()).safeParse(data.metadata);
+        if (!metadata.success) return jsonError(400, 'invalid_body', metadata.error.flatten());
+        const { data: rows, error } = await supabase.from('fraud_flags').update({ metadata: metadata.data }).eq('id', flagId).select('id');
         if (error) throw error;
+        if (!rows?.length) return jsonError(404, 'not_found');
         return NextResponse.json({ success: true });
       }
 
       case 'suspend_user': {
-        // Get user_id from flag
-        const { data: flag } = await supabase
-          .from('fraud_flags')
-          .select('user_id')
-          .eq('id', flag_id)
-          .single();
+        const { data: flag, error: readError } = await supabase.from('fraud_flags').select('user_id').eq('id', flagId).maybeSingle();
+        if (readError) throw readError;
+        if (!flag?.user_id) return jsonError(404, 'not_found');
+        if (flag.user_id === auth.userId) return jsonError(400, 'cannot_suspend_self');
 
-        if (flag?.user_id) {
-          // Add another flag for the suspension
-          await supabase.from('fraud_flags').insert({
-            user_id: flag.user_id,
-            flag_type: 'suspicious_activity',
-            severity: 'critical',
-            description: data.description || 'User suspended due to fraud flag',
-            metadata: { original_flag_id: flag_id }
-          });
-        }
-
+        await setSuspended(supabase, flag.user_id, true);
+        // The record of it: a critical flag pointing back at the one acted on.
+        const description = typeof data.description === 'string' && data.description.trim() ? data.description.trim().slice(0, 1000) : 'User suspended due to fraud flag';
+        const { error } = await supabase.from('fraud_flags').insert({
+          user_id: flag.user_id,
+          flag_type: 'suspicious_activity',
+          severity: 'critical',
+          description,
+          metadata: { original_flag_id: flagId, suspended_by: auth.userId },
+        });
+        if (error) throw error;
         return NextResponse.json({ success: true });
       }
 
       default:
-        return NextResponse.json({ error: 'Unknown action' }, { status: 400 });
+        return jsonError(400, 'unknown_action');
     }
   } catch (error) {
-    console.error('Admin fraud action error:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    console.error('[admin fraud] action failed', { action, flagId, error: (error as { message?: string })?.message ?? error });
+    return jsonError(500, 'action_failed');
   }
 }
 

@@ -1,0 +1,682 @@
+/* Goals workspace: underline tabs, then each tab's list. Editors open in a sheet. */
+.workspace {
+  display: grid;
+  gap: 24px;
+}
+
+/* Tabs: text with an underline under the current one; they scroll sideways on phones. */
+.tabs {
+  overflow-x: auto;
+  border-bottom: 1px solid var(--hairline);
+  scrollbar-width: none;
+}
+
+.tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.tabList {
+  display: flex;
+  gap: 24px;
+  min-width: max-content;
+}
+
+.tab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-2);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color var(--dur-fast) var(--ease);
+}
+
+.tab::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  bottom: -1px;
+  left: 0;
+  height: 2px;
+  border-radius: 1px;
+  background: transparent;
+  transition: background-color var(--dur-fast) var(--ease);
+}
+
+.tab:hover,
+.tab[aria-current='page'] {
+  color: var(--text-1);
+}
+
+.tab[aria-current='page']::after {
+  background: var(--text-1);
+}
+
+.count {
+  color: var(--text-3);
+  font-size: 13px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+
+.loading {
+  margin: 0;
+  color: var(--text-3);
+  font-size: 14px;
+}
+
+/* A tab's body: a line of help and the tab's actions, then its list */
+.tabBody {
+  display: grid;
+  gap: 20px;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.intro {
+  flex: 1 1 360px;
+  max-width: 72ch;
+  margin: 0;
+  color: var(--text-2);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.toolbarActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.notice {
+  margin: 0;
+  color: var(--positive-text);
+  font-size: 13px;
+}
+
+.empty {
+  margin: 0;
+}
+
+.help {
+  margin: 0;
+  color: var(--text-3);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.formError,
+.sheetError {
+  margin: 0;
+  color: var(--negative-text);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* Goals: one row each, with what it is, what it uses and what you can do with it */
+.goals {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  list-style: none;
+}
+
+.goal {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-areas:
+    'main use manage'
+    'uses uses uses';
+  align-items: center;
+  gap: 12px 24px;
+  padding: 16px 20px;
+}
+
+.goal + .goal {
+  border-top: 1px solid var(--hairline);
+}
+
+.goalMain {
+  display: grid;
+  grid-area: main;
+  gap: 4px;
+  min-width: 0;
+}
+
+.goalName {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.goalMeta {
+  display: flex;
+  flex-wrap: wrap;
+  margin: 0;
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* Separators trail their item, so a wrapped line never starts with one. */
+.goalMeta > span:not(:last-child)::after,
+.rowMeta > span:not(:last-child)::after {
+  content: '·';
+  margin: 0 8px;
+  color: var(--text-3);
+}
+
+.uses {
+  display: flex;
+  grid-area: uses;
+  flex-wrap: wrap;
+  gap: 4px 24px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 20px;
+  list-style: none;
+}
+
+.uses li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 320px;
+}
+
+.uses li span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.uses svg {
+  flex-shrink: 0;
+  color: var(--text-3);
+}
+
+.uses li[data-missing] {
+  color: var(--text-3);
+}
+
+.useActions {
+  display: flex;
+  grid-area: use;
+  gap: 8px;
+}
+
+.manageActions {
+  display: flex;
+  grid-area: manage;
+  justify-content: flex-end;
+  gap: 2px;
+}
+
+/* The sheet: a drawer on wide screens, a bottom sheet on phones */
+.sheet {
+  position: fixed;
+  inset: 0 0 0 auto;
+  width: min(560px, 100vw);
+  max-width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  border-left: 1px solid var(--hairline-strong);
+  background: var(--surface);
+  color: var(--text-1);
+  box-shadow: var(--float);
+}
+
+.sheet[open] {
+  animation: sheetIn var(--dur-enter) var(--ease);
+}
+
+.sheet::backdrop {
+  background: rgba(0, 0, 0, 0.55);
+  animation: fadeIn var(--dur-menu) var(--ease);
+}
+
+@keyframes sheetIn {
+  from {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+}
+
+@keyframes sheetUp {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+}
+
+.sheetForm {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.sheetHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 12px 12px 24px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.sheetTitle {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+.sheetBody {
+  display: grid;
+  flex: 1;
+  align-content: start;
+  gap: 20px;
+  min-height: 0;
+  padding: 24px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.sheetGroup {
+  display: grid;
+  gap: 20px;
+  padding-top: 20px;
+  border-top: 1px solid var(--hairline);
+}
+
+.sheetFooter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 16px 24px calc(16px + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--hairline);
+}
+
+.sheetError {
+  flex-basis: 100%;
+}
+
+.twoCol {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.fieldset {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.legend {
+  margin-bottom: 8px;
+  padding: 0;
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.checks {
+  display: grid;
+  gap: 2px;
+  max-height: 220px;
+  padding: 8px 12px;
+  overflow-y: auto;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-control);
+  background: var(--field);
+}
+
+.checks label {
+  min-height: 32px;
+}
+
+.instructions {
+  min-height: 240px;
+  line-height: 1.6;
+}
+
+/* Materials, playbooks and memory: a list, with its form beside it on wide screens */
+.split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  align-items: start;
+  gap: 32px;
+}
+
+.listPane {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.paneHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 32px;
+}
+
+.paneTitle {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0;
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.paneCount {
+  color: var(--text-3);
+  font-family: var(--font-code);
+  font-size: 12px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+
+.rows {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  list-style: none;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 4px 16px;
+  min-height: 44px;
+  padding: 12px 12px 12px 20px;
+}
+
+.row + .row {
+  border-top: 1px solid var(--hairline);
+}
+
+.rowHead {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 16px;
+  grid-template-areas:
+    'title chevron'
+    'meta chevron';
+  align-items: center;
+  gap: 2px 12px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.rowBody {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.rowTitle {
+  grid-area: title;
+  overflow: hidden;
+  font-size: 14px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rowMeta {
+  display: flex;
+  grid-area: meta;
+  flex-wrap: wrap;
+  color: var(--text-3);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.rowChevron {
+  grid-area: chevron;
+  color: var(--text-3);
+  transition: transform var(--dur-fast) var(--ease);
+}
+
+.rowHead:hover .rowChevron {
+  color: var(--text-2);
+}
+
+.rowHead[aria-expanded='true'] .rowChevron {
+  transform: rotate(180deg);
+}
+
+.rowActions {
+  display: flex;
+  gap: 2px;
+}
+
+.preview {
+  grid-column: 1 / -1;
+  max-height: 240px;
+  margin: 8px 8px 4px 0;
+  padding: 12px 16px;
+  overflow: auto;
+  border-radius: var(--radius-control);
+  background: var(--sunken);
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.clamp {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-line;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.memory {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.sidePanel {
+  position: sticky;
+  top: calc(var(--titlebar, 0px) + 32px);
+  display: grid;
+  gap: 16px;
+  padding: 20px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+}
+
+.panelHead {
+  display: grid;
+  gap: 4px;
+}
+
+.panelTitle {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.panelForm {
+  display: grid;
+  gap: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--hairline);
+}
+
+.file {
+  width: 100%;
+  min-height: 40px;
+  padding: 4px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-control);
+  background: var(--field);
+}
+
+@media (max-width: 1023px) {
+  .split {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 24px;
+  }
+
+  .sidePanel {
+    position: static;
+  }
+}
+
+@media (max-width: 767px) {
+  .goal {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      'main'
+      'uses'
+      'use'
+      'manage';
+    gap: 12px;
+    padding: 16px;
+  }
+
+  .manageActions {
+    justify-content: flex-start;
+    margin: -4px 0 -4px -12px;
+  }
+
+  .uses {
+    flex-direction: column;
+  }
+
+  .uses li {
+    max-width: 100%;
+  }
+
+  .useActions > :global(.button) {
+    flex: 1;
+  }
+
+  .sheet {
+    inset: auto 0 0 0;
+    width: 100%;
+    height: auto;
+    max-height: 92vh;
+    max-height: 92dvh;
+    border-top: 1px solid var(--hairline-strong);
+    border-left: 0;
+    border-radius: var(--radius-panel) var(--radius-panel) 0 0;
+  }
+
+  .sheet[open] {
+    animation-name: sheetUp;
+  }
+
+  .sheetForm {
+    max-height: 92vh;
+    max-height: 92dvh;
+  }
+
+  .sheetHeader {
+    padding: 8px 8px 8px 16px;
+  }
+
+  .sheetBody {
+    padding: 16px;
+  }
+
+  .sheetFooter {
+    padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+  }
+
+  .sheetFooter > :global(.button) {
+    flex: 1;
+  }
+
+  .twoCol {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 559px) {
+  .tabs {
+    margin: 0 -16px;
+    padding: 0 16px;
+  }
+
+  .tabList {
+    gap: 20px;
+  }
+
+  .toolbarActions {
+    width: 100%;
+  }
+
+  .toolbarActions > :global(.button) {
+    flex: 1;
+  }
+
+  .row {
+    padding: 12px 8px 12px 16px;
+  }
+
+  .sidePanel {
+    padding: 16px;
+  }
+}

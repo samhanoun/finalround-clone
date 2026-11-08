@@ -36,21 +36,8 @@ export async function proxy(request: NextRequest) {
     // Refresh session if needed
     await supabase.auth.getUser();
 
-    // Add cache control headers for API routes
-    if (request.nextUrl.pathname.startsWith('/api/')) {
-      if (request.method === 'GET') {
-        intlResponse.headers.set(
-          'Cache-Control',
-          'public, s-maxage=60, stale-while-revalidate=300'
-        );
-      } else {
-        intlResponse.headers.set(
-          'Cache-Control',
-          'no-cache, no-store, must-revalidate'
-        );
-      }
-    }
-
+    // API routes never pass through here (see the matcher), and they must not
+    // get shared-cache headers: their responses are per user.
     return intlResponse;
   }
 

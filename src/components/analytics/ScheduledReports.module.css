@@ -1,0 +1,176 @@
+/* Email reports: a short form, then the scheduled reports as rows in one card. */
+.section {
+  display: grid;
+  gap: 24px;
+}
+
+.head {
+  display: grid;
+  gap: 4px;
+}
+
+.title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.desc {
+  margin: 0;
+  max-width: 40rem;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-3);
+}
+
+.form {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 16px;
+  padding: 20px;
+}
+
+@media (min-width: 900px) {
+  .form {
+    padding: 24px;
+  }
+}
+
+.field {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* Lines the button up with the selects, under their labels. */
+.submit {
+  margin-top: 25px;
+}
+
+.message {
+  margin: -8px 0 0;
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.message[data-kind='error'] {
+  color: var(--negative-text);
+}
+
+.listBlock {
+  display: grid;
+  gap: 12px;
+}
+
+.listTitle {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-2);
+}
+
+.note {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text-2);
+}
+
+.emptyText {
+  margin: 0;
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0 20px;
+  display: grid;
+}
+
+@media (min-width: 900px) {
+  .list {
+    padding: 0 24px;
+  }
+}
+
+.item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 24px;
+  padding: 16px 0;
+  border-top: 1px solid var(--hairline);
+}
+
+.item:first-child {
+  border-top: 0;
+}
+
+.itemText {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.itemTitle {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-1);
+}
+
+.itemMeta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  font-size: 13px;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.itemMeta > span + span::before {
+  content: '·';
+  margin: 0 8px;
+}
+
+.state {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-2);
+}
+
+.state[data-enabled='true'] :global(.dot) {
+  background: var(--positive);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+@media (max-width: 767px) {
+  .form {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 16px;
+  }
+
+  .submit {
+    margin-top: 0;
+  }
+
+  .list {
+    padding: 0 16px;
+  }
+
+  /* One fact per line instead of wrapping mid-list. */
+  .itemMeta {
+    display: grid;
+    gap: 2px;
+  }
+
+  .itemMeta > span + span::before {
+    content: none;
+  }
+}

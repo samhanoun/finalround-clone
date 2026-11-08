@@ -1,65 +1,271 @@
+/* Next up: the one main thing on Home. A wider panel than the cards below it,
+   the next interview large on the left, what's ready for it on the right. */
 .panel {
-  position: relative;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 24px;
-  padding: 28px 32px;
-  border-radius: var(--radius);
-  border: 1px solid var(--line-glow);
-  background: var(--deck);
-  overflow: hidden;
+  padding: 24px 20px;
+  border-radius: var(--radius-panel);
+  border: 1px solid var(--hairline);
+  background: var(--surface);
 }
 
-.copy {
-  flex: 1 1 420px;
+@media (min-width: 900px) {
+  .panel {
+    grid-template-columns: minmax(0, 1fr) minmax(240px, 320px);
+    gap: 40px;
+    padding: 32px;
+  }
+
+  .setup {
+    grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+  }
+}
+
+.main {
   display: grid;
-  gap: 14px;
-  max-width: 560px;
+  align-content: start;
+  gap: 8px;
+  min-width: 0;
+}
+
+.eyebrow {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-2);
+}
+
+.round {
+  font-weight: 400;
+  color: var(--text-3);
+}
+
+.round::before {
+  content: '·';
+  margin: 0 8px;
 }
 
 .title {
   margin: 0;
-  font-family: var(--font-title);
+  font-size: 22px;
   font-weight: 500;
-  font-size: clamp(1.4rem, 1.1rem + 0.9vw, 1.75rem);
-  letter-spacing: -0.03em;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  color: var(--text-1);
+  overflow-wrap: anywhere;
+}
+
+@media (min-width: 900px) {
+  .title {
+    font-size: 28px;
+  }
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 0;
+  margin: 0;
+  font-size: 14px;
+  color: var(--text-2);
+}
+
+.metaPart:not(:empty) + .metaPart:not(:empty)::before {
+  content: '·';
+  margin: 0 8px;
+  color: var(--text-3);
 }
 
 .lead {
   margin: 0;
-  color: #b9c3d9;
+  max-width: 34rem;
+  font-size: 14px;
   line-height: 1.55;
+  color: var(--text-2);
 }
 
 .actions {
   display: flex;
   flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+/* What's ready for it */
+.side {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  padding-top: 20px;
+  border-top: 1px solid var(--hairline);
+  min-width: 0;
+}
+
+@media (min-width: 900px) {
+  .side {
+    padding: 4px 0 0 32px;
+    border-top: 0;
+    border-left: 1px solid var(--hairline);
+  }
+}
+
+.sideTitle {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-1);
+}
+
+.sideText {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+
+.facts {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.fact {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
   gap: 10px;
-  margin-top: 4px;
+  align-items: start;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--text-1);
+  overflow-wrap: anywhere;
 }
 
-.signal {
-  flex: 0 1 360px;
-  width: 360px;
-  max-width: 100%;
-  height: auto;
+.fact[data-done='false'] {
+  color: var(--text-2);
 }
 
-.signal path {
-  fill: none;
-  stroke-width: 2;
-  stroke-linecap: round;
-  stroke-linejoin: round;
+.factMark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 20px;
+  color: var(--text-2);
 }
 
-@media (max-width: 760px) {
-  .panel {
-    padding: 22px 20px;
+.ring {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 1.5px solid var(--text-3);
+}
+
+.sideLink {
+  justify-self: start;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-2);
+  text-decoration: underline;
+  text-decoration-color: var(--hairline-hover);
+  text-underline-offset: 3px;
+  transition:
+    color var(--dur-fast) var(--ease),
+    text-decoration-color var(--dur-fast) var(--ease);
+}
+
+.sideLink:hover {
+  color: var(--text-1);
+  text-decoration-color: currentColor;
+}
+
+/* First run: three steps */
+.steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  min-width: 0;
+}
+
+.step {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 4px 12px;
+  padding: 12px 0;
+  border-top: 1px solid var(--hairline);
+}
+
+.step:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.step:last-child {
+  padding-bottom: 0;
+}
+
+.marker {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 1px solid var(--hairline-strong);
+  font-family: var(--font-code);
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.step[data-done='true'] .marker {
+  border-color: transparent;
+  background: var(--raised);
+  color: var(--text-1);
+}
+
+.stepText {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.stepTitle {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-1);
+}
+
+.step[data-done='true'] .stepTitle {
+  color: var(--text-2);
+}
+
+.stepNote {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-3);
+  overflow-wrap: anywhere;
+}
+
+.stepAction {
+  justify-self: end;
+}
+
+@media (max-width: 559px) {
+  .step {
+    grid-template-columns: 24px minmax(0, 1fr);
   }
 
-  .signal {
-    display: none;
+  .stepAction {
+    grid-column: 2;
+    justify-self: start;
+    margin-top: 8px;
+  }
+
+  .actions > :global(.button) {
+    flex: 1 1 auto;
   }
 }

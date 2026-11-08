@@ -5,6 +5,7 @@ import { jsonError } from '@/lib/api';
 import { rateLimit } from '@/lib/rateLimit';
 import { generateCoverLetter, saveCoverLetter, getUserCoverLetters } from '@/lib/coverLetter';
 import { LLMUnavailableError } from '@/lib/llmRouter';
+import { userModels } from '@/lib/answerModels';
 
 // Validation schema for generating a cover letter
 const GenerateSchema = z.object({
@@ -80,6 +81,7 @@ export async function POST(req: NextRequest) {
   try {
     // Generate the cover letter
     const result = await generateCoverLetter({
+      model: (await userModels(supabase, userData.user.id)).answer,
       jobTitle: input.jobTitle,
       companyName: input.companyName,
       jobDescription: input.jobDescription,
@@ -120,8 +122,6 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     if (error instanceof LLMUnavailableError) return jsonError(503, 'llm_unavailable');
     console.error('Cover letter generation failed:', error);
-    return jsonError(500, 'generation_failed', { 
-      message: error instanceof Error ? error.message : 'Failed to generate cover letter' 
-    });
+    return jsonError(500, 'generation_failed', { message: 'Failed to generate cover letter' });
   }
 }

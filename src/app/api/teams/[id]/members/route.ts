@@ -1,14 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { 
-  getServerOrganizationClient, 
-  getOrganizationMembers, 
-  updateMemberRole, 
+import { z } from 'zod';
+import {
+  getServerOrganizationClient,
+  getOrganizationMembers,
+  getMemberRole,
+  updateMemberRole,
   removeMember,
   checkOrganizationAccess,
-  type OrganizationRole
+  type OrganizationRole,
 } from '@/lib/organizations';
+import { createAdminClient } from '@/lib/supabase/admin';
+import { canManageRole } from '@/lib/teamRoles';
 
-// GET /api/teams/[id]/members - List team members
+// GET /api/teams/[id]/members - List team members, with their names, emails and photos
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -22,7 +26,8 @@ export async function GET(
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const members = await getOrganizationMembers(supabase, id);
+    // Profiles are private to each person: teammates' names are read with the service role, for this team only.
+    const members = await getOrganizationMembers(supabase, id, createAdminClient());
     return NextResponse.json({ members });
   } catch (error) {
     console.error('Error fetching members:', error);
@@ -30,7 +35,23 @@ export async function GET(
   }
 }
 
-// PATCH /api/teams/[id]/members - Update member role or remove member
+const ManageSchema = z.discriminatedUnion('action', [
+  z.object({ action: z.literal('remove'), member_id: z.string().uuid() }),
+  z.object({ action: z.literal('update_role'), member_id: z.string().uuid(), role: z.enum(['admin', 'member', 'viewer']) }),
+]);
+
+/**
+ * PATCH /api/teams/[id]/members {member_id, action: 'remove' | 'update_role', role?}
+ *
+ * Owners and admins manage members; only the owner manages admins. The
+ * database lets only owners write member rows, so after the checks below the
+ * change is made with the service role. The rules (teamRoles.ts):
+ * - nobody changes or removes an owner;
+ * - nobody makes someone an owner here (admins never; ownership isn't handed over through this form);
+ * - only the owner changes, removes or appoints an admin: admins manage members and viewers (owner_only);
+ * - you can't change your own role.
+ * 404: no such member in this team. 409: the member changed in the meantime, so nothing was written.
+ */
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -38,53 +59,51 @@ export async function PATCH(
   try {
     const { id } = await params;
     const supabase = await getServerOrganizationClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
 
-    // Only admins can manage members
-    const hasAccess = await checkOrganizationAccess(supabase, id, ['owner', 'admin']);
-    if (!hasAccess) {
+    const myRole = await getMemberRole(supabase, id);
+    if (myRole !== 'owner' && myRole !== 'admin') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const body = await request.json();
-    const { member_id, action, role } = body;
+    const raw = (await request.json().catch(() => null)) as { action?: unknown; role?: unknown } | null;
+    if (raw?.action === 'update_role' && raw.role === 'owner') {
+      return NextResponse.json({ error: 'cannot_make_owner' }, { status: 403 });
+    }
+    const parse = ManageSchema.safeParse(raw);
+    if (!parse.success) return NextResponse.json({ error: 'invalid_body' }, { status: 400 });
+    const body = parse.data;
 
-    if (action === 'remove') {
-      // Cannot remove owner
-      const { data: member } = await supabase
-        .from('organization_members')
-        .select('role')
-        .eq('id', member_id)
-        .single();
+    const admin = createAdminClient();
+    const { data: target, error: targetError } = await admin
+      .from('organization_members')
+      .select('id, user_id, role')
+      .eq('id', body.member_id)
+      .eq('organization_id', id)
+      .maybeSingle<{ id: string; user_id: string; role: OrganizationRole }>();
+    if (targetError) throw targetError;
+    if (!target) return NextResponse.json({ error: 'not_found' }, { status: 404 });
+    if (target.role === 'owner') return NextResponse.json({ error: 'owner_protected' }, { status: 403 });
+    if (body.action === 'update_role' && target.user_id === user.id) {
+      return NextResponse.json({ error: 'own_role' }, { status: 403 });
+    }
+    // An admin (another one, or yourself as one) is the owner's to change or remove, and only the owner appoints one.
+    if (!canManageRole(myRole, target.role) || (body.action === 'update_role' && !canManageRole(myRole, body.role))) {
+      return NextResponse.json({ error: 'owner_only' }, { status: 403 });
+    }
 
-      if (member?.role === 'owner') {
-        return NextResponse.json({ error: 'Cannot remove owner' }, { status: 400 });
-      }
-
-      await removeMember(supabase, id, member_id);
+    if (body.action === 'remove') {
+      const removed = await removeMember(admin, id, target.id, target.role);
+      if (!removed) return NextResponse.json({ error: 'conflict' }, { status: 409 });
       return NextResponse.json({ success: true });
     }
 
-    if (action === 'update_role') {
-      if (!role || !['admin', 'member', 'viewer'].includes(role)) {
-        return NextResponse.json({ error: 'Invalid role' }, { status: 400 });
-      }
-
-      // Cannot change owner role
-      const { data: member } = await supabase
-        .from('organization_members')
-        .select('role')
-        .eq('id', member_id)
-        .single();
-
-      if (member?.role === 'owner') {
-        return NextResponse.json({ error: 'Cannot change owner role' }, { status: 400 });
-      }
-
-      await updateMemberRole(supabase, id, member_id, role as OrganizationRole);
-      return NextResponse.json({ success: true });
-    }
-
-    return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
+    const updated = await updateMemberRole(admin, id, target.id, target.role, body.role);
+    if (!updated) return NextResponse.json({ error: 'conflict' }, { status: 409 });
+    return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Error managing member:', error);
     return NextResponse.json({ error: 'Failed to manage member' }, { status: 500 });

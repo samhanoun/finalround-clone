@@ -5,6 +5,10 @@ jest.mock('@/lib/copilot', () => ({
   getCopilotQuotaSnapshot: jest.fn(),
   recordCopilotUsage: jest.fn(),
 }));
+// Work Next runs after the response; the tests run it when they choose.
+const mockAfter = jest.fn();
+jest.mock('next/server', () => ({ after: (task: () => unknown) => mockAfter(task) }));
+jest.mock('@/lib/memoryExtraction', () => ({ rememberFromSession: jest.fn(async () => 0) }));
 
 import { endCopilotSession, endOpenCopilotSessions, type EndableCopilotSession } from '@/lib/copilot/endSession';
 
@@ -13,6 +17,12 @@ const { getCopilotQuotaSnapshot, recordCopilotUsage } = jest.requireMock('@/lib/
   getCopilotQuotaSnapshot: jest.Mock;
   recordCopilotUsage: jest.Mock;
 };
+const { rememberFromSession } = jest.requireMock('@/lib/memoryExtraction') as { rememberFromSession: jest.Mock };
+
+/** Runs what was handed to `after`, as Next does once the response is sent. */
+async function runAfterResponse() {
+  for (const [task] of mockAfter.mock.calls) await (task as () => Promise<unknown>)();
+}
 
 const NOW = new Date('2026-10-23T10:00:00Z');
 const minutesAgo = (m: number) => new Date(NOW.getTime() - m * 60_000).toISOString();
@@ -114,6 +124,56 @@ describe('endCopilotSession', () => {
     expect(error).toBeNull();
     expect(ended?.session).toBeNull();
     expect(recordCopilotUsage).not.toHaveBeenCalled();
+  });
+});
+
+describe('learning from an ended session (Goals → Memory)', () => {
+  it('learns after the response from a session that expired, not only from Stop', async () => {
+    mockAdmin();
+    await endCopilotSession(session({ metadata: { last_heartbeat_at: minutesAgo(12), goal_id: 'goal-1' } }), {
+      status: 'expired',
+      endedAt: NOW,
+      metadata: { expired_reason: 'heartbeat_timeout' },
+    });
+
+    expect(mockAfter).toHaveBeenCalledTimes(1);
+    expect(rememberFromSession).not.toHaveBeenCalled();
+    await runAfterResponse();
+    expect(rememberFromSession).toHaveBeenCalledWith('session-1', 'user-1', 'goal-1');
+  });
+
+  it('learns from a stopped session without a goal', async () => {
+    mockAdmin();
+    await endCopilotSession(session(), { status: 'stopped', endedAt: NOW, metadata: { stop_reason: 'user' } });
+    await runAfterResponse();
+    expect(rememberFromSession).toHaveBeenCalledWith('session-1', 'user-1', null);
+  });
+
+  it('learns from sessions a new session replaced or found abandoned', async () => {
+    mockAdmin();
+    await endOpenCopilotSessions([session({ id: 'abandoned', metadata: { last_heartbeat_at: minutesAgo(30) } }), session({ id: 'running' })], NOW);
+    await runAfterResponse();
+    expect(rememberFromSession.mock.calls.map(([id]) => id)).toEqual(['abandoned', 'running']);
+  });
+
+  it('does not learn twice when another request ended the session first', async () => {
+    mockAdmin(null);
+    await endCopilotSession(session(), { status: 'expired', endedAt: NOW });
+    expect(mockAfter).not.toHaveBeenCalled();
+    expect(rememberFromSession).not.toHaveBeenCalled();
+  });
+
+  it('never fails the end: outside a request it starts learning at once, and a failure stays there', async () => {
+    mockAdmin();
+    mockAfter.mockImplementationOnce(() => {
+      throw new Error('`after` was called outside a request scope');
+    });
+    rememberFromSession.mockRejectedValueOnce(new Error('model down'));
+
+    const { ended, error } = await endCopilotSession(session(), { status: 'stopped', endedAt: NOW });
+    expect(error).toBeNull();
+    expect(ended?.billableMinutes).toBe(20);
+    expect(rememberFromSession).toHaveBeenCalledTimes(1);
   });
 });
 

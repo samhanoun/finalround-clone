@@ -1,236 +1,177 @@
+/* Landing: a call at night at your desk. Graphite surfaces, one Ember action
+   per screen, and the richness in one moment: the answer card arriving while
+   the question is still being asked. Unbounded for headlines only. */
+
 .page {
+  --page-pad: 32px;
+  --header-h: 64px;
   min-height: 100vh;
-  background: var(--midnight);
+  background: var(--bg);
+  color: var(--text-1);
 }
 
+.inner {
+  width: min(1200px, calc(100% - 2 * var(--page-pad)));
+  margin-inline: auto;
+}
+
+/* Navigation */
 .header {
   position: sticky;
   top: var(--titlebar, 0px);
   z-index: 50;
-  background: rgba(11, 19, 36, 0.88);
-  backdrop-filter: blur(12px);
-  border-bottom: 1px solid #18233a;
+  border-bottom: 1px solid var(--hairline);
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
+  backdrop-filter: saturate(140%) blur(12px);
+  -webkit-backdrop-filter: saturate(140%) blur(12px);
 }
 
 .headerInner {
-  width: min(1200px, calc(100% - 48px));
-  margin: 0 auto;
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: 12px 28px;
-  padding: 12px 0;
+  gap: 32px;
+  height: var(--header-h);
 }
 
 .brandLink {
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  color: var(--paper);
+  color: var(--text-1);
   text-decoration: none;
-}
-
-.brandLink:hover {
-  color: var(--paper);
 }
 
 .brandName {
-  font-family: var(--font-title);
+  font-size: 16px;
   font-weight: 500;
-  font-size: 17px;
-  letter-spacing: -0.01em;
+  white-space: nowrap;
 }
 
-.headerNav {
+.nav {
   display: flex;
-  flex-wrap: wrap;
-  gap: 4px 22px;
+  align-items: center;
+  gap: 4px;
 }
 
-.navLink {
-  color: var(--mist);
-  font-size: 15px;
+.navLink,
+.signInLink {
+  display: inline-flex;
+  align-items: center;
+  height: 36px;
+  padding: 0 12px;
+  border-radius: var(--radius-control);
+  color: var(--text-2);
+  font-size: 14px;
+  white-space: nowrap;
   text-decoration: none;
+  transition: color var(--dur-fast) var(--ease);
 }
 
-.navLink:hover {
-  color: var(--paper);
+.navLink:hover,
+.signInLink:hover {
+  color: var(--text-1);
+}
+
+.signInLink {
+  font-weight: 500;
 }
 
 .headerActions {
   margin-left: auto;
   display: flex;
+  align-items: center;
   gap: 8px;
 }
 
-/* Hero */
-.hero {
-  width: min(1200px, calc(100% - 48px));
+.headerActions .navButton {
+  min-height: 36px;
+  padding: 0 14px;
+}
+
+@media (pointer: coarse) {
+  .headerActions .navButton {
+    min-height: 44px;
+  }
+}
+
+.headerActions .menuButton {
+  display: none;
+}
+
+/* The menu sheet (phones and narrow windows) */
+.sheet {
+  position: fixed;
+  inset: auto 0 0 0;
+  width: 100%;
+  max-width: 560px;
+  max-height: min(80vh, 640px);
   margin: 0 auto;
-  padding: 88px 0 104px;
+  padding: 8px 8px calc(16px + env(safe-area-inset-bottom));
+  border: 1px solid var(--hairline-strong);
+  border-bottom: 0;
+  border-radius: var(--radius-panel) var(--radius-panel) 0 0;
+  background: var(--surface);
+  color: var(--text-1);
+  overflow-y: auto;
+}
+
+.sheet::backdrop {
+  background: color-mix(in srgb, var(--sunken) 72%, transparent);
+}
+
+.sheetHead {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: 56px;
+  justify-content: space-between;
+  padding: 4px 4px 8px 12px;
 }
 
-.heroCopy {
-  flex: 1 1 440px;
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
-}
-
-.heroTitle {
-  margin: 0;
-  font-family: var(--font-title);
-  font-weight: 500;
-  font-size: clamp(2.4rem, 1.4rem + 3.4vw, 3.9rem);
-  line-height: 1.04;
-  letter-spacing: -0.04em;
-  max-width: 13em;
-}
-
-.heroLead {
-  margin: 0;
-  max-width: 34em;
-  font-size: 19px;
-  line-height: 1.55;
-  color: #b9c3d9;
-}
-
-.heroActions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-}
-
-.bigButton {
-  min-height: 50px;
-  padding: 0 22px;
-  font-size: 16px;
-}
-
-.heroNote {
-  margin: 0;
-  font-size: 14px;
-  color: var(--mist);
-}
-
-/* The demo: one orchestrated moment on load. */
-.demo {
-  flex: 1 1 460px;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  min-width: 0;
-}
-
-.caption {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 14px 16px;
-  border-radius: 14px;
-  background: var(--well);
-  border: 1px solid #1e2a44;
-  color: var(--paper-dim);
+.sheetTitle {
   font-size: 15px;
-  animation: rise 500ms 150ms ease-out both;
+  font-weight: 500;
 }
 
-.captionWho {
-  color: var(--ice);
-  font-weight: 600;
-  font-size: 13px;
+.sheetNav {
+  display: grid;
+  gap: 2px;
 }
 
-.answerCard {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  padding: 22px 24px;
-  border-radius: var(--radius);
-  background: var(--deck);
-  border: 1px solid var(--line-glow);
-  box-shadow: var(--float);
-  animation: rise 500ms 650ms ease-out both;
-}
-
-.answerMeta {
+.sheetLink {
   display: flex;
   align-items: center;
-  gap: 10px;
-  font-size: 13px;
+  height: 48px;
+  padding: 0 12px;
+  border-radius: var(--radius-row);
+  color: var(--text-1);
+  font-size: 15px;
+  text-decoration: none;
+  transition: background-color var(--dur-fast) var(--ease);
 }
 
-.answerTiming {
-  color: var(--mist);
+.sheetLink:hover,
+.sheetLink:active {
+  background: var(--raised);
 }
 
-.answerLead {
-  margin: 0;
-  font-size: 17px;
-  line-height: 1.6;
-  animation: reveal 600ms 1000ms ease-out both;
+.sheetAccount {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 8px;
+  margin-top: 8px;
+  padding: 16px 4px 0;
+  border-top: 1px solid var(--hairline);
 }
 
-.answerPoints {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  font-size: 16px;
-  line-height: 1.5;
-  color: #d7deec;
+@media (prefers-reduced-motion: no-preference) {
+  .sheet[open] {
+    animation: sheetIn var(--dur-enter) var(--ease);
+  }
 }
 
-/* Ember dots, as in the app's answer card (the reveal would clip list markers). */
-.answerPoints li {
-  position: relative;
-  padding-left: 18px;
-  animation: reveal 500ms ease-out both;
-}
-
-.answerPoints li::before {
-  content: '';
-  position: absolute;
-  left: 3px;
-  top: 0.62em;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--ember);
-}
-
-.answerPoints li:nth-child(1) {
-  animation-delay: 1500ms;
-}
-
-.answerPoints li:nth-child(2) {
-  animation-delay: 1850ms;
-}
-
-.answerPoints li:nth-child(3) {
-  animation-delay: 2200ms;
-}
-
-.caret {
-  display: inline-block;
-  width: 2px;
-  height: 1.1em;
-  margin-left: 4px;
-  vertical-align: text-bottom;
-  background: var(--ember);
-  animation: blink 1.1s steps(1) 2700ms infinite;
-}
-
-@keyframes rise {
+@keyframes sheetIn {
   from {
     opacity: 0;
-    transform: translateY(10px);
+    transform: translateY(12px);
   }
   to {
     opacity: 1;
@@ -238,226 +179,498 @@
   }
 }
 
-@keyframes reveal {
-  from {
-    opacity: 0;
-    clip-path: inset(0 100% 0 0);
-  }
-  to {
-    opacity: 1;
-    clip-path: inset(0 0 0 0);
-  }
+/* Hero: the headline on calm space, the moment beside it */
+.main {
+  outline: none;
 }
 
-@keyframes blink {
-  50% {
-    opacity: 0;
-  }
+.heroInner {
+  display: grid;
+  grid-template-columns: minmax(0, 11fr) minmax(0, 13fr);
+  align-items: center;
+  gap: 64px;
+  /* Fills the first screen, leaving the edge of the next section in view. */
+  min-height: min(calc(100svh - var(--header-h) - var(--titlebar, 0px) - 48px), 840px);
+  padding-block: 56px 64px;
+}
+
+.heroCopy {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+}
+
+.heroTitle {
+  margin: 0;
+  font-family: var(--font-headline);
+  font-weight: 400;
+  font-size: clamp(40px, 4.4vw, 64px);
+  line-height: 1.06;
+  letter-spacing: -0.03em;
+  text-wrap: balance;
+  overflow-wrap: break-word;
+  hyphens: auto;
+}
+
+.heroLead {
+  margin: 24px 0 0;
+  max-width: 34rem;
+  font-size: 18px;
+  line-height: 1.6;
+  color: var(--text-2);
+}
+
+.heroActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 32px;
+}
+
+.heroNote {
+  margin: 16px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-3);
 }
 
 /* Sections */
-.band {
-  border-top: 1px solid #18233a;
-  background: #0d1628;
+.section {
+  padding-block: 96px;
+  scroll-margin-top: calc(var(--header-h) + var(--titlebar, 0px));
 }
 
-.bandInner {
-  width: min(1200px, calc(100% - 48px));
-  margin: 0 auto;
-  padding: 80px 0;
-  display: flex;
-  flex-direction: column;
-  gap: 40px;
+.band {
+  border-block: 1px solid var(--hairline);
+  background: var(--sunken);
 }
 
 .sectionTitle {
   margin: 0;
-  font-family: var(--font-title);
-  font-weight: 500;
-  font-size: clamp(1.6rem, 1.2rem + 1.2vw, 2.15rem);
-  letter-spacing: -0.03em;
-  max-width: 20em;
+  max-width: 22em;
+  font-family: var(--font-headline);
+  font-weight: 400;
+  font-size: clamp(26px, 2.5vw, 34px);
+  line-height: 1.18;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+  overflow-wrap: break-word;
+  hyphens: auto;
 }
 
 .sectionLead {
-  margin: 0;
+  margin: 20px 0 0;
+  max-width: 34rem;
   font-size: 17px;
   line-height: 1.6;
-  color: #b9c3d9;
-  max-width: 34em;
+  color: var(--text-2);
 }
 
+/* How it works: a real sequence, so it stays numbered */
 .steps {
-  margin: 0;
+  margin: 48px 0 0;
   padding: 0;
   list-style: none;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 28px;
-}
-
-.step {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding-top: 18px;
-  border-top: 2px solid var(--line-strong);
-}
-
-.step:first-child {
-  border-top-color: var(--ember);
-}
-
-.stepNumber {
-  font-family: var(--font-title);
-  font-size: 15px;
-  color: var(--mist);
-}
-
-.step:first-child .stepNumber {
-  color: var(--ember);
-}
-
-.stepTitle {
-  font-size: 17px;
-}
-
-.stepBody {
-  font-size: 15px;
-  line-height: 1.55;
-  color: var(--mist);
-}
-
-.split {
-  width: min(1200px, calc(100% - 48px));
-  margin: 0 auto;
-  padding: 88px 0;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 48px;
-}
-
-.splitCopy {
-  flex: 1 1 420px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.code {
-  flex: 1 1 420px;
-  min-width: 0;
-  margin: 0;
-  padding: 20px 22px;
-  border-radius: 14px;
-  background: var(--ink);
-  border: 1px solid #1e2a44;
-  font-size: 14px;
-  line-height: 1.6;
-  color: #d7deec;
-  overflow-x: auto;
-}
-
-.desktopRow {
-  flex-direction: row;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 24px;
-}
-
-.comingSoon {
-  font-size: 14px;
-  color: var(--mist);
-}
-
-.pricing {
-  width: min(1200px, calc(100% - 48px));
-  margin: 0 auto;
-  padding: 88px 0;
-  display: flex;
-  flex-direction: column;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 32px;
 }
 
-.plans {
+.step {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  padding-top: 20px;
+  border-top: 1px solid var(--hairline-strong);
+}
+
+.stepNumber {
+  font-family: var(--font-code);
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.stepTitle {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.stepBody {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text-2);
+}
+
+/* Two columns: copy and a picture of the product */
+.split {
+  display: grid;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+  align-items: center;
+  gap: 64px;
+}
+
+.splitFlip {
+  grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+}
+
+.splitFlip > :first-child {
+  order: 2;
+}
+
+.splitCopy {
+  min-width: 0;
+}
+
+/* Solve the screen: the code answer */
+.codeCard {
+  margin: 0;
+  min-width: 0;
+  display: grid;
+  gap: 16px;
+  padding: 24px;
+  border-radius: var(--radius-panel);
+  border: 1px solid var(--hairline);
+  background: var(--surface);
+}
+
+.codeHead {
   display: flex;
-  flex-wrap: wrap;
-  gap: 20px;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.codeProblem {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-2);
+}
+
+.codeLanguage {
+  font-family: var(--font-code);
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+.codeApproach {
+  margin: 0;
+  font-size: 17px;
+  line-height: 1.5;
+  color: var(--text-1);
+}
+
+.code {
+  margin: 0;
+  padding: 16px 20px;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--hairline);
+  background: var(--sunken);
+  color: var(--text-1);
+  font-size: 14px;
+  line-height: 1.7;
+  overflow-x: auto;
+  tab-size: 4;
+}
+
+.codeComplexity {
+  margin: 0;
+  font-family: var(--font-code);
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+/* The Windows app: its shortcuts as keycaps */
+.shortcuts {
+  margin: 32px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.shortcut {
+  display: grid;
+  grid-template-columns: minmax(max-content, 13em) minmax(0, 1fr);
+  align-items: center;
+  gap: 16px;
+  min-height: 40px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.keys {
+  display: flex;
+  gap: 4px;
+  margin: 0;
+}
+
+.keys kbd {
+  min-width: 26px;
+  padding: 0 7px;
+  font-size: 12px;
+  line-height: 22px;
+}
+
+.shortcutAction {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text-1);
+}
+
+.note {
+  margin: 24px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-3);
+}
+
+/* Pricing */
+.pricing {
+  display: grid;
+  grid-template-columns: minmax(0, 4fr) minmax(0, 8fr);
+  gap: 64px;
+  align-items: start;
+}
+
+.pricingCopy {
+  min-width: 0;
+}
+
+.plans {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
 }
 
 .plan {
-  flex: 1 1 320px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  padding: 28px;
-  border-radius: var(--radius);
-  border: 1px solid var(--line);
+  gap: 20px;
+  min-width: 0;
+  padding: 24px;
+  border-radius: var(--radius-panel);
+  border: 1px solid var(--hairline);
 }
 
 .planPro {
-  border-color: var(--ember);
-  background: var(--deck);
+  border-color: var(--hairline-strong);
+  background: var(--surface);
 }
 
 .planName {
   margin: 0;
-  font-size: 18px;
-  font-weight: 600;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text-2);
 }
 
 .planPrice {
   margin: 0;
-  font-family: var(--font-title);
-  font-size: 36px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+}
+
+.planAmount {
+  font-size: 40px;
   font-weight: 500;
+  line-height: 1;
   letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
 }
 
 .planPer {
-  font-family: var(--font-sans);
-  font-size: 15px;
-  font-weight: 400;
-  letter-spacing: 0;
-  color: var(--mist);
+  font-size: 14px;
+  color: var(--text-2);
 }
 
 .planList {
-  margin: 0 0 8px;
-  padding-left: 18px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  color: #b9c3d9;
-  font-size: 15px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.planList li {
+  padding: 10px 0;
+  border-top: 1px solid var(--hairline);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-2);
 }
 
 .plan :global(.button) {
   margin-top: auto;
+  width: 100%;
 }
 
+/* Footer */
 .footer {
-  width: min(1200px, calc(100% - 48px));
-  margin: 0 auto;
-  padding: 28px 0 48px;
-  border-top: 1px solid #18233a;
+  border-top: 1px solid var(--hairline);
+}
+
+.footerInner {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
+  align-items: center;
   justify-content: space-between;
-  font-size: 14px;
-  color: var(--mist);
+  gap: 12px 24px;
+  padding-block: 32px 48px;
+  font-size: 13px;
+  color: var(--text-3);
 }
 
-@media (max-width: 640px) {
-  .headerNav {
+.footerBrand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-2);
+  font-weight: 500;
+}
+
+/* Narrow windows: the page's links move into the menu */
+@media (max-width: 899px) {
+  .nav {
     display: none;
   }
 
-  .hero {
-    padding: 48px 0 64px;
-    gap: 36px;
+  .headerActions .menuButton {
+    display: inline-flex;
+  }
+}
+
+/* Tablets: everything stacks, the picture after the words */
+@media (max-width: 959px) {
+  .heroInner {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 48px;
+    min-height: 0;
+    padding-block: 56px 72px;
+  }
+
+  .heroCopy,
+  .heroInner > figure {
+    max-width: 640px;
+  }
+
+  .steps {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 32px 24px;
+  }
+
+  .split,
+  .splitFlip,
+  .pricing {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 40px;
+  }
+
+  .splitFlip > :first-child {
+    order: 0;
+  }
+
+  .codeCard,
+  .split > figure {
+    max-width: 640px;
+  }
+}
+
+/* Phones */
+@media (max-width: 639px) {
+  .page {
+    --page-pad: 16px;
+    --header-h: 56px;
+  }
+
+  .headerInner {
+    gap: 12px;
+  }
+
+  /* The menu holds Sign in and Start free; the hero's own Start free is right below. */
+  .headerActions .signInLink,
+  .headerActions .navButton {
+    display: none;
+  }
+
+  .heroInner {
+    gap: 40px;
+    padding-block: 32px 56px;
+  }
+
+  .heroTitle {
+    font-size: clamp(34px, 10.4vw, 42px);
+    line-height: 1.08;
+  }
+
+  .heroLead {
+    margin-top: 20px;
+    font-size: 17px;
+  }
+
+  .heroActions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    width: 100%;
+    margin-top: 28px;
+  }
+
+  .section {
+    padding-block: 64px;
+  }
+
+  .sectionLead {
+    font-size: 16px;
+  }
+
+  .steps {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+    margin-top: 32px;
+  }
+
+  .step {
+    grid-template-columns: 28px minmax(0, 1fr);
+    gap: 4px 8px;
+    padding-block: 16px;
+  }
+
+  .step > :not(.stepNumber) {
+    grid-column: 2;
+  }
+
+  .stepNumber {
+    grid-row: 1;
+  }
+
+  .codeCard {
+    padding: 16px;
+  }
+
+  .code {
+    padding: 12px 16px;
+    font-size: 13px;
+  }
+
+  .shortcut {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+    padding-block: 10px;
+  }
+
+  .plans {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .plan {
+    padding: 20px;
+  }
+
+  .footerInner {
+    padding-block: 24px 40px;
   }
 }

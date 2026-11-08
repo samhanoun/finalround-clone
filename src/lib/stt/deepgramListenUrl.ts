@@ -16,6 +16,8 @@ export type DeepgramListenOptions = {
   language?: string;
   sampleRate?: number;
   channels?: number;
+  /** Phone / in-person mode: one channel, with speakers told apart by diarization. */
+  diarize?: boolean;
 };
 
 export function buildDeepgramListenUrl({
@@ -24,6 +26,7 @@ export function buildDeepgramListenUrl({
   language = 'en',
   sampleRate = 16000,
   channels = 2,
+  diarize = false,
 }: DeepgramListenOptions = {}): string {
   const params = new URLSearchParams({
     model,
@@ -31,7 +34,8 @@ export function buildDeepgramListenUrl({
     encoding: 'linear16',
     sample_rate: String(sampleRate),
     channels: String(channels),
-    multichannel: 'true',
+    multichannel: channels > 1 ? 'true' : 'false',
+    ...(diarize ? { diarize: 'true' } : {}),
     interim_results: 'true',
     smart_format: 'true',
     punctuate: 'true',

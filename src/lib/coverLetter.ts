@@ -7,7 +7,8 @@
  * - Tone customization
  */
 
-import { completeChat, extractJsonObject, practiceModel } from './practice/practice';
+import { completeChat, extractJsonObject } from './practice/practice';
+import { serverDefaultModels } from './answerModels';
 import { createAdminClient } from './supabase/admin';
 
 export type CoverLetterTone = 'professional' | 'friendly' | 'formal' | 'casual' | 'confident';
@@ -20,6 +21,8 @@ export interface CoverLetterInput {
   tone: CoverLetterTone;
   userName?: string;
   additionalContext?: string;
+  /** Settings → Answer model; the server default when not given. */
+  model?: string;
 }
 
 export interface CoverLetterOutput {
@@ -64,7 +67,7 @@ export async function generateCoverLetter(input: CoverLetterInput): Promise<Cove
   ].join('\n');
 
   const reply = await completeChat({
-    model: practiceModel(),
+    model: input.model ?? serverDefaultModels().answer,
     system: [system],
     messages: [{ role: 'user', content: user }],
     temperature: 0.6,

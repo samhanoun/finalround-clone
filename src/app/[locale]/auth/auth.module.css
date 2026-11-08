@@ -1,157 +1,276 @@
+/* Sign in, sign up, reset: the form on calm space; on wide screens, the
+   answer card beside it on the deepest surface. */
+
 .page {
   min-height: calc(100vh - var(--titlebar, 0px));
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  background: var(--midnight);
+  background: var(--bg);
 }
 
-.brandPanel {
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  gap: 48px;
-  padding: 40px 56px 56px;
-  background: #0d1628;
-  border-right: 1px solid #18233a;
-}
-
-.brandLink {
-  display: inline-flex;
-  align-items: center;
-  gap: 12px;
-  color: var(--paper);
-  text-decoration: none;
-}
-
-.brandLink:hover {
-  color: var(--paper);
-}
-
-.brandName {
-  font-family: var(--font-title);
-  font-weight: 500;
-  font-size: 18px;
-  letter-spacing: -0.01em;
-}
-
-.brandCopy {
-  display: flex;
-  flex-direction: column;
-  gap: 36px;
-  max-width: 460px;
-}
-
-.brandLine {
-  margin: 0;
-  font-family: var(--font-title);
-  font-weight: 500;
-  font-size: clamp(1.7rem, 1.1rem + 1.6vw, 2.5rem);
-  line-height: 1.12;
-  letter-spacing: -0.035em;
-}
-
-.signal {
-  display: grid;
-  grid-template-columns: 96px 1fr;
-  align-items: center;
-  gap: 10px 14px;
-  font-size: 14px;
-}
-
-.signalWho[data-voice='interviewer'] {
-  color: var(--ice);
-}
-
-.signalWho[data-voice='you'] {
-  color: var(--ember);
-}
-
-.trace {
-  width: 100%;
-  height: 36px;
-}
-
-.trace path {
-  fill: none;
-  stroke-width: 2;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
+/* The form column */
 .formSide {
   display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 48px 24px;
+  flex-direction: column;
+  gap: 32px;
+  min-width: 0;
+  padding: 32px 48px;
   outline: none;
 }
 
+.brandLink {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-1);
+  text-decoration: none;
+}
+
+.brandName {
+  font-size: 16px;
+  font-weight: 500;
+}
+
 .formBox {
-  width: min(400px, 100%);
+  width: min(380px, 100%);
+  margin: auto;
   display: flex;
   flex-direction: column;
   gap: 24px;
 }
 
-.heading {
+.footLine {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.heading p {
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
   margin: 0;
+  font-size: 13px;
 }
 
+/* The page's language: a quiet select in the foot line, its globe inside the field */
+.language {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.languageIcon {
+  position: absolute;
+  left: 10px;
+  color: var(--text-3);
+  pointer-events: none;
+}
+
+.languageSelect {
+  width: auto;
+  min-height: 32px;
+  padding: 4px 32px 4px 32px;
+  border-color: var(--hairline);
+  background-color: transparent;
+  background-position: right 10px center;
+  color: var(--text-2);
+  font-size: 13px;
+}
+
+.languageSelect:hover {
+  color: var(--text-1);
+}
+
+/* Touch screens keep the 44px target and the 16px text that stops zooming. */
+@media (pointer: coarse) {
+  .languageSelect {
+    min-height: 44px;
+    font-size: 16px;
+  }
+}
+
+.homeLink {
+  color: var(--text-3);
+  text-decoration: none;
+  transition: color var(--dur-fast) var(--ease);
+}
+
+.homeLink:hover {
+  color: var(--text-1);
+}
+
+.heading {
+  display: grid;
+  gap: 8px;
+}
+
+.subtitle {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+
+/* I have an account / I'm new here */
 .modes {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 4px;
   padding: 4px;
-  border-radius: 12px;
-  background: var(--well);
-  border: 1px solid var(--line);
+  border-radius: var(--radius-row);
+  border: 1px solid var(--hairline);
+  background: var(--sunken);
 }
 
 .mode {
-  flex: 1 1 0;
-  min-height: 40px;
+  min-height: 36px;
+  padding: 0 8px;
   border: 0;
-  border-radius: 9px;
+  border-radius: 6px;
   background: transparent;
-  color: var(--mist);
+  color: var(--text-2);
   font: inherit;
-  font-size: 14.5px;
+  font-size: 14px;
   font-weight: 500;
   cursor: pointer;
+  transition:
+    background-color var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease);
 }
 
 .mode:hover {
-  color: var(--paper);
+  color: var(--text-1);
 }
 
 .mode[aria-pressed='true'] {
-  background: var(--deck-2);
-  color: var(--paper);
+  background: var(--raised);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  color: var(--text-1);
 }
 
-.submit {
+.group {
+  display: grid;
+  gap: 24px;
+}
+
+.wide {
   width: 100%;
-  min-height: 48px;
-  margin-top: 4px;
+  min-height: 44px;
 }
 
-@media (max-width: 860px) {
+.or {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0;
+  color: var(--text-3);
+  font-size: 12px;
+}
+
+.or::before,
+.or::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--hairline);
+}
+
+.form {
+  display: grid;
+  gap: 16px;
+}
+
+/* Password: the label, with "Forgot your password?" on its line, then the field.
+   The button comes after the field in the markup, so Tab reaches the field first. */
+.field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    'label forgot'
+    'input input'
+    'help help';
+  align-items: baseline;
+  column-gap: 12px;
+  row-gap: 6px;
+}
+
+.fieldLabel {
+  grid-area: label;
+}
+
+.fieldInput {
+  grid-area: input;
+}
+
+.fieldHelp {
+  grid-area: help;
+}
+
+.textButton {
+  grid-area: forgot;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-2);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: var(--hairline-hover);
+  text-underline-offset: 3px;
+  transition:
+    color var(--dur-fast) var(--ease),
+    text-decoration-color var(--dur-fast) var(--ease);
+}
+
+.textButton:hover {
+  color: var(--text-1);
+  text-decoration-color: currentColor;
+}
+
+/* The quiet product moment */
+.aside {
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  padding: 48px;
+  border-left: 1px solid var(--hairline);
+  background: var(--sunken);
+}
+
+.asideInner {
+  width: min(420px, 100%);
+  display: grid;
+  gap: 24px;
+}
+
+.tagline {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+
+@media (max-width: 959px) {
   .page {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .brandPanel {
-    padding: 20px 24px;
-    border-right: 0;
-    border-bottom: 1px solid #18233a;
+  .aside {
+    display: none;
+  }
+}
+
+@media (max-width: 639px) {
+  .formSide {
+    gap: 24px;
+    padding: 16px 16px 24px;
   }
 
-  .brandCopy {
-    display: none;
+  /* The home link follows the form instead of waiting at the bottom of the screen. */
+  .formBox {
+    margin: 16px 0 0;
+  }
+
+  .footLine {
+    margin-top: 8px;
   }
 }

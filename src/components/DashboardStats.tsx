@@ -1,64 +1,65 @@
-import { createClient } from '@/lib/supabase/server';
+import { getFormatter, getTranslations } from 'next-intl/server';
+import type { HomeStats } from '@/app/[locale]/dashboard/homeData';
 import styles from './DashboardStats.module.css';
 
-interface Stats {
-  totalInterviews: number;
-  avgScore: number | null;
-  applicationsSubmitted: number;
-}
+/** Home's four figures. Each change says what it compares to, and only appears where it can be worked out honestly. */
+export async function DashboardStats({ stats }: { stats: HomeStats }) {
+  const t = await getTranslations('Home');
+  const format = await getFormatter();
+  const signed = (n: number) => format.number(n, { signDisplay: 'exceptZero' });
 
-export async function DashboardStats() {
-  const supabase = await createClient();
-  const { data: userData } = await supabase.auth.getUser();
-  
-  if (!userData.user) {
-    return null;
-  }
+  const { score, liveMinutes } = stats;
+  let scoreNote: { text: string; tone?: 'up' | 'down' };
+  if (score.change.kind === 'none') scoreNote = { text: t('stats.scoreNone') };
+  else if (score.change.kind === 'new') scoreNote = { text: t('stats.scoreNew') };
+  else if (score.change.diff === 0) scoreNote = { text: t('stats.scoreSame') };
+  else scoreNote = { text: t('stats.scoreChange', { diff: signed(score.change.diff) }), tone: score.change.diff > 0 ? 'up' : 'down' };
 
-  // Get total interviews count
-  const { count: totalInterviews } = await supabase
-    .from('interview_sessions')
-    .select('*', { count: 'exact', head: true })
-    .eq('user_id', userData.user.id);
+  const liveNote =
+    liveMinutes.change === null ? null : liveMinutes.change === 0 ? t('stats.liveSame') : t('stats.liveChange', { diff: signed(liveMinutes.change) });
 
-  // Get average score from completed reports
-  const { data: reports } = await supabase
-    .from('interview_reports')
-    .select('overall_score')
-    .eq('user_id', userData.user.id);
-
-  const avgScore = reports && reports.length > 0
-    ? Math.round(reports.reduce((sum, r) => sum + (r.overall_score || 0), 0) / reports.length)
-    : null;
-
-  // Get applications count (from localStorage for now - can be expanded to DB)
-  // For now, we'll show 0 as placeholder until job applications feature is implemented
-  
-  const stats: Stats = {
-    totalInterviews: totalInterviews || 0,
-    avgScore,
-    applicationsSubmitted: 0, // Placeholder - can be connected to job applications DB
-  };
+  const items: Array<{ key: string; label: string; value: React.ReactNode; note: string | null; tone?: 'up' | 'down' }> = [
+    {
+      key: 'practice',
+      label: t('statInterviews'),
+      value: format.number(stats.practice.total),
+      note: t('stats.thisMonth', { count: stats.practice.thisMonth }),
+    },
+    {
+      key: 'score',
+      label: t('statScore'),
+      value:
+        score.average === null ? (
+          '—'
+        ) : (
+          <>
+            {format.number(score.average)}
+            <span className={styles.unit}>/100</span>
+          </>
+        ),
+      note: scoreNote.text,
+      tone: scoreNote.tone,
+    },
+    {
+      key: 'applications',
+      label: t('statApplications'),
+      value: format.number(stats.applications.total),
+      note: t('stats.thisMonth', { count: stats.applications.thisMonth }),
+    },
+    { key: 'live', label: t('statLiveMinutes'), value: format.number(liveMinutes.thisMonth), note: liveNote },
+  ];
 
   return (
-    <section id="stats" className="card">
-      <div className="cardInner">
-        <h2 className="cardTitle" style={{ marginBottom: 16 }}>Your progress</h2>
-        <div className={styles.statsGrid}>
-          <div className={styles.statItem}>
-            <div className={styles.statValue}>{stats.totalInterviews}</div>
-            <div className={styles.statLabel}>Practice interviews</div>
+    <section id="stats" className={styles.stats} aria-label={t('progress')}>
+      <dl className={styles.grid}>
+        {items.map((item) => (
+          <div key={item.key} className={styles.stat}>
+            <dt className={styles.label}>{item.label}</dt>
+            <dd className={styles.value}>{item.value}</dd>
+            <dd className={`${styles.note} ${item.tone ? styles[item.tone] : ''}`}>{item.note ?? ' '}</dd>
           </div>
-          <div className={styles.statItem}>
-            <div className={styles.statValue}>{stats.avgScore !== null ? `${stats.avgScore}%` : '—'}</div>
-            <div className={styles.statLabel}>Average score</div>
-          </div>
-          <div className={styles.statItem}>
-            <div className={styles.statValue}>{stats.applicationsSubmitted}</div>
-            <div className={styles.statLabel}>Applications sent</div>
-          </div>
-        </div>
-      </div>
+        ))}
+      </dl>
     </section>
   );
 }

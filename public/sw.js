@@ -19,16 +19,22 @@ self.addEventListener('install', (event) => {
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches
-      .keys()
-      .then((keys) => Promise.all(keys.filter((key) => key !== CACHE).map((key) => caches.delete(key))))
-      .then(() => self.clients.claim()),
+    Promise.all([
+      caches.keys().then((keys) => Promise.all(keys.filter((key) => key !== CACHE).map((key) => caches.delete(key)))),
+      // Navigation preload: the browser requests the page itself, as a normal page
+      // load, while this worker starts. A page request made from the worker instead
+      // doesn't look like a page load to the server, which then never updates the
+      // language cookie, so links without a /es, /fr… prefix fell back to English.
+      self.registration.navigationPreload ? self.registration.navigationPreload.enable() : undefined,
+    ]).then(() => self.clients.claim()),
   );
 });
 
 self.addEventListener('fetch', (event) => {
   if (event.request.mode !== 'navigate') return;
-  event.respondWith(fetch(event.request).catch(() => caches.match(OFFLINE_URL)));
+  event.respondWith(
+    (async () => (await event.preloadResponse) || fetch(event.request))().catch(() => caches.match(OFFLINE_URL)),
+  );
 });
 
 self.addEventListener('push', (event) => {

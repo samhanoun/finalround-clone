@@ -1,17 +1,31 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { z } from 'zod';
+import { LOCALES, DEFAULT_LOCALE, type Locale } from '@/i18n/locales';
+
+/**
+ * The language the user is using right now: next-intl's NEXT_LOCALE cookie,
+ * which follows the URL's locale. A new settings row starts with it, so emails
+ * and push notifications aren't English just because the column defaults to it.
+ */
+function currentLocale(request: Request): Locale {
+  const cookie = request.headers.get('cookie') ?? '';
+  const value = /(?:^|;\s*)NEXT_LOCALE=([^;]+)/.exec(cookie)?.[1];
+  return (LOCALES as readonly string[]).includes(value ?? '') ? (value as Locale) : DEFAULT_LOCALE;
+}
 
 const profileSchema = z.object({
-  full_name: z.string().max(100).optional(),
-  avatar_url: z.string().url().optional(),
-  target_roles: z.array(z.string()).max(10).optional(),
-  language: z.string().length(2).optional(),
+  // null clears the field.
+  full_name: z.string().max(100).nullable().optional(),
+  avatar_url: z.string().url().nullable().optional(),
+  target_roles: z.array(z.string().max(120)).max(10).optional(),
+  // The app language (Settings → App language); emails and notifications use it too.
+  language: z.enum(LOCALES).optional(),
   timezone: z.string().optional(),
   email_notifications: z.boolean().optional(),
 });
 
-export async function GET() {
+export async function GET(request: Request) {
   const supabase = await createClient();
   const { data: userData } = await supabase.auth.getUser();
 
@@ -35,13 +49,13 @@ export async function GET() {
     .from('user_settings')
     .select('language, timezone, email_notifications, marketing_emails, two_factor_enabled')
     .eq('user_id', userData.user.id)
-    .single();
+    .maybeSingle();
 
-  // If no settings exist, create default ones
-  if (settingsError && settingsError.code === 'PGRST116') {
+  // No settings row yet: create it (user_id is unique, so there is never more than one).
+  if (!settingsError && !settings) {
     const { data: newSettings } = await supabase
       .from('user_settings')
-      .insert({ user_id: userData.user.id })
+      .insert({ user_id: userData.user.id, language: currentLocale(request) })
       .select()
       .single();
 

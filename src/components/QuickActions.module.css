@@ -1,71 +1,66 @@
-.quickActionsGrid {
+/* The other places to go: a quiet list on the page, not four cards. */
+.nav {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
+  gap: 8px;
 }
 
-.quickActionCard {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  min-height: 72px;
-  padding: 14px 16px;
-  border-radius: 14px;
-  border: 1px solid var(--line);
-  background: var(--deck);
-  color: var(--paper);
-  text-decoration: none;
-  transition: border-color 120ms ease, background 120ms ease;
+.heading {
+  margin: 0;
+  padding: 0 12px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-2);
 }
 
-.quickActionCard:hover .quickActionTitle {
-  color: var(--ember-text);
-}
-
-.quickActionCard:hover {
-  border-color: var(--line-glow);
-  background: var(--deck-2);
-  color: var(--paper);
-}
-
-.quickActionIcon {
-  flex-shrink: 0;
-  width: 40px;
-  height: 40px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 10px;
-  background: var(--well);
-  border: 1px solid var(--line);
-  color: var(--ember);
-}
-
-.quickActionContent {
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
   display: grid;
-  gap: 2px;
-  min-width: 0;
+  gap: 2px 8px;
 }
 
-.quickActionTitle {
-  font-size: 15px;
-  font-weight: 600;
-}
-
-.quickActionDesc {
-  font-size: 13.5px;
-  color: var(--mist);
-  line-height: 1.35;
-}
-
-@media (max-width: 1100px) {
-  .quickActionsGrid {
+@media (min-width: 768px) {
+  .list {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
-@media (max-width: 520px) {
-  .quickActionsGrid {
-    grid-template-columns: minmax(0, 1fr);
-  }
+.rowLink {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) 16px;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  padding: 8px 12px;
+  border-radius: var(--radius-row);
+  color: var(--text-1);
+  text-decoration: none;
+  transition: background-color var(--dur-fast) var(--ease);
+}
+
+.rowLink:hover {
+  background: var(--raised);
+}
+
+.icon,
+.chevron {
+  color: var(--text-3);
+}
+
+.text {
+  display: grid;
+  min-width: 0;
+}
+
+.title {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+}
+
+.desc {
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--text-3);
 }

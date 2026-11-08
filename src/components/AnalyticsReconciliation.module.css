@@ -1,0 +1,127 @@
+/* Data checks (?debug=1 only): a plain table, statuses as a dot and a word. */
+.inner {
+  display: grid;
+  gap: 16px;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.note {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-3);
+}
+
+.summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 32px;
+  margin: 0;
+}
+
+.summary div {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.summary dt {
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.summary dd {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text-1);
+  font-variant-numeric: tabular-nums;
+}
+
+.tableWrap {
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.table th,
+.table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--hairline);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.table th:first-child {
+  padding-left: 0;
+  text-align: left;
+}
+
+.table td:last-child {
+  padding-right: 0;
+}
+
+.table thead th {
+  font-weight: 500;
+  color: var(--text-3);
+}
+
+.table tbody th {
+  font-weight: 400;
+  color: var(--text-1);
+}
+
+.table td {
+  color: var(--text-2);
+}
+
+.percent {
+  color: var(--text-3);
+}
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-3);
+}
+
+.status[data-tone='good'] .dot {
+  background: var(--positive);
+}
+
+.status[data-tone='warning'] .dot {
+  background: var(--caution);
+}
+
+.status[data-tone='critical'] .dot {
+  background: var(--negative);
+}

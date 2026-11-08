@@ -43,11 +43,18 @@ export function createSseParser(onMessage: (message: SseMessage) => void) {
   };
 }
 
-export type AnswerDone = { model?: string; ttftMs?: number | null; totalMs?: number };
+export type AnswerDone = {
+  model?: string;
+  ttftMs?: number | null;
+  totalMs?: number;
+  /** The candidate's own passages the answer cited ([S1]…). */
+  sources?: Array<{ tag: string; source: string; kind: string }>;
+};
 
+/** Its message is the error code; the answer view words it (Answer.errors). */
 export class AnswerStreamError extends Error {
   constructor(readonly code: string) {
-    super(code === 'answer_failed' ? 'The answer could not be generated. Try Answer now again.' : `Answer failed (${code}).`);
+    super(code);
     this.name = 'AnswerStreamError';
   }
 }

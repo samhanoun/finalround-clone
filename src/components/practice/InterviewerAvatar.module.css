@@ -1,0 +1,65 @@
+/* The interviewer is drawn in Ice. Nothing moves unless the interviewer is
+   actually speaking. */
+.avatar {
+  flex-shrink: 0;
+  width: var(--avatar-size, 48px);
+  height: var(--avatar-size, 48px);
+  border-radius: 36%;
+  box-shadow: 0 0 0 1px var(--hairline);
+  transition: box-shadow var(--dur-menu) var(--ease);
+}
+
+.avatar[data-state='speaking'] {
+  box-shadow: 0 0 0 1px var(--voice-them);
+}
+
+.face {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.head {
+  fill: var(--raised);
+  stroke: var(--hairline-strong);
+  stroke-width: 1.5;
+}
+
+.eyes rect {
+  fill: var(--voice-them-text);
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: transform var(--dur-menu) var(--ease);
+}
+
+/* Listening: the eyes narrow a little and stay that way. */
+.avatar[data-state='listening'] .eyes rect {
+  transform: scaleY(0.7);
+}
+
+.bar {
+  fill: var(--voice-them);
+  transform-box: fill-box;
+  transform-origin: center;
+  transform: scaleY(0.3);
+}
+
+.avatar[data-state='speaking'] .bar {
+  animation: talk 420ms var(--ease) infinite alternate;
+}
+
+@keyframes talk {
+  from {
+    transform: scaleY(0.3);
+  }
+  to {
+    transform: scaleY(1.25);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .avatar[data-state='speaking'] .bar {
+    animation: none;
+    transform: scaleY(0.9);
+  }
+}

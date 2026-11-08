@@ -66,12 +66,12 @@ Configure your cron service to hit `https://your-domain.com/api/cron/retention` 
 
 **Dry-run (safe):**
 ```bash
-curl "https://your-domain.com/api/cron/retention"
+curl -X POST -H "Authorization: Bearer $CRON_SECRET" "https://your-domain.com/api/cron/retention"
 ```
 
 **Production execution:**
 ```bash
-curl "https://your-domain.com/api/cron/retention?dryRun=false"
+curl -X POST -H "Authorization: Bearer $CRON_SECRET" "https://your-domain.com/api/cron/retention?dryRun=false"
 ```
 
 ## Dry-Run Evidence Collection

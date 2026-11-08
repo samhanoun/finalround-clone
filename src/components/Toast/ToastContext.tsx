@@ -27,6 +27,9 @@ interface ToastContextType {
 
 const ToastContext = createContext<ToastContextType | null>(null);
 
+/** Toast ids only need to be unique on the page, so a counter will do. */
+let lastToastId = 0;
+
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
 
@@ -35,7 +38,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const addToast = useCallback((toast: Omit<Toast, 'id'>): string => {
-    const id = `toast-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+    lastToastId += 1;
+    const id = `toast-${lastToastId}`;
     const newToast: Toast = { ...toast, id };
     
     setToasts((prev) => [...prev, newToast]);

@@ -5,6 +5,10 @@
  * user shares with getDisplayMedia: the meeting tab with "Share tab audio", or
  * on Windows the entire screen with "Share system audio". Speaker roles come
  * from the channel, so no diarization is needed.
+ *
+ * Phone / in-person mode (`singleMic`): nothing is shared. The microphone hears
+ * both people on channel 0, channel 1 stays silent, and the voices are told
+ * apart later (src/lib/stt/speakers.ts).
  */
 
 export type CaptureSource = 'candidate' | 'interviewer';
@@ -28,6 +32,13 @@ export interface CaptureFrame {
   channels: 2;
   /** Main-thread arrival time (ms since epoch). */
   receivedAt: number;
+}
+
+/** The microphone channel (0) of a frame's interleaved PCM. */
+export function micChannel(pcm: Int16Array): Int16Array {
+  const mono = new Int16Array(pcm.length / 2);
+  for (let i = 0; i < mono.length; i += 1) mono[i] = pcm[i * 2];
+  return mono;
 }
 
 /** Per-channel RMS (0..1) of the latest frame. */
@@ -73,6 +84,14 @@ const MIC_CONSTRAINTS: MediaTrackConstraints = {
   autoGainControl: true,
 };
 
+/** One microphone for both people: noise suppression would treat the farther voice (or the phone speaker) as noise. */
+const ROOM_MIC_CONSTRAINTS: MediaTrackConstraints = {
+  channelCount: 1,
+  echoCancellation: false,
+  noiseSuppression: false,
+  autoGainControl: true,
+};
+
 function stopTracks(stream: MediaStream | null) {
   stream?.getTracks().forEach((track) => track.stop());
 }
@@ -98,6 +117,8 @@ export class DualAudioCapture {
   private readonly endedListeners = new Set<(source: CaptureSource) => void>();
 
   private readonly testMicAsInterviewer: boolean;
+  private readonly useMicrophone: boolean;
+  private readonly singleMic: boolean;
 
   /**
    * `testMicAsInterviewer` is for end-to-end tests only: the (fake) microphone
@@ -105,15 +126,21 @@ export class DualAudioCapture {
    * and the candidate channel stays silent. Chromium's
    * --use-file-for-fake-audio-capture feeds that microphone.
    */
-  constructor(options: { frameMs?: number; testMicAsInterviewer?: boolean } = {}) {
+  constructor(
+    options: { frameMs?: number; testMicAsInterviewer?: boolean; useMicrophone?: boolean; singleMic?: boolean } = {},
+  ) {
     this.frameMs = options.frameMs ?? DEFAULT_FRAME_MS;
     this.testMicAsInterviewer = options.testMicAsInterviewer ?? false;
+    // Settings → Meeting apps → "Use my microphone too": off leaves the candidate channel silent.
+    this.useMicrophone = options.useMicrophone ?? true;
+    this.singleMic = options.singleMic ?? false;
   }
 
-  static isSupported(): boolean {
+  /** Phone mode needs only the microphone, so it also works where screens can't be shared. */
+  static isSupported(singleMic = false): boolean {
     return (
       typeof navigator !== 'undefined' &&
-      typeof navigator.mediaDevices?.getDisplayMedia === 'function' &&
+      (singleMic || typeof navigator.mediaDevices?.getDisplayMedia === 'function') &&
       typeof navigator.mediaDevices?.getUserMedia === 'function' &&
       typeof AudioWorkletNode !== 'undefined'
     );
@@ -125,11 +152,15 @@ export class DualAudioCapture {
    */
   async start(): Promise<void> {
     if (this.context) return;
-    if (!DualAudioCapture.isSupported()) {
+    if (!DualAudioCapture.isSupported(this.singleMic)) {
       throw new CaptureError('unsupported', 'This browser cannot capture meeting audio. Use Chrome or Edge on a desktop computer.');
     }
     if (this.testMicAsInterviewer) {
       await this.startTestMode();
+      return;
+    }
+    if (this.singleMic) {
+      await this.startRoomMic();
       return;
     }
 
@@ -148,11 +179,13 @@ export class DualAudioCapture {
       );
     }
 
-    try {
-      this.mic = await navigator.mediaDevices.getUserMedia({ audio: MIC_CONSTRAINTS });
-    } catch {
-      this.stop();
-      throw new CaptureError('mic-denied', 'Microphone access was blocked. Allow the microphone for this site, then start again.');
+    if (this.useMicrophone) {
+      try {
+        this.mic = await navigator.mediaDevices.getUserMedia({ audio: MIC_CONSTRAINTS });
+      } catch {
+        this.stop();
+        throw new CaptureError('mic-denied', 'Microphone access was blocked. Allow the microphone for this site, then start again.');
+      }
     }
 
     try {
@@ -164,7 +197,7 @@ export class DualAudioCapture {
     }
 
     meetingTrack.addEventListener('ended', () => this.emitEnded('interviewer'));
-    this.mic.getAudioTracks()[0]?.addEventListener('ended', () => this.emitEnded('candidate'));
+    this.mic?.getAudioTracks()[0]?.addEventListener('ended', () => this.emitEnded('candidate'));
   }
 
   stop(): void {
@@ -208,6 +241,21 @@ export class DualAudioCapture {
     };
   }
 
+  private async startRoomMic() {
+    try {
+      this.mic = await navigator.mediaDevices.getUserMedia({ audio: ROOM_MIC_CONSTRAINTS });
+    } catch {
+      throw new CaptureError('mic-denied', 'Microphone access was blocked. Allow the microphone for this site, then start again.');
+    }
+    try {
+      await this.buildGraph(this.mic, null);
+    } catch (error) {
+      this.stop();
+      throw new CaptureError('audio-engine', `Could not start audio processing: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    this.mic.getAudioTracks()[0]?.addEventListener('ended', () => this.emitEnded('candidate'));
+  }
+
   private async startTestMode() {
     try {
       this.mic = await navigator.mediaDevices.getUserMedia({
@@ -221,16 +269,18 @@ export class DualAudioCapture {
     this.display = await navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720 } }).catch(() => null);
     const [track] = this.mic.getAudioTracks();
     try {
-      await this.buildGraph(null, track);
+      // Phone mode hears everyone on the microphone channel.
+      if (this.singleMic) await this.buildGraph(this.mic, null);
+      else await this.buildGraph(null, track);
     } catch (error) {
       this.stop();
       throw new CaptureError('audio-engine', `Could not start audio processing: ${error instanceof Error ? error.message : String(error)}`);
     }
-    track.addEventListener('ended', () => this.emitEnded('interviewer'));
+    track.addEventListener('ended', () => this.emitEnded(this.singleMic ? 'candidate' : 'interviewer'));
   }
 
-  /** A null mic leaves the candidate channel silent (test mode). */
-  private async buildGraph(mic: MediaStream | null, meetingTrack: MediaStreamTrack) {
+  /** A null mic leaves the candidate channel silent (test mode); no meeting track leaves the interviewer's silent (phone mode). */
+  private async buildGraph(mic: MediaStream | null, meetingTrack: MediaStreamTrack | null) {
     const context = createAudioContext();
     this.context = context;
     await context.audioWorklet.addModule(WORKLET_URL);
@@ -238,7 +288,7 @@ export class DualAudioCapture {
     // Merger inputs are mono, so a stereo meeting tab is downmixed automatically.
     const merger = context.createChannelMerger(2);
     if (mic) context.createMediaStreamSource(mic).connect(merger, 0, 0);
-    context.createMediaStreamSource(new MediaStream([meetingTrack])).connect(merger, 0, 1);
+    if (meetingTrack) context.createMediaStreamSource(new MediaStream([meetingTrack])).connect(merger, 0, 1);
 
     const node = new AudioWorkletNode(context, WORKLET_NAME, {
       numberOfInputs: 1,

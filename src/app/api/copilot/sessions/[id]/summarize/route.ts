@@ -1,16 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
-import OpenAI from 'openai';
 import { jsonError } from '@/lib/api';
-import { llmProvider, requireEnv } from '@/lib/env';
 import { createClient } from '@/lib/supabase/server';
 import { rateLimit } from '@/lib/rateLimit';
 import { sanitizeCopilotText } from '@/lib/copilotSecurity';
 import { isLatencyPayload } from '@/lib/copilot/latency';
-import {
-  fallbackMockInterviewReport,
-  normalizeMockInterviewReport,
-  reportToLegacyPayload,
-} from '@/lib/mockInterviewReport';
+import { liveReportRequest } from '@/lib/copilot/sessionReport';
+import { sessionModels } from '@/lib/answerModels';
+import { isProviderConfigured, LLMUnavailableError, providerForModel } from '@/lib/llmRouter';
+import { completeChat, extractJsonObject } from '@/lib/practice/practice';
+import { normalizeMockInterviewReport, reportToLegacyPayload } from '@/lib/mockInterviewReport';
+
+/**
+ * POST /api/copilot/sessions/[id]/summarize: the session's interview report,
+ * written by the answer model frozen into the session at start (Settings →
+ * Answer model), OpenAI or Anthropic. Saved only when the model wrote a real
+ * report: on any failure the route answers with an error and saves nothing.
+ */
 
 interface Params {
   params: Promise<{ id: string }>;
@@ -21,6 +26,9 @@ type EventRow = {
   payload: Record<string, unknown>;
   created_at: string;
 };
+
+const MODEL_TIMEOUT_MS = 60_000;
+const ROUTE = '/api/copilot/sessions/[id]/summarize';
 
 function getRequestId(req: NextRequest) {
   return req.headers.get('x-request-id') || crypto.randomUUID();
@@ -77,7 +85,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     .returns<EventRow[]>();
 
   if (eventsError) {
-    logCopilotRouteError('/api/copilot/sessions/[id]/summarize', requestId, 'db_fetch_events_failed', {
+    logCopilotRouteError(ROUTE, requestId, 'db_fetch_events_failed', {
       sessionId: id,
       code: eventsError.code ?? null,
     });
@@ -88,47 +96,43 @@ export async function POST(req: NextRequest, { params }: Params) {
     return jsonError(400, 'no_events', { message: 'No session events to summarize' });
   }
 
-  const transcript = compactSession(events);
   const mode = typeof session.metadata?.mode === 'string' ? session.metadata.mode : 'general';
-
-  let report = fallbackMockInterviewReport(mode);
-
-  try {
-    if (llmProvider() !== 'openai') {
-      logCopilotRouteError('/api/copilot/sessions/[id]/summarize', requestId, 'unsupported_provider');
-      return jsonError(400, 'unsupported_provider');
-    }
-
-    const client = new OpenAI({ apiKey: requireEnv('OPENAI_API_KEY') });
-    const completion = await client.chat.completions.create({
-      model: 'gpt-4o-mini',
-      temperature: 0.2,
-      response_format: { type: 'json_object' },
-      messages: [
-        {
-          role: 'system',
-          content:
-            'You are an interview coach creating final evaluation reports. Be specific, concise, and actionable. Return strict JSON only.',
-        },
-        {
-          role: 'user',
-          content: `Mode: ${mode}\n\nSession log:\n${transcript}\n\nReturn JSON with keys:\n- overall_score (0-100 number)\n- hiring_signal (one of: strong_no_hire, no_hire, lean_no_hire, lean_hire, hire, strong_hire)\n- summary (string)\n- strengths (string[])\n- weaknesses (string[])\n- next_steps (string[])\n- rubric (object with dimensions: communication, technical_accuracy, problem_solving, structure, ownership, role_fit).\nEach dimension must include: score (1-5), evidence (string), recommendation (string).`,
-        },
-      ],
-    });
-
-    const raw = completion.choices[0]?.message?.content ?? '{}';
-    report = normalizeMockInterviewReport(JSON.parse(raw), mode);
-  } catch (e) {
-    logCopilotRouteError('/api/copilot/sessions/[id]/summarize', requestId, 'llm_summary_failed', {
-      sessionId: id,
-      errorType: e instanceof Error ? e.name : 'unknown',
-    });
-
-    report = fallbackMockInterviewReport(mode);
+  // The session's answer model (frozen at start), through whichever provider serves it.
+  const model = sessionModels(session.metadata).answer;
+  const provider = providerForModel(model);
+  if (!provider || !isProviderConfigured(provider)) {
+    logCopilotRouteError(ROUTE, requestId, 'summary_unavailable', { sessionId: id, model });
+    return jsonError(503, 'summary_unavailable');
   }
 
-  const content = report.summary || 'Session summary generated.';
+  let reply: string;
+  try {
+    reply = await completeChat({
+      model,
+      ...liveReportRequest(mode, compactSession(events)),
+      temperature: 0.2,
+      maxTokens: 1_500,
+      // No request signal: a report the user leaves before it's ready still reaches Past sessions.
+      timeoutMs: MODEL_TIMEOUT_MS,
+    });
+  } catch (e) {
+    const unavailable = e instanceof LLMUnavailableError;
+    logCopilotRouteError(ROUTE, requestId, unavailable ? 'summary_unavailable' : 'llm_summary_failed', {
+      sessionId: id,
+      model,
+      errorType: e instanceof Error ? e.name : 'unknown',
+    });
+    return unavailable ? jsonError(503, 'summary_unavailable') : jsonError(502, 'summary_failed', { requestId });
+  }
+
+  // Never save a stand-in: a reply without a real overall score is no report.
+  const report = normalizeMockInterviewReport(extractJsonObject(reply), mode);
+  if (!report) {
+    logCopilotRouteError(ROUTE, requestId, 'llm_summary_unusable', { sessionId: id, model });
+    return jsonError(502, 'summary_failed', { requestId });
+  }
+
+  const content = report.summary;
   const payload = reportToLegacyPayload(report);
 
   const [{ data: savedSummary, error: summaryError }, { error: reportSummaryError }] = await Promise.all([
@@ -159,7 +163,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   ]);
 
   if (summaryError || reportSummaryError) {
-    logCopilotRouteError('/api/copilot/sessions/[id]/summarize', requestId, 'db_upsert_summary_failed', {
+    logCopilotRouteError(ROUTE, requestId, 'db_upsert_summary_failed', {
       sessionId: id,
       code: summaryError?.code ?? reportSummaryError?.code ?? null,
     });

@@ -1,0 +1,278 @@
+/* A Windows desktop: the meeting app, and Apex Round's answer window pinned
+   over its corner. Quiet surfaces; the voices keep their colours. */
+
+.scene {
+  position: relative;
+  margin: 0;
+  min-width: 0;
+  padding: 24px 24px 72px;
+  border-radius: var(--radius-panel);
+  border: 1px solid var(--hairline);
+  background: var(--bg);
+  overflow: hidden;
+}
+
+/* The meeting app's window */
+.meeting {
+  width: 84%;
+  border-radius: var(--radius-row);
+  border: 1px solid var(--hairline-strong);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.titleBar {
+  display: flex;
+  align-items: center;
+  height: 32px;
+  padding-left: 12px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.title {
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.controls {
+  margin-left: auto;
+  display: flex;
+  height: 100%;
+}
+
+.controls svg {
+  width: 36px;
+  height: 100%;
+  padding: 11px 13px;
+  fill: none;
+  stroke: var(--text-3);
+  stroke-width: 1;
+  stroke-linecap: round;
+}
+
+.stage {
+  position: relative;
+  padding: 8px;
+}
+
+.person {
+  position: relative;
+  display: grid;
+  place-items: center;
+  aspect-ratio: 16 / 7;
+  border-radius: var(--radius-control);
+  background: var(--sunken);
+}
+
+/* The interviewer is speaking: the meeting's own speaker outline, in Ice. */
+.person[data-speaking] {
+  outline: 1px solid var(--voice-them);
+  outline-offset: -1px;
+}
+
+/* Your self-view, small, in the top corner. */
+.person + .person {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 22%;
+  aspect-ratio: 4 / 3;
+  border: 1px solid var(--hairline);
+  background: var(--field);
+}
+
+.initials {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--raised);
+  color: var(--text-2);
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.person + .person .initials {
+  width: 32px;
+  height: 32px;
+  background: transparent;
+  color: var(--text-3);
+}
+
+.name {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  max-width: calc(100% - 16px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--text-2);
+}
+
+.person + .person .name {
+  left: 6px;
+  bottom: 4px;
+}
+
+.callBar {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  padding: 4px 0 12px;
+}
+
+.callBar i {
+  display: block;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--raised);
+}
+
+/* Apex Round's answer window: small, always on top, the only thing that floats. */
+.answers {
+  position: absolute;
+  right: 20px;
+  bottom: 60px;
+  z-index: 1;
+  width: 46%;
+  border-radius: var(--radius-row);
+  border: 1px solid var(--hairline-strong);
+  background: var(--surface);
+  box-shadow: var(--float);
+  overflow: hidden;
+}
+
+.answersBar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 12px 0 8px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.pinned {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--text-3);
+}
+
+.pinned svg {
+  flex-shrink: 0;
+}
+
+.answersBody {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+}
+
+.question,
+.lead,
+.point {
+  margin: 0;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.question {
+  -webkit-line-clamp: 2;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+  color: var(--voice-them-text);
+}
+
+.lead {
+  -webkit-line-clamp: 3;
+  font-size: 13px;
+  line-height: 19px;
+  color: var(--text-1);
+}
+
+.point {
+  -webkit-line-clamp: 1;
+  position: relative;
+  padding-left: 14px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--text-2);
+}
+
+.point::before {
+  content: '';
+  position: absolute;
+  left: 2px;
+  top: 6px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--voice-you);
+}
+
+/* The taskbar, with Apex Round in it */
+.taskbar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  border-top: 1px solid var(--hairline);
+  background: var(--surface);
+}
+
+.taskbar i {
+  display: block;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  background: var(--raised);
+}
+
+@media (max-width: 639px) {
+  .scene {
+    padding: 16px 16px 64px;
+  }
+
+  .meeting {
+    width: 100%;
+  }
+
+  .person {
+    aspect-ratio: 16 / 9;
+  }
+
+  /* Below the meeting's corner rather than over the speaker. */
+  .answers {
+    position: relative;
+    right: auto;
+    bottom: auto;
+    width: 82%;
+    margin: -40px -4px 0 auto;
+  }
+
+  .point {
+    display: none;
+  }
+
+  .taskbar {
+    height: 40px;
+  }
+}

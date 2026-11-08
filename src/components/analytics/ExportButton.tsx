@@ -1,54 +1,41 @@
 'use client';
 
 import { useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { exportToCSV, exportToPDF } from '@/lib/export';
+import { DownloadIcon } from '@/components/icons';
 
 interface ExportButtonProps {
+  /** The rows of the view, with column names in the user's language: the CSV, and the PDF's table. */
   data?: unknown[];
-  elementId?: string;
   filename: string;
-  label?: string;
+  /** The section's heading, in the user's language: the PDF's title. */
+  title: string;
   disabled?: boolean;
 }
 
+/** CSV and PDF downloads of a view: two small secondary buttons. */
 export function ExportButton({
   data,
-  elementId,
   filename,
-  label = 'Export',
+  title,
   disabled = false
 }: ExportButtonProps) {
+  const t = useTranslations('Export');
   const [exporting, setExporting] = useState(false);
 
-  const handleCSVExport = async () => {
+  const run = (write: (rows: Record<string, unknown>[]) => void, failed: string) => {
     if (!data || data.length === 0) {
-      alert('No data to export');
+      alert(t('noData'));
       return;
     }
 
     setExporting(true);
     try {
-      exportToCSV(data as Record<string, unknown>[], filename);
+      write(data as Record<string, unknown>[]);
     } catch (error) {
-      console.error('CSV export failed:', error);
-      alert('Failed to export CSV');
-    } finally {
-      setExporting(false);
-    }
-  };
-
-  const handlePDFExport = async () => {
-    if (!elementId) {
-      alert('No element to export');
-      return;
-    }
-
-    setExporting(true);
-    try {
-      await exportToPDF(elementId, filename, `${filename} Report`);
-    } catch (error) {
-      console.error('PDF export failed:', error);
-      alert('Failed to export PDF');
+      console.error('Export failed:', error);
+      alert(failed);
     } finally {
       setExporting(false);
     }
@@ -57,20 +44,24 @@ export function ExportButton({
   return (
     <div className="export-buttons">
       <button
-        className="export-btn csv"
-        onClick={handleCSVExport}
+        type="button"
+        className="button buttonSmall"
+        onClick={() => run((rows) => exportToCSV(rows, filename), t('csvFailed'))}
         disabled={disabled || exporting}
-        title="Export to CSV"
+        title={t('csv')}
       >
-        CSV
+        <DownloadIcon size={16} className="export-icon" />
+        {t('csvShort')}
       </button>
       <button
-        className="export-btn pdf"
-        onClick={handlePDFExport}
+        type="button"
+        className="button buttonSmall"
+        onClick={() => run((rows) => exportToPDF(rows, filename, title), t('pdfFailed'))}
         disabled={disabled || exporting}
-        title="Export to PDF"
+        title={t('pdf')}
       >
-        PDF
+        <DownloadIcon size={16} className="export-icon" />
+        {t('pdfShort')}
       </button>
 
       <style jsx>{`
@@ -79,33 +70,9 @@ export function ExportButton({
           gap: 8px;
         }
 
-        .export-btn {
-          min-height: 40px;
-          padding: 0 16px;
-          border: 1px solid var(--line-strong);
-          border-radius: 10px;
-          background: var(--deck-2);
-          color: var(--paper);
-          cursor: pointer;
-          font: inherit;
-          font-size: 14px;
-          font-weight: 500;
-          transition: background 120ms ease, border-color 120ms ease;
-          display: flex;
-          align-items: center;
-          gap: 6px;
+        .export-buttons :global(.export-icon) {
+          color: var(--text-3);
         }
-
-        .export-btn:hover:not(:disabled) {
-          background: var(--well);
-          border-color: var(--line-strong);
-        }
-
-        .export-btn:disabled {
-          opacity: 0.5;
-          cursor: not-allowed;
-        }
-
       `}</style>
     </div>
   );

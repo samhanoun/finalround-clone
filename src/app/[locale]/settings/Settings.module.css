@@ -1,0 +1,761 @@
+/* Settings: a section list on the left (a strip on phones) and titled groups
+   of rows. A row is label and help on the left, the control on the right. */
+
+.layout {
+  display: grid;
+  grid-template-columns: 200px minmax(0, 1fr);
+  gap: 48px;
+  align-items: start;
+}
+
+.sections {
+  display: grid;
+  gap: 40px;
+  max-width: 800px;
+  min-width: 0;
+}
+
+/* Section navigation */
+.nav {
+  position: sticky;
+  top: calc(var(--titlebar, 0px) + 32px);
+}
+
+.navList {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.navLink {
+  display: flex;
+  align-items: center;
+  min-height: 32px;
+  border-radius: var(--radius-control);
+  color: var(--text-2);
+  font-size: 14px;
+  font-weight: 500;
+  text-decoration: none;
+  transition: color var(--dur-fast) var(--ease);
+}
+
+.navChip {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 32px;
+  padding: 0 10px;
+  border-radius: var(--radius-control);
+  transition: background-color var(--dur-fast) var(--ease);
+}
+
+.navLink:hover {
+  color: var(--text-1);
+}
+
+.navLink:hover .navChip {
+  background: rgba(237, 237, 237, 0.04);
+}
+
+.navLink[aria-current='true'] {
+  color: var(--text-1);
+}
+
+.navLink[aria-current='true'] .navChip {
+  background: var(--raised);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+/* Desktop app section and its link: only inside the Windows app. */
+:global(html:not([data-desktop])) .desktopOnly {
+  display: none;
+}
+
+/* Sections */
+.section {
+  position: relative;
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  scroll-margin-top: calc(var(--titlebar, 0px) + 32px);
+  outline: none;
+}
+
+/* Focus moves here from the section list; the scroll already shows where. */
+.section.section:focus,
+.section.section:focus-visible {
+  outline: none;
+}
+
+.sectionHead {
+  display: grid;
+  gap: 4px;
+  padding-right: 96px; /* room for the "Saved" note */
+}
+
+.sectionTitle {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--text-1);
+}
+
+.sectionDesc {
+  margin: 0;
+  max-width: 64ch;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+
+.subhead {
+  margin: 12px 0 0;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-1);
+}
+
+/* A titled group of rows */
+.group {
+  min-width: 0;
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-card);
+}
+
+.groupDanger {
+  border-color: rgba(229, 72, 77, 0.32);
+}
+
+/* Rows, blocks and the footer are separated by hairlines. */
+.group > * + *:not(.sectionStatus) {
+  border-top: 1px solid var(--hairline);
+}
+
+.row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 320px);
+  align-items: center;
+  gap: 8px 32px;
+  padding: 16px 20px;
+}
+
+.rowInline {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.rowStacked {
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: 12px;
+}
+
+.rowText {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.rowLabel {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.45;
+  color: var(--text-1);
+}
+
+.rowHelp {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-3);
+}
+
+.rowControl {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.rowInline .rowControl {
+  justify-content: flex-end;
+}
+
+.rowValue {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 14px;
+  color: var(--text-2);
+}
+
+/* A free block inside a group (a list, a form) */
+.block {
+  padding: 16px 20px;
+}
+
+.groupFooter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px 16px;
+  padding: 12px 20px;
+}
+
+.footerNote {
+  flex: 1 1 260px;
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-3);
+}
+
+.footerActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-left: auto;
+}
+
+/* Quiet save state: "Saved" with a check, or the error */
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 20px;
+  font-size: 13px;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+
+.statusError {
+  color: var(--negative-text);
+  white-space: normal;
+}
+
+/* Auto-saving sections show their state beside the section title. */
+.sectionStatus {
+  position: absolute;
+  top: 2px;
+  right: 0;
+}
+
+/* Switch: an on/off setting that applies at once (a checkbox with role="switch") */
+.switch {
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+  flex: none;
+  width: 36px;
+  height: 20px;
+  margin: 0;
+  border: 1px solid var(--hairline-strong);
+  border-radius: 10px;
+  background: var(--raised-2);
+  cursor: pointer;
+  transition:
+    background-color var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease);
+}
+
+.switch::before {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--text-3);
+  transition:
+    transform var(--dur-fast) var(--ease),
+    background-color var(--dur-fast) var(--ease);
+}
+
+.switch:hover {
+  border-color: var(--hairline-hover);
+}
+
+.switch:checked {
+  background: var(--text-1);
+  border-color: var(--text-1);
+}
+
+.switch:checked::before {
+  transform: translateX(16px);
+  background: var(--bg);
+}
+
+.switch:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* Segmented choice (radio group) */
+.segmented {
+  display: flex;
+  width: 100%;
+  padding: 2px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-control);
+  background: var(--field);
+}
+
+.segment {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.segment input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.segment span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  padding: 0 8px;
+  border-radius: 6px;
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 500;
+  text-align: center;
+  transition:
+    background-color var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease);
+}
+
+.segment:hover span {
+  color: var(--text-1);
+}
+
+.segment input:checked + span {
+  background: var(--raised-2);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  color: var(--text-1);
+}
+
+.segment input:focus-visible + span {
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: 1px;
+}
+
+.segment input:disabled {
+  cursor: not-allowed;
+}
+
+/* Target roles */
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--text-2);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background-color var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease);
+}
+
+.chip:hover {
+  border-color: var(--hairline-hover);
+  color: var(--text-1);
+}
+
+.chip[aria-pressed='true'],
+.chipCustom {
+  background: var(--raised);
+  border-color: var(--hairline-hover);
+  color: var(--text-1);
+}
+
+.chip:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.chipCustom {
+  padding-right: 4px;
+  cursor: default;
+}
+
+.chipRemove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+  transition:
+    background-color var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease);
+}
+
+.chipRemove:hover {
+  background: var(--raised-2);
+  color: var(--text-1);
+}
+
+.rolesControl {
+  display: grid;
+  gap: 12px;
+  width: 100%;
+}
+
+.addRole {
+  display: flex;
+  gap: 8px;
+  max-width: 420px;
+}
+
+.addRole :global(.input) {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.addRole :global(.button) {
+  flex: none;
+}
+
+.count {
+  font-size: 13px;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.rowTitleLine {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.avatarField {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+}
+
+.avatarPreview {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--raised);
+}
+
+/* Notifications: a matrix of kinds by channel */
+.matrix {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.matrix th,
+.matrix td {
+  padding: 14px 20px;
+  border-top: 1px solid var(--hairline);
+  vertical-align: top;
+  text-align: left;
+  font-weight: 400;
+}
+
+.matrix thead th {
+  padding-top: 12px;
+  padding-bottom: 12px;
+  border-top: 0;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-3);
+}
+
+.matrix .channel {
+  width: 96px;
+  padding-left: 8px;
+  padding-right: 8px;
+  text-align: center;
+}
+
+/* The kind's label and help stack inside the cell (the cell itself stays a table cell). */
+.matrix tbody th > span {
+  display: block;
+}
+
+.matrix tbody th > span + span {
+  margin-top: 2px;
+}
+
+.matrix input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  margin: 2px 0 0;
+  accent-color: var(--text-1);
+  cursor: pointer;
+}
+
+/* Usage meters */
+.meters {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.meter {
+  display: grid;
+  grid-template-columns: minmax(0, 200px) minmax(0, 1fr) 104px;
+  align-items: center;
+  gap: 16px;
+}
+
+.meterLabel {
+  font-size: 14px;
+  color: var(--text-2);
+}
+
+.meterTrack {
+  display: block;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--raised);
+  overflow: hidden;
+}
+
+.meterFill {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--text-2);
+  transform-origin: left center;
+  transition: transform var(--dur-enter) var(--ease);
+}
+
+.meterFill[data-near='true'] {
+  background: var(--negative);
+}
+
+.meterValue {
+  font-family: var(--font-code);
+  font-size: 13px;
+  color: var(--text-3);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.planCell {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+}
+
+.inlineError {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--negative-text);
+}
+
+/* Danger zone */
+.dangerList {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-3);
+}
+
+.form {
+  display: grid;
+  gap: 16px;
+  max-width: 480px;
+}
+
+.skeletonRows {
+  display: grid;
+  gap: 12px;
+  padding: 20px;
+}
+
+/* Tablets: the top bar is sticky above the page. */
+@media (max-width: 1023px) {
+  .layout {
+    grid-template-columns: 176px minmax(0, 1fr);
+    gap: 32px;
+  }
+
+  .nav {
+    top: calc(var(--titlebar, 0px) + 56px + env(safe-area-inset-top) + 24px);
+  }
+
+  .section {
+    scroll-margin-top: calc(var(--titlebar, 0px) + 56px + env(safe-area-inset-top) + 24px);
+  }
+
+  .row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 280px);
+    gap: 8px 24px;
+  }
+}
+
+/* Phones: a strip of section links under the top bar, then the sections. */
+@media (max-width: 767px) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 24px;
+  }
+
+  .sections {
+    gap: 32px;
+  }
+
+  .nav {
+    top: calc(var(--titlebar, 0px) + 56px + env(safe-area-inset-top));
+    z-index: 30;
+    margin: -8px -24px 0;
+    padding: 0 16px;
+    background: rgba(20, 20, 21, 0.94);
+    backdrop-filter: saturate(140%) blur(12px);
+    -webkit-backdrop-filter: saturate(140%) blur(12px);
+    border-bottom: 1px solid var(--hairline);
+  }
+
+  .navList {
+    display: flex;
+    gap: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+    scroll-snap-type: x proximity;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .navList::-webkit-scrollbar {
+    display: none;
+  }
+
+  .navList li {
+    flex: none;
+    scroll-snap-align: start;
+  }
+
+  .navLink {
+    min-height: 44px;
+    padding: 0 2px;
+    white-space: nowrap;
+  }
+
+  .navChip {
+    min-height: 32px;
+    padding: 0 12px;
+  }
+
+  .section {
+    scroll-margin-top: calc(var(--titlebar, 0px) + 56px + env(safe-area-inset-top) + 60px);
+  }
+
+  .sectionHead {
+    padding-right: 80px;
+  }
+
+  .row {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+    gap: 12px;
+    padding: 16px;
+  }
+
+  .rowInline {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+  }
+
+  .block,
+  .skeletonRows {
+    padding: 16px;
+  }
+
+  .groupFooter {
+    padding: 12px 16px;
+  }
+
+  .footerActions {
+    width: 100%;
+  }
+
+  .matrix th,
+  .matrix td {
+    padding: 14px 16px;
+  }
+
+  .matrix .channel {
+    width: 72px;
+    padding-left: 4px;
+    padding-right: 4px;
+  }
+
+  .meter {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px 12px;
+  }
+
+  .meterTrack {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
+  .addRole {
+    max-width: none;
+  }
+}
+
+@media (max-width: 559px) {
+  .nav {
+    margin: -4px -16px 0;
+  }
+}
+
+@media (pointer: coarse) {
+  .chip {
+    min-height: 40px;
+  }
+
+  .segment span {
+    min-height: 40px;
+  }
+}

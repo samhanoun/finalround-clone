@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { jsonError } from '@/lib/api';
+import { getUserPlan } from '@/lib/quota';
 import { env } from '@/lib/env';
 import { DEFAULT_LOCALE, LOCALES } from '@/i18n/locales';
 import { createClient } from '@/lib/supabase/server';
@@ -36,7 +37,13 @@ export async function POST(req: NextRequest) {
   if (!stripe) return jsonError(503, 'billing_unavailable');
 
   const customer = await findStripeCustomerId(createAdminClient(), userId);
-  if (!customer) return jsonError(404, 'no_billing_account');
+  if (!customer) {
+    // A paid plan with no Stripe customer was given directly (a Tester plan, set by hand): there
+    // are no payments to manage, which is different from "upgrade first".
+    const plan = await getUserPlan(userId).catch(() => null);
+    const paid = Boolean(plan && plan.plan_id && plan.plan_id !== 'free');
+    return jsonError(404, paid ? 'plan_without_billing' : 'no_billing_account');
+  }
 
   const origin = env.NEXT_PUBLIC_APP_URL ?? req.nextUrl.origin;
   try {

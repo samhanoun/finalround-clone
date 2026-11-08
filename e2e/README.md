@@ -50,3 +50,30 @@ question audio with Deepgram's text-to-speech.
 
 `playwright.config.ts` runs the rest (`auth`, `copilot` signed-out checks, `interview`,
 `resume`) against `npm run dev`.
+
+## The whole app (`e2e/app`)
+
+`playwright.app.config.ts` signs in as the fake user and goes through every page in
+every language, every control on each page, and each feature flow (sign-in and
+onboarding, the live copilot, practice, goals, the question bank, résumés, cover
+letters, jobs, analytics, settings, support, teams, admin), on desktop and on a phone
+(Pixel 7, the `@mobile` tests). It starts the fakes and the app itself, or uses
+`E2E_BASE_URL` for an app already running against them:
+
+```bash
+npm run test:e2e:app
+```
+
+## The desktop app (`e2e/desktop`)
+
+`playwright.desktop.config.ts` launches the desktop app (`desktop/`) through
+Playwright's Electron support, showing the web app on the fakes: the page's bridge,
+the window frame, Settings → Desktop app, the floating answer window, the navigation
+lock and the page shown when the server doesn't answer. Build the desktop app first,
+and don't run it at the same time as the whole-app suite on the same fakes (starting a
+live session ends the fake user's other sessions):
+
+```bash
+npm --prefix desktop run build
+npm run test:e2e:desktop
+```

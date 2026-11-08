@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useFormatter, useTranslations } from 'next-intl';
+import styles from './AnalyticsReconciliation.module.css';
 
 interface MetricReconciliation {
   metricName: string;
@@ -27,53 +29,25 @@ interface ReconciliationSummary {
   };
 }
 
-function StatusBadge({ status }: { status: 'consistent' | 'warning' | 'critical' }) {
-  const config = {
-    consistent: { label: '✓ Consistent', className: 'status-consistent' },
-    warning: { label: '⚠ Warning', className: 'status-warning' },
-    critical: { label: '✕ Critical', className: 'status-critical' },
-  };
-  
-  const { label, className } = config[status];
-  
+/** A status is a small dot and a word; colour only says how serious it is. */
+function Status({ tone, children }: { tone: 'good' | 'warning' | 'critical'; children: React.ReactNode }) {
   return (
-    <span className={`status-badge ${className}`}>
-      {label}
+    <span className={styles.status} data-tone={tone}>
+      <span className={styles.dot} aria-hidden="true" />
+      {children}
     </span>
   );
 }
 
-function MetricRow({ metric }: { metric: MetricReconciliation }) {
-  const percentDiff = Math.abs(metric.differencePercent * 100).toFixed(1);
-  const diffDisplay = metric.difference >= 0 ? `+${metric.difference}` : `${metric.difference}`;
-  
-  return (
-    <div className={`metric-row metric-${metric.status}`}>
-      <div className="metric-name">{metric.metricName}</div>
-      <div className="metric-values">
-        <div className="metric-actual">
-          <span className="metric-label">Actual (Events):</span>
-          <span className="metric-value">{metric.rawEventCount.toLocaleString()}</span>
-        </div>
-        <div className="metric-expected">
-          <span className="metric-label">Expected (Aggregated):</span>
-          <span className="metric-value">{metric.aggregatedCount.toLocaleString()}</span>
-        </div>
-        <div className="metric-diff">
-          <span className="metric-label">Difference:</span>
-          <span className={`metric-value ${metric.difference >= 0 ? 'positive' : 'negative'}`}>
-            {diffDisplay} ({percentDiff}%)
-          </span>
-        </div>
-      </div>
-      <div className="metric-status">
-        <StatusBadge status={metric.status} />
-      </div>
-    </div>
-  );
-}
+const TONE = { consistent: 'good', healthy: 'good', warning: 'warning', critical: 'critical' } as const;
 
+/**
+ * Data checks: each total compared with the raw events it comes from. A
+ * support tool, shown on Analytics only with ?debug=1.
+ */
 export function AnalyticsReconciliation() {
+  const t = useTranslations('DataChecks');
+  const format = useFormatter();
   const [data, setData] = useState<ReconciliationSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -82,11 +56,11 @@ export function AnalyticsReconciliation() {
     async function fetchReconciliation() {
       try {
         const res = await fetch('/api/analytics/reconciliation');
-        if (!res.ok) throw new Error('Failed to fetch reconciliation data');
+        if (!res.ok) throw new Error(`reconciliation: ${res.status}`);
         const json = await res.json();
         setData(json);
       } catch (e) {
-        setError(e instanceof Error ? e.message : 'Failed to load');
+        setError(e instanceof Error ? e.message : 'failed');
       } finally {
         setLoading(false);
       }
@@ -94,264 +68,82 @@ export function AnalyticsReconciliation() {
     fetchReconciliation();
   }, []);
 
-  if (loading) {
-    return (
-      <div className="card">
-        <div className="cardInner stack">
-          <p className="small">Loading analytics reconciliation...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (error || !data) {
-    return (
-      <div className="card">
-        <div className="cardInner stack">
-          <p className="small error">Failed to load reconciliation data</p>
-        </div>
-      </div>
-    );
-  }
-
-  const overallConfig = {
-    healthy: { label: '✓ Data Consistent', className: 'overall-healthy' },
-    warning: { label: '⚠ Some Discrepancies', className: 'overall-warning' },
-    critical: { label: '✕ Data Issues Detected', className: 'overall-critical' },
-  };
-
-  const { label: overallLabel, className: overallClass } = overallConfig[data.overallStatus];
-
-  const formatDate = (dateStr: string) => {
-    return new Date(dateStr).toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    });
-  };
+  const formatDate = (dateStr: string) => format.dateTime(new Date(dateStr), { dateStyle: 'medium' });
 
   return (
     <div className="card">
-      <div className="cardInner stack">
-        <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-          <h2 className="cardTitle">Analytics Reconciliation</h2>
-          <span className={`overall-badge ${overallClass}`}>
-            {overallLabel}
-          </span>
+      <div className={`cardInner ${styles.inner}`}>
+        <div className={styles.head}>
+          <h2 className="cardTitle">{t('title')}</h2>
+          {data ? <Status tone={TONE[data.overallStatus]}>{t(`overall.${data.overallStatus}`)}</Status> : null}
         </div>
 
-        <div className="reconciliation-info">
-          <p className="small help">
-            Period: {formatDate(data.period.start)} — {formatDate(data.period.end)}
-            {' • '}
-            Last checked: {new Date(data.lastChecked).toLocaleTimeString()}
+        {loading ? (
+          <p className={styles.note}>{t('loading')}</p>
+        ) : error || !data ? (
+          <p className={styles.note} role="alert">
+            {t('failed')}
           </p>
-        </div>
+        ) : (
+          <>
+            <p className={styles.meta}>
+              <span>{t('period', { start: formatDate(data.period.start), end: formatDate(data.period.end) })}</span>
+              <span>{t('lastChecked', { time: format.dateTime(new Date(data.lastChecked), { timeStyle: 'medium' }) })}</span>
+            </p>
 
-        <div className="summary-stats">
-          <div className="stat-item">
-            <span className="stat-value">{data.summary.totalMetrics}</span>
-            <span className="stat-label">Total Metrics</span>
-          </div>
-          <div className="stat-item stat-consistent">
-            <span className="stat-value">{data.summary.withinTolerance}</span>
-            <span className="stat-label">Within ±1%</span>
-          </div>
-          <div className="stat-item stat-warning">
-            <span className="stat-value">{data.summary.outsideTolerance}</span>
-            <span className="stat-label">Outside Tolerance</span>
-          </div>
-        </div>
+            <dl className={styles.summary}>
+              <div>
+                <dt>{t('total')}</dt>
+                <dd>{format.number(data.summary.totalMetrics)}</dd>
+              </div>
+              <div>
+                <dt>{t('within')}</dt>
+                <dd>{format.number(data.summary.withinTolerance)}</dd>
+              </div>
+              <div>
+                <dt>{t('outside')}</dt>
+                <dd>{format.number(data.summary.outsideTolerance)}</dd>
+              </div>
+            </dl>
 
-        <div className="metrics-list">
-          <div className="metrics-header">
-            <span>Metric</span>
-            <span>Values</span>
-            <span>Status</span>
-          </div>
-          {data.metrics.map((metric, index) => (
-            <MetricRow key={index} metric={metric} />
-          ))}
-        </div>
+            <div className={styles.tableWrap}>
+              <table className={styles.table}>
+                <thead>
+                  <tr>
+                    <th scope="col">{t('metric')}</th>
+                    <th scope="col">{t('actual')}</th>
+                    <th scope="col">{t('expected')}</th>
+                    <th scope="col">{t('difference')}</th>
+                    <th scope="col">{t('statusHeader')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.metrics.map((metric) => (
+                    <tr key={metric.metricName}>
+                      <th scope="row">{metric.metricName}</th>
+                      <td>{format.number(metric.rawEventCount)}</td>
+                      <td>{format.number(metric.aggregatedCount)}</td>
+                      <td>
+                        {format.number(metric.difference, { signDisplay: 'exceptZero' })}{' '}
+                        <span className={styles.percent}>
+                          ({format.number(Math.abs(metric.differencePercent), { style: 'percent', maximumFractionDigits: 1 })})
+                        </span>
+                      </td>
+                      <td>
+                        <Status tone={TONE[metric.status]}>{t(`status.${metric.status}`)}</Status>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
 
-        <p className="small help">
-          Metrics reconcile with raw events within ±1% tolerance as per PRD section 13.6.
-          {' '}
-          {data.overallStatus !== 'healthy' && (
-            <span className="error">
-              Please investigate the discrepancies above.
-            </span>
-          )}
-        </p>
+            <p className={styles.note}>
+              {t('note')} {data.overallStatus !== 'healthy' ? t('investigate') : null}
+            </p>
+          </>
+        )}
       </div>
-
-      <style jsx>{`
-        .reconciliation-info {
-          padding: 8px 12px;
-          background: var(--color-bg-subtle, var(--well));
-          border-radius: 6px;
-        }
-        
-        .summary-stats {
-          display: flex;
-          gap: 16px;
-          padding: 12px;
-          background: var(--color-bg-subtle, var(--well));
-          border-radius: 8px;
-        }
-        
-        .stat-item {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          flex: 1;
-          padding: 8px;
-        }
-        
-        .stat-value {
-          font-size: 1.5rem;
-          font-weight: 600;
-        }
-        
-        .stat-label {
-          font-size: 0.75rem;
-          color: var(--color-text-muted, var(--mist));
-        }
-        
-        .stat-consistent .stat-value {
-          color: var(--live);
-        }
-        
-        .stat-warning .stat-value {
-          color: var(--caution);
-        }
-        
-        .metrics-list {
-          border: 1px solid var(--color-border, var(--line));
-          border-radius: 8px;
-          overflow: hidden;
-        }
-        
-        .metrics-header {
-          display: grid;
-          grid-template-columns: 1fr 2fr 120px;
-          gap: 12px;
-          padding: 12px 16px;
-          background: var(--color-bg-subtle, var(--well));
-          font-weight: 600;
-          font-size: 0.875rem;
-          border-bottom: 1px solid var(--color-border, var(--line));
-        }
-        
-        .metric-row {
-          display: grid;
-          grid-template-columns: 1fr 2fr 120px;
-          gap: 12px;
-          padding: 12px 16px;
-          border-bottom: 1px solid var(--color-border, var(--line));
-          align-items: center;
-        }
-        
-        .metric-row:last-child {
-          border-bottom: none;
-        }
-        
-        .metric-row.metric-consistent {
-          background: rgba(69, 212, 155, 0.05);
-        }
-        
-        .metric-row.metric-warning {
-          background: rgba(247, 195, 95, 0.05);
-        }
-        
-        .metric-row.metric-critical {
-          background: rgba(255, 107, 107, 0.05);
-        }
-        
-        .metric-name {
-          font-weight: 500;
-        }
-        
-        .metric-values {
-          display: flex;
-          gap: 16px;
-          flex-wrap: wrap;
-        }
-        
-        .metric-actual,
-        .metric-expected,
-        .metric-diff {
-          display: flex;
-          flex-direction: column;
-        }
-        
-        .metric-label {
-          font-size: 0.7rem;
-          color: var(--color-text-muted, var(--mist));
-        }
-        
-        .metric-value {
-          font-weight: 500;
-          font-family: monospace;
-        }
-        
-        .metric-value.positive {
-          color: var(--live);
-        }
-        
-        .metric-value.negative {
-          color: var(--alert);
-        }
-        
-        .status-badge {
-          display: inline-block;
-          padding: 4px 8px;
-          border-radius: 4px;
-          font-size: 0.75rem;
-          font-weight: 500;
-        }
-        
-        .status-consistent {
-          background: rgba(69, 212, 155, 0.1);
-          color: var(--live);
-        }
-        
-        .status-warning {
-          background: rgba(247, 195, 95, 0.1);
-          color: var(--caution);
-        }
-        
-        .status-critical {
-          background: rgba(255, 107, 107, 0.1);
-          color: var(--alert);
-        }
-        
-        .overall-badge {
-          padding: 6px 12px;
-          border-radius: 6px;
-          font-weight: 600;
-          font-size: 0.875rem;
-        }
-        
-        .overall-healthy {
-          background: rgba(69, 212, 155, 0.1);
-          color: var(--live);
-        }
-        
-        .overall-warning {
-          background: rgba(247, 195, 95, 0.1);
-          color: var(--caution);
-        }
-        
-        .overall-critical {
-          background: rgba(255, 107, 107, 0.1);
-          color: var(--alert);
-        }
-        
-        .error {
-          color: var(--alert);
-        }
-      `}</style>
     </div>
   );
 }
