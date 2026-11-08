@@ -36,7 +36,6 @@ must be present when the image is built (Docker build args) and, for server code
 | `LLM_PROVIDER` | `openai`, `anthropic`, `google` or `auto` | Optional | Runtime |
 | `OPENAI_API_KEY` | OpenAI models | Required unless Anthropic is used | Runtime |
 | `ANTHROPIC_API_KEY` | Anthropic models (and `claude-*` copilot models) | Optional | Runtime |
-| `GOOGLE_GENERATIVE_AI_API_KEY` | Google models | Optional | Runtime |
 | `COPILOT_GATE_MODEL`, `COPILOT_ANSWER_MODEL`, `COPILOT_CODING_MODEL` | Live copilot models | Optional | Runtime |
 | `DEEPGRAM_API_KEY` | Speech-to-text; without it live transcription is off | Required for live sessions | Runtime |
 | `DEEPGRAM_MODEL`, `DEEPGRAM_LANGUAGE`, `DEEPGRAM_LISTEN_URL` | Deepgram model, language, endpoint override | Optional | Runtime |

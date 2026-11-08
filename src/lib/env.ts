@@ -17,7 +17,6 @@ const RawEnvSchema = z.object({
   LLM_PROVIDER: z.enum(['openai', 'anthropic', 'google', 'auto']).optional(),
   OPENAI_API_KEY: z.string().min(1).optional(),
   ANTHROPIC_API_KEY: z.string().min(1).optional(),
-  GOOGLE_GENERATIVE_AI_API_KEY: z.string().min(1).optional(),
 
   // Live copilot models (OpenAI or Anthropic model ids)
   COPILOT_GATE_MODEL: z.string().min(1).optional(),
@@ -62,7 +61,6 @@ export const env = RawEnvSchema.parse(blankToUndefined({
   LLM_PROVIDER: process.env.LLM_PROVIDER,
   OPENAI_API_KEY: process.env.OPENAI_API_KEY,
   ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
-  GOOGLE_GENERATIVE_AI_API_KEY: process.env.GOOGLE_GENERATIVE_AI_API_KEY,
 
   COPILOT_GATE_MODEL: process.env.COPILOT_GATE_MODEL,
   COPILOT_ANSWER_MODEL: process.env.COPILOT_ANSWER_MODEL,
