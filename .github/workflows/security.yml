@@ -76,7 +76,7 @@ jobs:
       - name: Scan the base branch
         id: scan-base
         if: github.event_name == 'pull_request'
-        uses: google/osv-scanner-action/osv-scanner-action@b1d267aea5211fa648d9d442fa64b90dbdcbdd36 # v2.7.0
+        uses: google/osv-scanner-action/osv-scanner-action@32d3cd482bdadfb38b186c0ad1b031902d55d932 # v2.7.1
         continue-on-error: true # the scanner exits 1 when it finds anything
         with:
           scan-args: |-
@@ -90,7 +90,7 @@ jobs:
 
       - name: Scan
         id: scan
-        uses: google/osv-scanner-action/osv-scanner-action@b1d267aea5211fa648d9d442fa64b90dbdcbdd36 # v2.7.0
+        uses: google/osv-scanner-action/osv-scanner-action@32d3cd482bdadfb38b186c0ad1b031902d55d932 # v2.7.1
         continue-on-error: true # the scanner exits 1 when it finds anything
         with:
           scan-args: |-
@@ -116,7 +116,7 @@ jobs:
           exit "$status"
 
       - name: Report all vulnerabilities (SARIF)
-        uses: google/osv-scanner-action/osv-reporter-action@b1d267aea5211fa648d9d442fa64b90dbdcbdd36 # v2.7.0
+        uses: google/osv-scanner-action/osv-reporter-action@32d3cd482bdadfb38b186c0ad1b031902d55d932 # v2.7.1
         with:
           scan-args: |-
             --output=osv-results.sarif
@@ -135,7 +135,7 @@ jobs:
 
       - name: Fail on vulnerabilities this pull request introduces
         if: github.event_name == 'pull_request'
-        uses: google/osv-scanner-action/osv-reporter-action@b1d267aea5211fa648d9d442fa64b90dbdcbdd36 # v2.7.0
+        uses: google/osv-scanner-action/osv-reporter-action@32d3cd482bdadfb38b186c0ad1b031902d55d932 # v2.7.1
         with:
           scan-args: |-
             --output=osv-new.sarif
